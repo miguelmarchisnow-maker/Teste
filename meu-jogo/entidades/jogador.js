@@ -16,8 +16,8 @@ export function configurarControles() {
 export async function criarJogador(app, areaJogo) {
   const jogador = await Assets.load('../assets/Personagem.jpeg');
   const sprite = new Sprite(jogador);
-  sprite.width = 100;
-  sprite.height = 150;
+  sprite.width = 200;
+  sprite.height = 180;
   sprite.x = app.screen.width / 2;
   sprite.y = areaJogo.top + areaJogo.height / 2;
   return sprite;
