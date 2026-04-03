@@ -1,29 +1,33 @@
 import { Assets, AnimatedSprite, Spritesheet, SCALE_MODES } from 'pixi.js';
 
+const FRAME_W = 16;
+const FRAME_H = 16;
+const LINHAS_CONFIG = [
+  { nome: 'idle', colunas: 6 },
+  { nome: 'andar', colunas: 6 },
+  { nome: 'esquiva', colunas: 6 },
+  { nome: 'pulo', colunas: 6 },
+  { nome: 'pulo2', colunas: 4 },
+];
+
 export async function criarCachorro(app, areaJogo) {
   const texture = await Assets.load('../assets/cachorro_branco.png');
   texture.source.scaleMode = SCALE_MODES.NEAREST;
 
-  const frameW = 16;
-  const frameH = 14;
-  const colunas = 6;
-  const linhas = 5;
-
   const frames = {};
   const animacoes = {};
-  const nomeLinhas = ['idle', 'andar_baixo', 'andar_direita', 'andar_cima', 'andar_esquerda'];
 
-  for (let linha = 0; linha < linhas; linha++) {
-    const nomeAnim = nomeLinhas[linha];
-    animacoes[nomeAnim] = [];
+  for (let linha = 0; linha < LINHAS_CONFIG.length; linha++) {
+    const { nome, colunas } = LINHAS_CONFIG[linha];
+    animacoes[nome] = [];
     for (let col = 0; col < colunas; col++) {
       const id = `cachorro_${linha}_${col}`;
       frames[id] = {
-        frame: { x: col * frameW, y: linha * frameH, w: frameW, h: frameH },
-        sourceSize: { w: frameW, h: frameH },
-        spriteSourceSize: { x: 0, y: 0, w: frameW, h: frameH },
+        frame: { x: col * FRAME_W, y: linha * FRAME_H, w: FRAME_W, h: FRAME_H },
+        sourceSize: { w: FRAME_W, h: FRAME_H },
+        spriteSourceSize: { x: 0, y: 0, w: FRAME_W, h: FRAME_H },
       };
-      animacoes[nomeAnim].push(id);
+      animacoes[nome].push(id);
     }
   }
 
@@ -34,22 +38,21 @@ export async function criarCachorro(app, areaJogo) {
   });
   await sheet.parse();
 
+  const tamanho = 80;
   const sprite = new AnimatedSprite(sheet.animations['idle']);
-  sprite.animationSpeed = 0.15;
+  sprite.animationSpeed = 0.05;
   sprite.play();
-  sprite.width = 80;
-  sprite.height = 80;
+  sprite.width = tamanho;
+  sprite.height = tamanho;
   sprite.anchor.set(0.5);
   sprite.x = app.screen.width / 2 - 120;
   sprite.y = areaJogo.top + areaJogo.height / 2;
   sprite._sheet = sheet;
+  sprite._tamanho = tamanho;
 
   return sprite;
 }
 
-/**
- * Segue o alvo mantendo uma distância mínima (evita sobreposição).
- */
 export function atualizarCachorro(cachorro, alvo, areaJogo, velocidade) {
   const dx = alvo.x - cachorro.x;
   const dy = alvo.y - cachorro.y;
@@ -60,21 +63,20 @@ export function atualizarCachorro(cachorro, alvo, areaJogo, velocidade) {
     cachorro.x += (dx / dist) * velocidade;
     cachorro.y += (dy / dist) * velocidade;
 
-    const sheet = cachorro._sheet;
-    let anim;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      anim = dx > 0 ? 'andar_direita' : 'andar_esquerda';
-    } else {
-      anim = dy > 0 ? 'andar_baixo' : 'andar_cima';
-    }
-    if (cachorro._animAtual !== anim) {
-      cachorro.textures = sheet.animations[anim];
+    // Espelha horizontalmente conforme direção
+    const tam = cachorro._tamanho;
+    cachorro.width = dx < 0 ? -tam : tam;
+
+    if (cachorro._animAtual !== 'andar') {
+      cachorro.textures = cachorro._sheet.animations['andar'];
+      cachorro.animationSpeed = 0.15;
       cachorro.play();
-      cachorro._animAtual = anim;
+      cachorro._animAtual = 'andar';
     }
   } else {
     if (cachorro._animAtual !== 'idle') {
       cachorro.textures = cachorro._sheet.animations['idle'];
+      cachorro.animationSpeed = 0.05;
       cachorro.play();
       cachorro._animAtual = 'idle';
     }
