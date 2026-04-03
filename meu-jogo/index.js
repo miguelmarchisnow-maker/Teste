@@ -1,52 +1,41 @@
 import { Application } from 'pixi.js';
-import { criarTerreno } from './terreno/terreno.js';
-import {
-  configurarControles,
-  criarJogador,
-  atualizarJogador,
-} from './entidades/jogador.js';
-import { criarCachorro, atualizarCachorro } from './entidades/cachorro.js';
+import { criarMundo, atualizarMundo } from './world/mundo.js';
+import { configurarControles, criarJogador, atualizarJogador } from './player/player.js';
+import { criarMinimapa, atualizarMinimapa } from './hud/minimapa.js';
 
 const app = new Application();
 await app.init({
-  width: 1880,
-  height: 700,
-  backgroundColor: 0x1a1a2e,
+  width: window.innerWidth,
+  height: window.innerHeight,
+  backgroundColor: 0x0a0a1a,
   resolution: window.devicePixelRatio || 1,
+  autoDensity: true,
   antialias: true,
 });
 
+document.body.style.margin = '0';
+document.body.style.overflow = 'hidden';
 document.body.appendChild(app.canvas);
 
-const terreno = criarTerreno(app);
-app.stage.addChild(terreno)
+window.addEventListener('resize', () => {
+  app.renderer.resize(window.innerWidth, window.innerHeight);
+});
 
-const alturaCeus = app.screen.height * 0.28;
-const areaJogo = {
-  left: 0,
-  top: alturaCeus,
-  right: app.screen.width,
-  bottom: app.screen.height,
-  get width() {
-    return this.right - this.left;
-  },
-  get height() {
-    return this.bottom - this.top;
-  },
-};
+const mundo = await criarMundo(app);
+app.stage.addChild(mundo.container);
 
-const cachorro = criarCachorro(app, areaJogo);
-const jogador = await criarJogador(app, areaJogo);
+const jogador = await criarJogador(mundo);
+mundo.container.addChild(jogador);
 
-app.stage.addChild(cachorro);
-app.stage.addChild(jogador);
+configurarControles(app);
 
-configurarControles();
+const minimapa = criarMinimapa(app, mundo);
+app.stage.addChild(minimapa);
 
-const velJogador = 4.2;
-const velCachorro = 2.8;
+const velJogador = 6;
 
 app.ticker.add(() => {
-  atualizarJogador(jogador, areaJogo, velJogador);
-  atualizarCachorro(cachorro, jogador, areaJogo, velCachorro);
+  atualizarJogador(jogador, app, mundo, velJogador);
+  atualizarMundo(mundo, jogador, app);
+  atualizarMinimapa(minimapa, jogador, app);
 });
