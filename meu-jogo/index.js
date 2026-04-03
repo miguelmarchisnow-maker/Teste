@@ -1,5 +1,5 @@
 import { Application } from 'pixi.js';
-import { criarTerreno } from './terreno/terreno.js';
+import { criarTerreno, FRACAO_ALTURA_CEU } from './terreno/terreno.js';
 import {
   configurarControles,
   criarJogador,
@@ -18,10 +18,10 @@ await app.init({
 
 document.body.appendChild(app.canvas);
 
-const terreno = criarTerreno(app);
-app.stage.addChild(terreno)
+const terreno = await criarTerreno(app);
+app.stage.addChild(terreno);
 
-const alturaCeus = app.screen.height * 0.28;
+const alturaCeus = app.screen.height * FRACAO_ALTURA_CEU;
 const areaJogo = {
   left: 0,
   top: alturaCeus,
