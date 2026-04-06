@@ -304,11 +304,11 @@ export function desenharNeblinaVisao(mundo, fontesVisao, camera, screenW, screen
     for (const fonte of fontesVisao) {
       const cx = (fonte.x - worldX) * scaleX;
       const cy = (fonte.y - worldY) * scaleY;
-      // Usar média dos scales para manter círculo proporcional
-      const cr = fonte.raio * Math.min(scaleX, scaleY);
+      const rx = fonte.raio * scaleX;
+      const ry = fonte.raio * scaleY;
 
       ctx.beginPath();
-      ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
