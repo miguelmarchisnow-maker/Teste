@@ -9,8 +9,6 @@ const ALPHA_FANTASMA = 0.32;
 const ALPHA_FANTASMA_ANEL = 0.3;
 const COR_ANEL_FANTASMA_FALLBACK = 0x556680;
 const DISTANCIA_LABEL_MEMORIA = 18;
-const FADE_VELOCIDADE = 0.04;
-
 const DONOS_FANTASMA = {
   neutro: 0x556680,
   jogador: 0x2a6699,
@@ -28,13 +26,6 @@ function capturarMemoriaPlaneta(planeta) {
     y: planeta.y,
     frame: planeta.currentFrame ?? 0,
     timestamp: performance.now(),
-    orbita: planeta._orbita ? {
-      centroX: planeta._orbita.centroX,
-      centroY: planeta._orbita.centroY,
-      raio: planeta._orbita.raio,
-      angulo: planeta._orbita.angulo,
-      velocidade: planeta._orbita.velocidade,
-    } : null,
     dados: {
       dono: planeta.dados.dono,
       tipoPlaneta: planeta.dados.tipoPlaneta,
@@ -136,7 +127,6 @@ export function criarMemoriaVisualPlaneta(mundo, planeta) {
     tempoLabel,
     dados: null,
     _textoAnterior: '',
-    _alphaAlvo: 0,
   };
 
   memorias.set(planeta, memoria);
@@ -199,15 +189,7 @@ export function registrarMemoriaPlaneta(planeta) {
   }
 }
 
-export function atualizarPosicaoMemoriaOrbital(planeta, deltaMs) {
-  const memoria = memorias.get(planeta);
-  if (!memoria?.dados?.orbita) return;
 
-  const orb = memoria.dados.orbita;
-  orb.angulo += orb.velocidade * deltaMs;
-  memoria.dados.x = orb.centroX + Math.cos(orb.angulo) * orb.raio;
-  memoria.dados.y = orb.centroY + Math.sin(orb.angulo) * orb.raio;
-}
 
 function formatarTempoPassado(ms) {
   const seg = Math.floor(ms / 1000);
@@ -221,12 +203,9 @@ export function atualizarVisibilidadeMemoria(planeta, visivelAoJogador, esq, dir
   const memoria = memorias.get(planeta);
   if (!memoria) return;
 
-  const deveMostrar = memoria.conhecida && !visivelAoJogador;
-  memoria._alphaAlvo = deveMostrar ? 1 : 0;
-
   const memoriaDados = memoria.dados;
-  const memoriaNaTela =
-    !!memoriaDados &&
+  const deveMostrar = memoria.conhecida && !visivelAoJogador && !!memoriaDados;
+  const memoriaNaTela = deveMostrar &&
     memoriaDados.x > esq && memoriaDados.x < dir &&
     memoriaDados.y > cima && memoriaDados.y < baixo;
 
@@ -234,6 +213,7 @@ export function atualizarVisibilidadeMemoria(planeta, visivelAoJogador, esq, dir
     memoria.visual.visible = true;
     memoria.visual.x = memoriaDados.x;
     memoria.visual.y = memoriaDados.y;
+    memoria.visual.alpha = ALPHA_FANTASMA + 0.15;
 
     const agora = performance.now();
     const tempoTexto = formatarTempoPassado(agora - memoriaDados.timestamp);
@@ -241,21 +221,7 @@ export function atualizarVisibilidadeMemoria(planeta, visivelAoJogador, esq, dir
       memoria.tempoLabel.text = tempoTexto;
     }
   } else {
-    if (memoria.visual.alpha <= 0.01) {
-      memoria.visual.visible = false;
-    }
-  }
-
-  // Fade in/out
-  if (memoria.visual.visible) {
-    const diff = memoria._alphaAlvo - memoria.visual.alpha;
-    if (Math.abs(diff) > 0.01) {
-      memoria.visual.alpha += diff * FADE_VELOCIDADE > 0
-        ? Math.min(diff, FADE_VELOCIDADE)
-        : Math.max(diff, -FADE_VELOCIDADE);
-    } else {
-      memoria.visual.alpha = memoria._alphaAlvo;
-    }
+    memoria.visual.visible = false;
   }
 }
 
@@ -278,60 +244,28 @@ export function removerMemoriaPlaneta(mundo, planeta) {
   memorias.delete(planeta);
 }
 
-let _neblinaSuja = true;
-let _fontesAnteriores = [];
+const ALPHA_NEBLINA = 0.75;
+const COR_NEBLINA = 0x020510;
 
-const THRESHOLD_MUDANCA = 400; // px² — só redesenha se fonte moveu >20px
-
-function fontesVisaoMudaram(novas) {
-  if (novas.length !== _fontesAnteriores.length) return true;
-  for (let i = 0; i < novas.length; i++) {
-    const a = _fontesAnteriores[i];
-    const b = novas[i];
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    if (dx * dx + dy * dy > THRESHOLD_MUDANCA || a.raio !== b.raio) return true;
-  }
-  return false;
-}
-
-export function marcarNeblinaSuja() {
-  _neblinaSuja = true;
-}
-
-// Camadas de neblina — da borda da visão para fora
-// Cada anel: [offset do raio (mult), largura do stroke, alpha, cor]
-const CAMADAS_NEBLINA = [
-  // Névoa densa exterior — escura e larga
-  [1.30, 200, 0.30, 0x020510],
-  [1.18, 140, 0.25, 0x030818],
-  [1.10, 100, 0.20, 0x050c20],
-  // Transição média
-  [1.05, 70,  0.16, 0x081028],
-  [1.02, 50,  0.12, 0x0a1430],
-  // Borda suave — mais clara e fina
-  [1.00, 30,  0.08, 0x102040],
-  [0.97, 15,  0.05, 0x1a3060],
-  // Glow interno sutil
-  [0.93, 6,   0.03, 0x2a50aa],
-];
-
-export function desenharNeblinaVisao(mundo, fontesVisao) {
-  if (!_neblinaSuja && !fontesVisaoMudaram(fontesVisao)) return;
-
+/**
+ * Fog de guerra baseado na viewport.
+ * Desenha um rect escuro cobrindo apenas a tela visível + margem,
+ * depois recorta círculos para as fontes de visão.
+ */
+export function desenharNeblinaVisao(mundo, fontesVisao, camera, screenW, screenH, zoom) {
   const g = mundo.visaoContainer;
   g.clear();
 
-  for (const fonte of fontesVisao) {
-    for (const [mult, largura, alpha, cor] of CAMADAS_NEBLINA) {
-      g.circle(fonte.x, fonte.y, fonte.raio * mult).stroke({
-        color: cor,
-        width: largura,
-        alpha,
-      });
-    }
-  }
+  const invZoom = 1 / (zoom || 1);
+  const margem = 500 * invZoom;
+  const rx = camera.x - margem;
+  const ry = camera.y - margem;
+  const rw = screenW * invZoom + margem * 2;
+  const rh = screenH * invZoom + margem * 2;
 
-  _fontesAnteriores = fontesVisao.map(f => ({ x: f.x, y: f.y, raio: f.raio }));
-  _neblinaSuja = false;
+  g.rect(rx, ry, rw, rh).fill({ color: COR_NEBLINA, alpha: ALPHA_NEBLINA });
+
+  for (const fonte of fontesVisao) {
+    g.circle(fonte.x, fonte.y, fonte.raio).cut();
+  }
 }

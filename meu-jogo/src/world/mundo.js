@@ -5,7 +5,6 @@ import {
   criarMemoriaVisualPlaneta,
   desenharNeblinaVisao,
   registrarMemoriaPlaneta,
-  atualizarPosicaoMemoriaOrbital,
   atualizarVisibilidadeMemoria,
   atualizarEscalaLabelMemoria,
 } from './nevoa.js';
@@ -359,8 +358,8 @@ export async function criarMundo(app, tipoJogador) {
 
   container.addChild(frotasContainer);
   container.addChild(navesContainer);
-  container.addChild(memoriaPlanetasContainer);
   container.addChild(visaoContainer);
+  container.addChild(memoriaPlanetasContainer);
 
   const totalSistemas = 18;
   let tentativasSistema = 0;
@@ -552,7 +551,7 @@ function atualizarFilasPlaneta(mundo, planeta, deltaMs) {
   }
 }
 
-function atualizarCampoDeVisao(mundo) {
+function atualizarCampoDeVisao(mundo, camera, app) {
   const fontesVisao = [];
 
   for (const planeta of mundo.planetas) {
@@ -576,7 +575,7 @@ function atualizarCampoDeVisao(mundo) {
   if (cheats.visaoTotal) {
     mundo.visaoContainer.clear();
   } else {
-    desenharNeblinaVisao(mundo, fontesVisao);
+    desenharNeblinaVisao(mundo, fontesVisao, camera, app.screen.width, app.screen.height, camera.zoom);
   }
 
   for (const sol of mundo.sois) {
@@ -733,7 +732,7 @@ export function atualizarMundo(mundo, app, camera) {
   const cima = camera.y - margem;
   const baixo = camera.y + app.screen.height / zoom + margem;
 
-  atualizarCampoDeVisao(mundo);
+  atualizarCampoDeVisao(mundo, camera, app);
 
   for (const planeta of mundo.planetas) {
     const visNaTela = planeta.x > esq && planeta.x < dir && planeta.y > cima && planeta.y < baixo;
@@ -752,7 +751,6 @@ export function atualizarMundo(mundo, app, camera) {
       desenharConstrucoesPlaneta(planeta);
     }
 
-    atualizarPosicaoMemoriaOrbital(planeta, deltaMs);
     atualizarVisibilidadeMemoria(planeta, planeta._visivelAoJogador, esq, dir, cima, baixo);
     atualizarEscalaLabelMemoria(planeta, zoom);
   }
