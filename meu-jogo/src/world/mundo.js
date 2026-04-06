@@ -1,5 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
-import { cheats } from '../ui/debug.js';
+import { cheats, config } from '../ui/debug.js';
 import {
   criarCamadaMemoria,
   criarMemoriaVisualPlaneta,
@@ -27,9 +27,10 @@ const CICLO_RECURSO_MS = 10 * 1000;
 const TIER_MAX = 5;
 const CUSTO_BASE_TIER = 20;
 const MULTIPLICADOR_TIER = 3;
-const RAIO_VISAO_BASE = 900;
-const RAIO_VISAO_NAVE = 600;
-const RAIO_VISAO_BATEDORA = 1100;
+// Raios de visao controlados por config (debug console)
+function RAIO_VISAO_BASE() { return config.raioVisaoBase; }
+function RAIO_VISAO_NAVE() { return config.raioVisaoNave; }
+function RAIO_VISAO_BATEDORA() { return config.raioVisaoBatedora; }
 const DIST_MIN_SISTEMA = 2800;
 const TEMPO_BASE_CONSTRUCAO_MS = 60 * 1000;
 const TEMPO_BASE_COLONIZADORA_MS = 60 * 1000;
@@ -133,7 +134,7 @@ export function textoProducaoCicloPlaneta(planeta) {
 export { nomeTipoPlaneta } from './planeta.js';
 
 function calcularRaioVisaoPlaneta(planeta) {
-  return RAIO_VISAO_BASE + planeta.dados.tamanho * 0.2;
+  return RAIO_VISAO_BASE() + planeta.dados.tamanho * 0.2;
 }
 
 function pontoDentroDaVisao(x, y, fontesVisao) {
@@ -569,7 +570,7 @@ function atualizarCampoDeVisao(mundo, camera, app) {
     fontesVisao.push({
       x: nave.x,
       y: nave.y,
-      raio: nave.tipo === 'batedora' ? RAIO_VISAO_BATEDORA : RAIO_VISAO_NAVE,
+      raio: nave.tipo === 'batedora' ? RAIO_VISAO_BATEDORA() : RAIO_VISAO_NAVE(),
     });
   }
 

@@ -245,12 +245,10 @@ export function removerMemoriaPlaneta(mundo, planeta) {
 }
 
 import { Sprite, Texture, ImageSource } from 'pixi.js';
+import { config } from '../ui/debug.js';
 
-const FOG_ALPHA = 0.75;
-// Resolução fixa do canvas fog — independente do zoom
 const FOG_MAX_W = 960;
 const FOG_MAX_H = 540;
-const FOG_THROTTLE = 3; // redesenha a cada N frames
 
 let _fogCanvas = null;
 let _fogCtx = null;
@@ -289,14 +287,14 @@ export function desenharNeblinaVisao(mundo, fontesVisao, camera, screenW, screen
   }
 
   // Só redesenhar canvas a cada N frames
-  const redesenhar = _fogFrame % FOG_THROTTLE === 0;
+  const redesenhar = _fogFrame % config.fogThrottle === 0;
 
   if (redesenhar) {
     const t0 = performance.now();
     const ctx = _fogCtx;
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = `rgba(2, 5, 16, ${FOG_ALPHA})`;
+    ctx.fillStyle = `rgba(2, 5, 16, ${config.fogAlpha})`;
     ctx.fillRect(0, 0, canvasW, canvasH);
 
     ctx.globalCompositeOperation = 'destination-out';
