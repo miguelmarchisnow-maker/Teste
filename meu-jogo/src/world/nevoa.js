@@ -5,8 +5,6 @@ import {
   nomeTipoPlaneta,
 } from './planeta.js';
 
-const ALPHA_NEBLINA = 0.78;
-const COR_NEBLINA = 0x02050c;
 const ALPHA_FANTASMA = 0.32;
 const ALPHA_FANTASMA_ANEL = 0.3;
 const COR_ANEL_FANTASMA_FALLBACK = 0x556680;
@@ -301,39 +299,26 @@ export function marcarNeblinaSuja() {
   _neblinaSuja = true;
 }
 
-let _viewportAnterior = { x: 0, y: 0, w: 0, h: 0 };
-
-function viewportMudou(vp) {
-  const dx = vp.x - _viewportAnterior.x;
-  const dy = vp.y - _viewportAnterior.y;
-  return dx * dx + dy * dy > THRESHOLD_MUDANCA ||
-    vp.w !== _viewportAnterior.w || vp.h !== _viewportAnterior.h;
-}
-
-export function desenharNeblinaVisao(mundo, fontesVisao, viewport) {
-  const vp = viewport || { x: 0, y: 0, w: mundo.tamanho, h: mundo.tamanho };
-  const fontesMudaram = fontesVisaoMudaram(fontesVisao);
-  const vpMudou = viewportMudou(vp);
-
-  if (!_neblinaSuja && !fontesMudaram && !vpMudou) return;
-
-  // Margem grande para cobrir além da tela visível
-  const margem = 3000;
-  const rx = Math.max(0, vp.x - margem);
-  const ry = Math.max(0, vp.y - margem);
-  const rw = Math.min(mundo.tamanho - rx, vp.w + margem * 2);
-  const rh = Math.min(mundo.tamanho - ry, vp.h + margem * 2);
+export function desenharNeblinaVisao(mundo, fontesVisao) {
+  if (!_neblinaSuja && !fontesVisaoMudaram(fontesVisao)) return;
 
   mundo.visaoContainer.clear();
-  mundo.visaoContainer
-    .rect(rx, ry, rw, rh)
-    .fill({ color: COR_NEBLINA, alpha: ALPHA_NEBLINA });
 
   for (const fonte of fontesVisao) {
-    mundo.visaoContainer.circle(fonte.x, fonte.y, fonte.raio).cut();
+    // Anel externo difuso — borda da visão
+    mundo.visaoContainer.circle(fonte.x, fonte.y, fonte.raio).stroke({
+      color: 0x2244aa,
+      width: 2.5,
+      alpha: 0.35,
+    });
+    // Anel interno sutil — área de visão
+    mundo.visaoContainer.circle(fonte.x, fonte.y, fonte.raio * 0.95).stroke({
+      color: 0x4488cc,
+      width: 1,
+      alpha: 0.15,
+    });
   }
 
   _fontesAnteriores = fontesVisao.map(f => ({ x: f.x, y: f.y, raio: f.raio }));
-  _viewportAnterior = { x: vp.x, y: vp.y, w: vp.w, h: vp.h };
   _neblinaSuja = false;
 }

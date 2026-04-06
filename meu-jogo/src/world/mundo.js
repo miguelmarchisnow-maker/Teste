@@ -552,7 +552,7 @@ function atualizarFilasPlaneta(mundo, planeta, deltaMs) {
   }
 }
 
-function atualizarCampoDeVisao(mundo, viewport) {
+function atualizarCampoDeVisao(mundo) {
   const fontesVisao = [];
 
   for (const planeta of mundo.planetas) {
@@ -576,7 +576,7 @@ function atualizarCampoDeVisao(mundo, viewport) {
   if (cheats.visaoTotal) {
     mundo.visaoContainer.clear();
   } else {
-    desenharNeblinaVisao(mundo, fontesVisao, viewport);
+    desenharNeblinaVisao(mundo, fontesVisao);
   }
 
   for (const sol of mundo.sois) {
@@ -733,13 +733,7 @@ export function atualizarMundo(mundo, app, camera) {
   const cima = camera.y - margem;
   const baixo = camera.y + app.screen.height / zoom + margem;
 
-  const viewport = {
-    x: camera.x,
-    y: camera.y,
-    w: app.screen.width / zoom,
-    h: app.screen.height / zoom,
-  };
-  atualizarCampoDeVisao(mundo, viewport);
+  atualizarCampoDeVisao(mundo);
 
   for (const planeta of mundo.planetas) {
     const visNaTela = planeta.x > esq && planeta.x < dir && planeta.y > cima && planeta.y < baixo;
