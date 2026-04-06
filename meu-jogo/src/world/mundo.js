@@ -4,6 +4,9 @@ import {
   criarMemoriaVisualPlaneta,
   desenharNeblinaVisao,
   registrarMemoriaPlaneta,
+  atualizarPosicaoMemoriaOrbital,
+  atualizarVisibilidadeMemoria,
+  atualizarEscalaLabelMemoria,
 } from './nevoa.js';
 import { criarFundo, atualizarFundo } from './fundo.js';
 import {
@@ -26,6 +29,7 @@ const CUSTO_BASE_TIER = 20;
 const MULTIPLICADOR_TIER = 3;
 const RAIO_VISAO_BASE = 1400;
 const RAIO_VISAO_NAVE = 900;
+const RAIO_VISAO_BATEDORA = 1600;
 const DIST_MIN_SISTEMA = 2800;
 const TEMPO_BASE_CONSTRUCAO_MS = 60 * 1000;
 const TEMPO_BASE_COLONIZADORA_MS = 60 * 1000;
@@ -68,7 +72,7 @@ export function calcularTempoColonizadoraMs(planeta) {
   return Math.max(10 * 1000, TEMPO_BASE_COLONIZADORA_MS / planeta.dados.fabricas);
 }
 
-export function calcularTempoCicloPlaneta(planeta) {
+export function calcularTempoCicloPlaneta() {
   return CICLO_RECURSO_MS;
 }
 
@@ -125,20 +129,8 @@ export function textoProducaoCicloPlaneta(planeta) {
   return `C:${fmt(base.comum)} R:${fmt(base.raro)} F:${fmt(base.combustivel)}`;
 }
 
-export function nomeTipoPlaneta(tipo) {
-  switch (tipo) {
-    case TIPO_PLANETA.COMUM:
-      return 'Comum';
-    case TIPO_PLANETA.MARTE:
-      return 'Marte';
-    case TIPO_PLANETA.ROXO:
-      return 'Roxo';
-    case TIPO_PLANETA.GASOSO:
-      return 'Gasoso';
-    default:
-      return tipo || '?';
-  }
-}
+// nomeTipoPlaneta agora vive em planeta.js — re-exportado para manter compatibilidade
+export { nomeTipoPlaneta } from './planeta.js';
 
 function calcularRaioVisaoPlaneta(planeta) {
   return RAIO_VISAO_BASE + planeta.dados.tamanho * 0.2;
@@ -354,7 +346,7 @@ export async function criarMundo(app, tipoJogador) {
   const fundo = criarFundo(tamanho);
   container.addChild(fundo);
 
-  const planetaSheet = await criarPlaneta(app);
+  const planetaSheet = await criarPlaneta();
   const planetas = [];
   const sistemas = [];
   const sois = [];
@@ -366,8 +358,8 @@ export async function criarMundo(app, tipoJogador) {
 
   container.addChild(frotasContainer);
   container.addChild(navesContainer);
-  container.addChild(visaoContainer);
   container.addChild(memoriaPlanetasContainer);
+  container.addChild(visaoContainer);
 
   const totalSistemas = 18;
   let tentativasSistema = 0;
@@ -432,7 +424,7 @@ export async function criarMundo(app, tipoJogador) {
   planetaInicial.dados.fabricas += tipoJogador?.bonus?.fabricasIniciais || 0;
   planetaInicial.dados.infraestrutura += tipoJogador?.bonus?.infraestruturaInicial || 0;
   desenharConstrucoesPlaneta(planetaInicial);
-  registrarMemoriaPlaneta(planetaInicial, DONOS, nomeTipoPlaneta);
+  registrarMemoriaPlaneta(planetaInicial);
 
   estadoJogo = 'jogando';
   return mundo;
@@ -573,7 +565,7 @@ function atualizarCampoDeVisao(mundo) {
     fontesVisao.push({
       x: nave.x,
       y: nave.y,
-      raio: RAIO_VISAO_NAVE,
+      raio: nave.tipo === 'batedora' ? RAIO_VISAO_BATEDORA : RAIO_VISAO_NAVE,
     });
   }
 
@@ -590,7 +582,7 @@ function atualizarCampoDeVisao(mundo) {
       pontoDentroDaVisao(planeta.x, planeta.y, fontesVisao);
 
     if (planeta._visivelAoJogador) {
-      registrarMemoriaPlaneta(planeta, DONOS, nomeTipoPlaneta);
+      registrarMemoriaPlaneta(planeta);
     }
 
     if (!planeta._visivelAoJogador && planeta.dados.selecionado) {
@@ -749,18 +741,9 @@ export function atualizarMundo(mundo, app, camera) {
       desenharConstrucoesPlaneta(planeta);
     }
 
-    const memoria = planeta._memoria;
-    if (memoria) {
-      const memoriaDados = memoria.dados;
-      const memoriaNaTela =
-        !!memoriaDados &&
-        memoriaDados.x > esq && memoriaDados.x < dir &&
-        memoriaDados.y > cima && memoriaDados.y < baixo;
-      memoria.visual.visible =
-        memoria.conhecida &&
-        !planeta._visivelAoJogador &&
-        memoriaNaTela;
-    }
+    atualizarPosicaoMemoriaOrbital(planeta, deltaMs);
+    atualizarVisibilidadeMemoria(planeta, planeta._visivelAoJogador, esq, dir, cima, baixo);
+    atualizarEscalaLabelMemoria(planeta, zoom);
   }
 
   for (const sol of mundo.sois) {
@@ -771,7 +754,10 @@ export function atualizarMundo(mundo, app, camera) {
   for (const nave of mundo.naves) {
     const visNaTela = nave.x > esq && nave.x < dir && nave.y > cima && nave.y < baixo;
     nave.gfx.visible = visNaTela;
-    atualizarSelecaoNave(nave);
+    if (nave._selecaoAnterior !== nave.selecionado) {
+      nave._selecaoAnterior = nave.selecionado;
+      atualizarSelecaoNave(nave);
+    }
   }
 
   verificarEstadoJogo(mundo);

@@ -92,7 +92,7 @@ function drawInfoField(g, x, y, w, h) {
 }
 
 // Draw a labeled box container
-function drawBox(g, x, y, w, h, label) {
+function drawBox(g, x, y, w, h) {
   g.rect(x, y, w, h).fill({ color: SP.boxBg });
   g.roundRect(x, y, w, h, 3).stroke({ color: SP.boxBorder, width: 1 });
 }
@@ -152,7 +152,7 @@ function criarBotaoAcao(parent, textoInicial, acao) {
   return botao;
 }
 
-export function criarPainel(app) {
+export function criarPainel() {
   const container = new Container();
 
   // === TOP BAR ===
@@ -642,9 +642,7 @@ export function atualizarPainel(painel, mundo, tipoJogador, app) {
     const parsed = parseAcaoNave(btn._acao);
     if (!parsed) continue;
 
-    let vis = false;
-    let desabN = true;
-    let sub = '';
+    let vis, desabN, sub;
 
     if (parsed.tipo === 'colonizadora') {
       vis = d.fabricas >= 1;

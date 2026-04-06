@@ -1,4 +1,4 @@
-import { Graphics, Container, Text } from 'pixi.js';
+import { Graphics, Container } from 'pixi.js';
 
 const TAMANHO_MAPA = 210;
 const MARGEM = 16;

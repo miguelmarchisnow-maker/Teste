@@ -5,7 +5,6 @@ import {
   encontrarSolNoPonto,
   enviarNaveParaAlvo,
   enviarNaveParaPosicao,
-  limparSelecoes,
   obterNaveSelecionada,
   selecionarNave,
   selecionarPlaneta,

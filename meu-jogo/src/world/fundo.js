@@ -1,4 +1,4 @@
-import { Sprite, Texture, Container, Graphics } from 'pixi.js';
+import { Sprite, Texture, Container } from 'pixi.js';
 
 const TILE = 2048;
 
@@ -91,7 +91,7 @@ export function atualizarFundo(fundo, jogadorX, jogadorY, telaW, telaH) {
 
   // Limpar tiles distantes do cache (manter só os próximos)
   if (cache.size > 25) {
-    for (const [key, tex] of cache) {
+    for (const [key] of cache) {
       const [tx, ty] = key.split('_').map(Number);
       const px = tx * TILE;
       const py = ty * TILE;

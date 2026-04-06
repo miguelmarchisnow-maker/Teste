@@ -18,12 +18,27 @@ export function aplicarAparenciaTipoPlaneta(sprite, tipoPlaneta) {
   sprite.tint = TINT_POR_TIPO[tipoPlaneta] ?? 0xffffff;
 }
 
+export function nomeTipoPlaneta(tipo) {
+  switch (tipo) {
+    case TIPO_PLANETA.COMUM:
+      return 'Comum';
+    case TIPO_PLANETA.MARTE:
+      return 'Marte';
+    case TIPO_PLANETA.ROXO:
+      return 'Roxo';
+    case TIPO_PLANETA.GASOSO:
+      return 'Gasoso';
+    default:
+      return tipo || '?';
+  }
+}
+
 const FRAME_W = 250;
 const FRAME_H = 250;
 const COLUNAS = 5;
 const LINHAS = 6;
 
-export async function criarPlaneta(app) {
+export async function criarPlaneta() {
   const texture = await Assets.load('/assets/planeta.png');
   texture.source.scaleMode = SCALE_MODES.NEAREST;
 

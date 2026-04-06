@@ -60,9 +60,9 @@ async function carregarFramesPlaneta() {
   return frames;
 }
 
-export function criarTelaSelecao(app) {
-  return new Promise(async (resolve) => {
-    const frames = await carregarFramesPlaneta();
+export async function criarTelaSelecao(app) {
+  const frames = await carregarFramesPlaneta();
+  return new Promise((resolve) => {
 
     const overlay = new Container();
 
