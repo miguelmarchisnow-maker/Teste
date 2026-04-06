@@ -81,3 +81,21 @@ export function somDerrota(): void {
     setTimeout(() => tocar(n, 0.4, 'sawtooth', 0.12), i * 200);
   });
 }
+
+export function somConstrucaoCompleta(): void {
+  tocar(600, 0.1, 'square', 0.12);
+  setTimeout(() => tocar(800, 0.1, 'square', 0.12), 80);
+  setTimeout(() => tocar(1000, 0.15, 'square', 0.1), 160);
+}
+
+export function somPesquisaCompleta(): void {
+  tocar(500, 0.2, 'sine', 0.15);
+  setTimeout(() => tocar(750, 0.2, 'sine', 0.15), 120);
+  setTimeout(() => tocar(1000, 0.3, 'sine', 0.12), 240);
+  setTimeout(() => tocar(750, 0.15, 'sine', 0.08), 400);
+}
+
+export function somNaveProducida(): void {
+  tocar(400, 0.1, 'triangle', 0.12);
+  setTimeout(() => tocar(600, 0.12, 'triangle', 0.1), 60);
+}

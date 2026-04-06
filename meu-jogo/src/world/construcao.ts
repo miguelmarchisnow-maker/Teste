@@ -2,8 +2,9 @@ import type { Mundo, Planeta, AcaoNaveParsed } from '../types';
 import { cheats } from '../ui/debug';
 import { CICLO_RECURSO_MS, CUSTO_NAVE_COMUM } from './constantes';
 import { aplicarProducaoCicloAoImperio, calcularCustoTier, calcularTempoConstrucaoMs, calcularTempoColonizadoraMs } from './recursos';
-import { criarNave } from './naves';
-import { parseAcaoNave } from './naves';
+import { criarNave, parseAcaoNave } from './naves';
+import { notifConstrucaoCompleta, notifNaveProducida } from '../ui/notificacao';
+import { somConstrucaoCompleta, somNaveProducida } from '../audio/som';
 
 export function desenharConstrucoesPlaneta(planeta: Planeta): void {
   const g = planeta._construcoes;
@@ -55,6 +56,8 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
       if (construcao.tipo === 'infraestrutura') planeta.dados.infraestrutura = construcao.tierDestino;
       planeta.dados.construcaoAtual = null;
       desenharConstrucoesPlaneta(planeta);
+      notifConstrucaoCompleta(construcao.tipo, construcao.tierDestino);
+      somConstrucaoCompleta();
     }
   }
 
@@ -68,6 +71,8 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
       const tier = producao.tier || 1;
       if (tipoNave === 'colonizadora') planeta.dados.naves += 1;
       criarNave(mundo, planeta, tipoNave, tier);
+      notifNaveProducida(tipoNave, tier);
+      somNaveProducida();
     }
   }
 }

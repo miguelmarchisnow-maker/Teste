@@ -1,6 +1,8 @@
 import type { Mundo, PesquisasState, Pesquisa } from '../types';
 import { CATEGORIAS_PESQUISA, TIER_MAX, CUSTO_PESQUISA_RARO, TEMPO_PESQUISA_MS } from './constantes';
 import { cheats } from '../ui/debug';
+import { notifPesquisaCompleta } from '../ui/notificacao';
+import { somPesquisaCompleta } from '../audio/som';
 
 export function criarEstadoPesquisas(): PesquisasState {
   return {
@@ -18,6 +20,8 @@ export function atualizarPesquisaGlobal(mundo: Mundo, deltaMs: number): void {
   if (p.tempoRestanteMs <= 0) {
     const arr: boolean[] | undefined = mundo.pesquisas[p.categoria];
     if (arr) arr[p.tier - 1] = true;
+    notifPesquisaCompleta(p.categoria, p.tier);
+    somPesquisaCompleta();
     mundo.pesquisaAtual = null;
   }
 }

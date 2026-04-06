@@ -2,6 +2,8 @@ import { Graphics } from 'pixi.js';
 import type { Nave, Mundo, Planeta, Sol, AlvoPonto, AcaoNaveParsed } from '../types';
 import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, formatarId } from './constantes';
 import { cheats } from '../ui/debug';
+import { notifColonizacao } from '../ui/notificacao';
+import { somConquista } from '../audio/som';
 
 function desenharNaveGfx(nave: Nave): void {
   const g = nave.gfx;
@@ -117,6 +119,8 @@ function finalizarColonizacao(mundo: Mundo, nave: Nave, planeta: Planeta): void 
   planeta.dados.dono = 'jogador';
   planeta.dados.selecionado = false;
   removerNave(mundo, nave);
+  notifColonizacao();
+  somConquista();
 }
 
 export function encontrarNaveNoPonto(mundoX: number, mundoY: number, mundo: Mundo): Nave | null {
