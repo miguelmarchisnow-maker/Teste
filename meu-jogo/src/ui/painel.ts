@@ -1,6 +1,7 @@
 import { Container, Graphics, Text } from 'pixi.js';
-import type { Application, Mundo, Planeta, TipoJogador, Pesquisa, AcaoNaveParsed } from '../types';
+import type { Application, Mundo, Planeta, TipoJogador, Pesquisa, AcaoNaveParsed, Nave, Recursos } from '../types';
 import {
+  capacidadeCargaCargueira,
   calcularCustoTier,
   calcularTempoColonizadoraMs,
   calcularTempoConstrucaoMs,
@@ -11,9 +12,13 @@ import {
   nomeTipoPlaneta,
   obterNaveSelecionada,
   parseAcaoNave,
+  pesquisaTierDisponivel,
   pesquisaTierLiberada,
   textoProducaoCicloPlaneta,
 } from '../world/mundo';
+import { marcarInteracaoUi } from './interacao-ui';
+import { CUSTO_NAVE_COMUM, CUSTO_PESQUISA_RARO } from '../world/constantes';
+import { getTextoComandoNave } from '../core/player';
 
 const SP = {
   panelBg: 0x101830,
@@ -84,6 +89,12 @@ interface PesquisaBotao {
   tier: number;
 }
 
+interface AjusteCargaBotao {
+  botao: BotaoContainer;
+  recurso: keyof Recursos;
+  delta: number;
+}
+
 export interface PainelContainer extends Container {
   _txtPlanetas: Text;
   _txtComum: Text;
@@ -101,15 +112,32 @@ export interface PainelContainer extends Container {
   _boxNaves: BoxContainer;
   _boxPesquisa: BoxContainer;
   _catLabels: Record<string, Text>;
+  _overlayPesquisa: Container;
+  _overlayPesquisaBg: Graphics;
+  _txtPesquisaResumo: Text;
   _btnToggleProducao: BotaoContainer;
+  _btnAbrirPesquisa: BotaoContainer;
   _barraBg: Graphics;
   _btnFabrica: BotaoContainer;
   _btnInfra: BotaoContainer;
   _btnNaves: BotaoContainer[];
   _btnPesquisa: PesquisaBotao[];
+  _btnMoverNave: BotaoContainer;
+  _btnOrigemCarga: BotaoContainer;
+  _btnDestinoCarga: BotaoContainer;
+  _btnLoopCarga: BotaoContainer;
+  _btnAjusteCarga: AjusteCargaBotao[];
+  _txtCargaInfo: Text;
+  _boxFila: BoxContainer;
+  _txtFilaResumo: Text;
+  _btnFilaRepeat: BotaoContainer;
+  _btnFilaLimpar: BotaoContainer;
   _planetaSelecionado: Planeta | null;
+  _naveSelecionada: Nave | null;
   _onAcaoPlaneta: ((acao: string, planeta: Planeta) => void) | null;
+  _onAcaoNave: ((acao: string, nave: Nave) => void) | null;
   _painelProducaoExpandido: boolean;
+  _arvorePesquisaAberta: boolean;
   _mundoRef: Mundo | null;
 }
 
@@ -191,15 +219,28 @@ function criarBotaoAcao(parent: Container, textoInicial: string, acao: string): 
     // Walk up to find the root panel container
     let p = botao.parent as Partial<PainelContainer> & Container | null;
     while (p && !(p as Partial<PainelContainer>)._onAcaoPlaneta) p = p.parent as Partial<PainelContainer> & Container | null;
-    if (!p || typeof (p as PainelContainer)._onAcaoPlaneta !== 'function') return;
+    if (!p) return;
     const painel = p as PainelContainer;
-    if (!painel._planetaSelecionado) return;
-    if (botao._acao?.startsWith?.('pesquisa_')) {
-      const m = botao._acao.match(/^pesquisa_(torreta|cargueira|batedora)_(\d)$/);
-      if (m) iniciarPesquisa(painel._mundoRef!, m[1], Number(m[2]));
+    if (botao._acao === 'toggle_pesquisa') {
+      painel._arvorePesquisaAberta = !painel._arvorePesquisaAberta;
       return;
     }
+    if (botao._acao?.startsWith?.('pesquisa_')) {
+      if (!painel._planetaSelecionado) return;
+      const m = botao._acao.match(/^pesquisa_(torreta|cargueira|batedora)_(\d)$/);
+      if (m) iniciarPesquisa(painel._planetaSelecionado, m[1], Number(m[2]));
+      return;
+    }
+    if (botao._acao.startsWith('comando_nave_') || botao._acao.startsWith('config_cargo_')) {
+      if (!painel._naveSelecionada) return;
+      painel._onAcaoNave?.(botao._acao, painel._naveSelecionada);
+      return;
+    }
+    if (!painel._planetaSelecionado) return;
     painel._onAcaoPlaneta?.(botao._acao, painel._planetaSelecionado);
+  });
+  botao.on('pointerdown', () => {
+    marcarInteracaoUi();
   });
 
   parent.addChild(botao);
@@ -311,17 +352,57 @@ export function criarPainel(): PainelContainer {
   boxPesquisa.addChild(lblPes);
   boxPesquisa._lbl = lblPes;
 
+  const txtPesquisaResumo = new Text({ text: '', style: { fontSize: 11, fill: SP.textLabel, fontFamily: 'monospace' } });
+  boxPesquisa.addChild(txtPesquisaResumo);
+
+  const btnAbrirPesquisa = criarBotaoAcao(boxPesquisa, 'Abrir arvore', 'toggle_pesquisa');
+
   const btnPesquisa: PesquisaBotao[] = [];
   const catLabels: Record<string, Text> = {};
   for (const cat of ['torreta', 'cargueira', 'batedora']) {
     const rowLabel = new Text({ text: LABEL_PESQUISA[cat], style: { fontSize: 12, fill: SP.textLabel, fontFamily: 'monospace' } });
-    boxPesquisa.addChild(rowLabel);
+    rowLabel.visible = false;
     catLabels[cat] = rowLabel;
     for (let t = 1; t <= 5; t++) {
-      const b = criarBotaoAcao(boxPesquisa, String(t), `pesquisa_${cat}_${t}`);
+      const b = criarBotaoAcao(infoContainer, String(t), `pesquisa_${cat}_${t}`);
+      b.visible = false;
       btnPesquisa.push({ botao: b, categoria: cat, tier: t });
     }
   }
+
+  const overlayPesquisa = new Container();
+  overlayPesquisa.visible = false;
+  const overlayPesquisaBg = new Graphics();
+  overlayPesquisa.addChild(overlayPesquisaBg);
+  for (const cat of ['torreta', 'cargueira', 'batedora']) overlayPesquisa.addChild(catLabels[cat]);
+  for (const { botao } of btnPesquisa) overlayPesquisa.addChild(botao);
+  infoContainer.addChild(overlayPesquisa);
+
+  const btnMoverNave = criarBotaoAcao(infoContainer, 'Mover', 'comando_nave_mover');
+  const btnOrigemCarga = criarBotaoAcao(infoContainer, 'Origem', 'comando_nave_origem');
+  const btnDestinoCarga = criarBotaoAcao(infoContainer, 'Destino', 'comando_nave_destino');
+  const btnLoopCarga = criarBotaoAcao(infoContainer, 'Loop', 'comando_nave_loop');
+  const txtCargaInfo = new Text({ text: '', style: { fontSize: 11, fill: SP.textValue, fontFamily: 'monospace' } });
+  infoContainer.addChild(txtCargaInfo);
+  const btnAjusteCarga: AjusteCargaBotao[] = [];
+  for (const recurso of ['comum', 'raro', 'combustivel'] as const) {
+    btnAjusteCarga.push({ botao: criarBotaoAcao(infoContainer, '-', `config_cargo_${recurso}_menos`), recurso, delta: -5 });
+    btnAjusteCarga.push({ botao: criarBotaoAcao(infoContainer, '+', `config_cargo_${recurso}_mais`), recurso, delta: 5 });
+  }
+
+  const boxFila = new Container() as BoxContainer;
+  boxFila.visible = false;
+  infoContainer.addChild(boxFila);
+  const boxFilaBg = new Graphics();
+  boxFila.addChild(boxFilaBg);
+  boxFila._bg = boxFilaBg;
+  const lblFila = new Text({ text: 'Fila', style: { fontSize: 12, fill: SP.sectionText, fontFamily: 'monospace' } });
+  boxFila.addChild(lblFila);
+  boxFila._lbl = lblFila;
+  const txtFilaResumo = new Text({ text: '', style: { fontSize: 11, fill: SP.textValue, fontFamily: 'monospace' } });
+  boxFila.addChild(txtFilaResumo);
+  const btnFilaRepeat = criarBotaoAcao(boxFila, 'Repetir', 'fila_toggle_repeat');
+  const btnFilaLimpar = criarBotaoAcao(boxFila, 'Limpar', 'fila_limpar');
 
   // Toggle button
   const btnToggleProducao = new Container() as BotaoContainer;
@@ -339,6 +420,9 @@ export function criarPainel(): PainelContainer {
 
   btnToggleProducao.on('pointertap', () => {
     container._painelProducaoExpandido = !container._painelProducaoExpandido;
+  });
+  btnToggleProducao.on('pointerdown', () => {
+    marcarInteracaoUi();
   });
 
   container.addChild(infoContainer);
@@ -359,15 +443,32 @@ export function criarPainel(): PainelContainer {
   container._boxNaves = boxNaves;
   container._boxPesquisa = boxPesquisa;
   container._catLabels = catLabels;
+  container._overlayPesquisa = overlayPesquisa;
+  container._overlayPesquisaBg = overlayPesquisaBg;
+  container._txtPesquisaResumo = txtPesquisaResumo;
   container._btnToggleProducao = btnToggleProducao;
+  container._btnAbrirPesquisa = btnAbrirPesquisa;
   container._barraBg = barraBg;
   container._btnFabrica = btnFabrica;
   container._btnInfra = btnInfra;
   container._btnNaves = btnNaves;
   container._btnPesquisa = btnPesquisa;
+  container._btnMoverNave = btnMoverNave;
+  container._btnOrigemCarga = btnOrigemCarga;
+  container._btnDestinoCarga = btnDestinoCarga;
+  container._btnLoopCarga = btnLoopCarga;
+  container._btnAjusteCarga = btnAjusteCarga;
+  container._txtCargaInfo = txtCargaInfo;
+  container._boxFila = boxFila;
+  container._txtFilaResumo = txtFilaResumo;
+  container._btnFilaRepeat = btnFilaRepeat;
+  container._btnFilaLimpar = btnFilaLimpar;
   container._planetaSelecionado = null;
+  container._naveSelecionada = null;
   container._onAcaoPlaneta = null;
+  container._onAcaoNave = null;
   container._painelProducaoExpandido = false;
+  container._arvorePesquisaAberta = false;
   container._mundoRef = null;
 
   return container;
@@ -397,7 +498,7 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
 
   const naveSelecionada = obterNaveSelecionada(mundo);
   const totalNaves = mundo.naves.length;
-  const r = mundo.recursosJogador || { comum: 0, raro: 0, combustivel: 0 };
+  const r = planetaSel?.dados.recursos || { comum: 0, raro: 0, combustivel: 0 };
 
   // Update text values
   painel._txtPlanetas.text = `Planetas: ${qtdPlanetas}`;
@@ -406,7 +507,7 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   painel._txtCombustivel.text = `F: ${Math.floor(r.combustivel)}`;
   painel._txtTipo.text = tipoJogador.nome;
   painel._txtNaves.text = `Naves: ${totalNaves}`;
-  painel._txtContador.text = naveSelecionada ? 'Nave selecionada: clique no destino' : '';
+  painel._txtContador.text = getTextoComandoNave();
 
   // Draw stat group sunken boxes and position text
   const sg = painel._statGroupBgs;
@@ -444,7 +545,7 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   cx = drawStatGroup(cx, [painel._txtComum, painel._txtRaro, painel._txtCombustivel]);
 
   // Center: ship selected message
-  if (naveSelecionada) {
+  if (painel._txtContador.text) {
     painel._txtContador.x = cx + 4;
     painel._txtContador.y = sgY + 4;
     painel._txtContador.visible = true;
@@ -474,6 +575,162 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   sg.moveTo(divX, sgY + 3).lineTo(divX, sgY + sgH - 3).stroke({ color: SP.sectionLine, width: 1, alpha: 0.3 });
 
   const info = painel._infoContainer;
+  const bg = painel._infoBg;
+  const f = painel._infoFields;
+  painel._boxEdificios.visible = false;
+  painel._boxNaves.visible = false;
+  painel._boxPesquisa.visible = false;
+  painel._boxFila.visible = false;
+  painel._overlayPesquisa.visible = false;
+  painel._btnToggleProducao.visible = false;
+  painel._btnFabrica.visible = false;
+  painel._btnInfra.visible = false;
+  painel._btnAbrirPesquisa.visible = false;
+  painel._btnFilaRepeat.visible = false;
+  painel._btnFilaLimpar.visible = false;
+  for (const b of painel._btnNaves) b.visible = false;
+  for (const { botao } of painel._btnPesquisa) botao.visible = false;
+  for (const cat in painel._catLabels) painel._catLabels[cat].visible = false;
+  for (const b of [painel._btnMoverNave, painel._btnOrigemCarga, painel._btnDestinoCarga, painel._btnLoopCarga]) b.visible = false;
+  for (const ajuste of painel._btnAjusteCarga) ajuste.botao.visible = false;
+  painel._txtCargaInfo.visible = false;
+
+  if (naveSelecionada) {
+    painel._naveSelecionada = naveSelecionada;
+    painel._planetaSelecionado = null;
+    info.visible = true;
+
+    const tipoNome = naveSelecionada.tipo === 'colonizadora'
+      ? 'Colonizadora'
+      : `${LABEL_PESQUISA[naveSelecionada.tipo] || naveSelecionada.tipo} T${naveSelecionada.tier}`;
+    const rows: { key: string; label: string; value: string; color: number }[] = [
+      { key: 'dono', label: 'Nave', value: tipoNome, color: SP.statCyan },
+      { key: 'tipo', label: 'Estado', value: naveSelecionada.estado, color: SP.textValue },
+      { key: 'ciclo', label: 'Posicao', value: `${Math.floor(naveSelecionada.x)} / ${Math.floor(naveSelecionada.y)}`, color: SP.statAmber },
+      { key: 'prod', label: 'Carga', value: `C:${naveSelecionada.carga.comum} R:${naveSelecionada.carga.raro} F:${naveSelecionada.carga.combustivel}`, color: SP.statGreen },
+    ];
+    if (naveSelecionada.tipo === 'cargueira') {
+      rows.push({ key: 'fabrica', label: 'Capacidade', value: `${capacidadeCargaCargueira(naveSelecionada.tier)}`, color: SP.textValue });
+      rows.push({ key: 'infra', label: 'Config', value: `C:${naveSelecionada.configuracaoCarga.comum} R:${naveSelecionada.configuracaoCarga.raro} F:${naveSelecionada.configuracaoCarga.combustivel}`, color: SP.textValue });
+      rows.push({ key: 'navesVoo', label: 'Rota', value: `${naveSelecionada.rotaCargueira?.origem ? 'origem ok' : 'sem origem'} / ${naveSelecionada.rotaCargueira?.destino ? 'destino ok' : 'sem destino'}`, color: SP.statCyan });
+    }
+
+    for (const name in f) {
+      f[name].lbl.visible = false;
+      f[name].val.visible = false;
+    }
+
+    const lineH = 18;
+    const fieldX = 8, fieldY = 28, fieldPad = 8;
+    const lblW = 80;
+    let maxRowW = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const field = f[row.key];
+      field.lbl.visible = true;
+      field.val.visible = true;
+      field.lbl.text = row.label;
+      field.lbl.style.fill = SP.textLabel;
+      field.lbl.x = fieldX + fieldPad;
+      field.lbl.y = fieldY + fieldPad + i * lineH;
+      field.val.text = row.value;
+      field.val.style.fill = row.color;
+      field.val.x = fieldX + fieldPad + lblW;
+      field.val.y = fieldY + fieldPad + i * lineH;
+      maxRowW = Math.max(maxRowW, lblW + field.val.width);
+    }
+
+    const fieldH = rows.length * lineH + fieldPad * 2;
+    const W = Math.max(330, maxRowW + fieldX * 2 + fieldPad * 2 + 20);
+    const extraH = naveSelecionada.tipo === 'cargueira' ? 150 : 52;
+    const H = fieldY + fieldH + extraH;
+    bg.clear();
+    drawPanelFrame(bg, 0, 0, W, H);
+    drawTitleBar(bg, 0, 0, W, 22);
+    drawInfoField(bg, fieldX, fieldY, W - fieldX * 2, fieldH);
+    const sepX = fieldX + fieldPad + lblW - 6;
+    bg.moveTo(sepX, fieldY + 4).lineTo(sepX, fieldY + fieldH - 4).stroke({ color: SP.sectionLine, width: 1, alpha: 0.3 });
+    info.x = 16;
+    info.y = app.screen.height - H - 18;
+    painel._infoNome.text = `Nave selecionada — ${tipoNome}`;
+    painel._infoNome.x = 18; painel._infoNome.y = 3;
+
+    const cmdY = fieldY + fieldH + 8;
+    const cmdW = 92;
+    painel._btnMoverNave.visible = true;
+    painel._btnMoverNave.x = 12;
+    painel._btnMoverNave.y = cmdY;
+    painel._btnMoverNave._texto.text = 'Mover';
+    painel._btnMoverNave._texto.x = cmdW / 2;
+    painel._btnMoverNave._texto.y = BTN_H / 2;
+    drawBtn(painel._btnMoverNave._bg, 0, 0, cmdW, BTN_H, false, true, false);
+    painel._btnMoverNave._texto.style.fill = SP.btnActionText;
+
+    if (naveSelecionada.tipo === 'cargueira') {
+      painel._btnOrigemCarga.visible = true;
+      painel._btnDestinoCarga.visible = true;
+      painel._btnLoopCarga.visible = true;
+      painel._btnOrigemCarga.x = 110;
+      painel._btnOrigemCarga.y = cmdY;
+      painel._btnOrigemCarga._texto.text = 'Origem';
+      painel._btnOrigemCarga._texto.x = cmdW / 2;
+      painel._btnOrigemCarga._texto.y = BTN_H / 2;
+      drawBtn(painel._btnOrigemCarga._bg, 0, 0, cmdW, BTN_H, false, true, false);
+      painel._btnOrigemCarga._texto.style.fill = SP.btnActionText;
+
+      painel._btnDestinoCarga.x = 208;
+      painel._btnDestinoCarga.y = cmdY;
+      painel._btnDestinoCarga._texto.text = 'Destino';
+      painel._btnDestinoCarga._texto.x = cmdW / 2;
+      painel._btnDestinoCarga._texto.y = BTN_H / 2;
+      drawBtn(painel._btnDestinoCarga._bg, 0, 0, cmdW, BTN_H, false, true, false);
+      painel._btnDestinoCarga._texto.style.fill = SP.btnActionText;
+
+      painel._btnLoopCarga.x = 12;
+      painel._btnLoopCarga.y = cmdY + BTN_H + 6;
+      painel._btnLoopCarga._texto.text = naveSelecionada.rotaCargueira?.loop ? 'Loop ON' : 'Loop OFF';
+      painel._btnLoopCarga._texto.x = cmdW / 2;
+      painel._btnLoopCarga._texto.y = BTN_H / 2;
+      drawBtn(painel._btnLoopCarga._bg, 0, 0, cmdW, BTN_H, false, naveSelecionada.rotaCargueira?.loop ?? false, false);
+      painel._btnLoopCarga._texto.style.fill = (naveSelecionada.rotaCargueira?.loop ?? false) ? SP.btnActionText : SP.btnText;
+
+      painel._txtCargaInfo.visible = true;
+      painel._txtCargaInfo.x = 12;
+      painel._txtCargaInfo.y = cmdY + BTN_H * 2 + 18;
+      const origemTxt = naveSelecionada.rotaCargueira?.origem ? 'origem definida' : 'origem pendente';
+      const destinoTxt = naveSelecionada.rotaCargueira?.destino ? 'destino definido' : 'destino pendente';
+      painel._txtCargaInfo.text = `Transferencia por viagem\n${origemTxt} | ${destinoTxt}\nC:${naveSelecionada.configuracaoCarga.comum}  R:${naveSelecionada.configuracaoCarga.raro}  F:${naveSelecionada.configuracaoCarga.combustivel}`;
+
+      const labels: Array<[keyof Recursos, string]> = [['comum', 'C'], ['raro', 'R'], ['combustivel', 'F']];
+      labels.forEach(([recurso, sigla], idx) => {
+        const baseY = cmdY + BTN_H * 2 + 42 + idx * 28;
+        const menos = painel._btnAjusteCarga[idx * 2];
+        const mais = painel._btnAjusteCarga[idx * 2 + 1];
+        menos.botao.visible = true;
+        mais.botao.visible = true;
+        menos.botao.x = 130;
+        menos.botao.y = baseY;
+        mais.botao.x = 266;
+        mais.botao.y = baseY;
+        menos.botao._texto.text = '-';
+        mais.botao._texto.text = '+';
+        menos.botao._texto.x = SMALL_BTN / 2;
+        menos.botao._texto.y = SMALL_BTN / 2;
+        mais.botao._texto.x = SMALL_BTN / 2;
+        mais.botao._texto.y = SMALL_BTN / 2;
+        drawBtn(menos.botao._bg, 0, 0, SMALL_BTN, SMALL_BTN, false, false, false);
+        drawBtn(mais.botao._bg, 0, 0, SMALL_BTN, SMALL_BTN, false, false, false);
+        menos.botao.x = 130;
+        mais.botao.x = 266;
+        menos.botao.y = baseY;
+        mais.botao.y = baseY;
+        painel._txtCargaInfo.text += `\n${sigla}: ${naveSelecionada.configuracaoCarga[recurso]}`;
+      });
+    }
+    return;
+  }
+
+  painel._naveSelecionada = null;
   if (!planetaSel) {
     info.visible = false;
     painel._planetaSelecionado = null;
@@ -493,10 +750,10 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   const tempoFabrica = calcularTempoConstrucaoMs(d.fabricas);
   const tempoInfra = calcularTempoConstrucaoMs(d.infraestrutura);
   const tempoColonizadora = calcularTempoColonizadoraMs(planetaSel);
-  const pesqAtual: Pesquisa | null = getPesquisaAtual(mundo);
+  const pesqAtual: Pesquisa | null = getPesquisaAtual(planetaSel);
+  const filaCheia = d.filaProducao.length >= 5;
 
   // Build info rows: [label, value, valueColor]
-  const f = painel._infoFields;
   const rows: { key: string; label: string; value: string; color: number }[] = [
     { key: 'dono', label: 'Dono', value: d.dono, color: d.dono === 'jogador' ? SP.statCyan : 0x888888 },
     { key: 'tipo', label: 'Tipo', value: nomeTipoPlaneta(d.tipoPlaneta), color: SP.textValue },
@@ -563,7 +820,8 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   const edColW = 160;
   const navColW = 170;
   const pesColW = boxPad * 2 + 72 + 5 * (SMALL_BTN + 3);
-  const W_EXPANDED = PAD * 2 + 8 + edColW + navColW + pesColW + colGap * 2;
+  const filaColW = 170;
+  const W_EXPANDED = PAD * 2 + 8 + edColW + navColW + pesColW + filaColW + colGap * 3;
   const W = exp ? Math.max(W_COLLAPSED, W_EXPANDED) : W_COLLAPSED;
 
   // Compute column heights
@@ -576,12 +834,13 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
       const parsed: AcaoNaveParsed | null = parseAcaoNave(btn._acao);
       if (parsed) {
         if (parsed.tipo === 'colonizadora') { if (d.fabricas >= 1) visNavCount++; }
-        else { if (pesquisaTierLiberada(mundo, parsed.tipo, parsed.tier)) visNavCount++; }
+        else { if (pesquisaTierLiberada(planetaSel, parsed.tipo, parsed.tier)) visNavCount++; }
       }
     }
     const navH = 18 + Math.max(1, visNavCount) * (BTN_H + 3) + boxPad * 2;
     const pesH = 18 + 3 * (SMALL_BTN + 3) + boxPad * 2;
-    colH = Math.max(edH, navH, pesH);
+    const filaH = 150;
+    colH = Math.max(edH, navH, pesH, filaH);
   }
 
   const toggleH = mostrarProducao ? 30 : 0;
@@ -589,7 +848,6 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   const H = fieldY + fieldH + 6 + prodTotalH + toggleH + 8;
 
   // === DRAW PANEL ===
-  const bg = painel._infoBg;
   bg.clear();
   drawPanelFrame(bg, 0, 0, W, H);
   drawTitleBar(bg, 0, 0, W, 22);
@@ -627,10 +885,12 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   painel._boxEdificios.visible = false;
   painel._boxNaves.visible = false;
   painel._boxPesquisa.visible = false;
+  painel._overlayPesquisa.visible = false;
   for (const b of painel._btnNaves) b.visible = false;
   for (const { botao } of painel._btnPesquisa) botao.visible = false;
   painel._btnFabrica.visible = false;
   painel._btnInfra.visible = false;
+  painel._btnAbrirPesquisa.visible = false;
   for (const cat in painel._catLabels) painel._catLabels[cat].visible = false;
 
   if (!mostrarProducao || !exp) return;
@@ -653,7 +913,7 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   const edBtnW = edColW - boxPad * 2;
   let edBtnY = boxPad + 16;
 
-  let desab = !custoFabrica || !!d.construcaoAtual;
+  let desab = !custoFabrica || d.recursos.comum < custoFabrica || filaCheia;
   painel._btnFabrica.visible = true;
   painel._btnFabrica.x = boxPad;
   painel._btnFabrica.y = edBtnY;
@@ -666,7 +926,7 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   painel._btnFabrica._texto.style.fill = desab ? SP.btnDisabledText : SP.btnActionText;
 
   edBtnY += BTN_H + 3;
-  desab = !custoInfra || !!d.construcaoAtual;
+  desab = !custoInfra || d.recursos.comum < custoInfra || filaCheia;
   painel._btnInfra.visible = true;
   painel._btnInfra.x = boxPad;
   painel._btnInfra.y = edBtnY;
@@ -700,12 +960,12 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
 
     if (parsed.tipo === 'colonizadora') {
       vis = d.fabricas >= 1;
-      desabN = d.fabricas < 1 || !!d.producaoNave || !tempoColonizadora;
+      desabN = d.fabricas < 1 || !tempoColonizadora || d.recursos.comum < CUSTO_NAVE_COMUM || filaCheia;
       sub = formatarTempo(tempoColonizadora);
     } else {
-      const lib = pesquisaTierLiberada(mundo, parsed.tipo, parsed.tier);
+      const lib = pesquisaTierLiberada(planetaSel, parsed.tipo, parsed.tier);
       vis = lib;
-      desabN = !lib || d.fabricas < parsed.tier || !!d.producaoNave || !tempoColonizadora;
+      desabN = !lib || d.fabricas < parsed.tier || !tempoColonizadora || d.recursos.comum < CUSTO_NAVE_COMUM || filaCheia;
       sub = formatarTempo(tempoColonizadora);
     }
 
@@ -713,7 +973,8 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
     if (vis) {
       btn.x = boxPad;
       btn.y = boxPad + 16 + navI * (BTN_H + 3);
-      btn._texto.text = `${btn._labelNave}  ${sub}`;
+      const cargaTxt = parsed.tipo === 'cargueira' ? ` ${capacidadeCargaCargueira(parsed.tier)}R` : '';
+      btn._texto.text = `${btn._labelNave}${cargaTxt}  ${sub}`;
       btn._texto.x = navBtnW / 2;
       btn._texto.y = BTN_H / 2;
       btn._texto.style.wordWrapWidth = navBtnW - 4;
@@ -735,41 +996,150 @@ export function atualizarPainel(painel: PainelContainer, mundo: Mundo, tipoJogad
   painel._boxPesquisa._lbl.x = boxPad;
   painel._boxPesquisa._lbl.y = boxPad - 2;
 
-  const pesquisaOcupada = !!pesqAtual;
-  let pesRow = 0;
-  for (const cat of ['torreta', 'cargueira', 'batedora']) {
-    const catY = boxPad + 16 + pesRow * (SMALL_BTN + 3);
+  const pesBtnW = pesColW - boxPad * 2;
+  painel._txtPesquisaResumo.text = pesqAtual
+    ? `${LABEL_PESQUISA[pesqAtual.categoria] || pesqAtual.categoria} T${pesqAtual.tier}\n${formatarTempo(pesqAtual.tempoRestanteMs)} restante`
+    : 'Abra a arvore para pesquisar\nDesbloqueia naves por planeta';
+  painel._txtPesquisaResumo.x = boxPad;
+  painel._txtPesquisaResumo.y = boxPad + 18;
+  painel._txtPesquisaResumo.style.fill = pesqAtual ? 0xcc88ff : SP.textLabel;
+  painel._txtPesquisaResumo.style.wordWrap = true;
+  painel._txtPesquisaResumo.style.wordWrapWidth = pesBtnW;
 
-    const cl = painel._catLabels[cat];
-    cl.visible = true;
-    cl.x = boxPad;
-    cl.y = catY + 5;
+  painel._btnAbrirPesquisa.visible = true;
+  painel._btnAbrirPesquisa.x = boxPad;
+  painel._btnAbrirPesquisa.y = colH - BTN_H - boxPad;
+  painel._btnAbrirPesquisa._texto.text = painel._arvorePesquisaAberta ? 'Fechar arvore' : 'Abrir arvore';
+  painel._btnAbrirPesquisa._texto.x = pesBtnW / 2;
+  painel._btnAbrirPesquisa._texto.y = BTN_H / 2;
+  painel._btnAbrirPesquisa._texto.style.fontSize = 12;
+  painel._btnAbrirPesquisa._texto.style.wordWrapWidth = pesBtnW - 6;
+  drawBtn(painel._btnAbrirPesquisa._bg, 0, 0, pesBtnW, BTN_H, false, true, false);
+  painel._btnAbrirPesquisa._texto.style.fill = SP.btnActionText;
 
-    for (const { botao, categoria, tier } of painel._btnPesquisa) {
-      if (categoria !== cat) continue;
-      botao.visible = true;
-      botao.x = boxPad + 72 + (tier - 1) * (SMALL_BTN + 3);
-      botao.y = catY;
-      botao._texto.text = String(tier);
-      botao._texto.x = SMALL_BTN / 2;
-      botao._texto.y = SMALL_BTN / 2;
-      botao._texto.style.fontSize = 13;
+  if (painel._arvorePesquisaAberta) {
+    const overlay = painel._overlayPesquisa;
+    const overlayBg = painel._overlayPesquisaBg;
+    overlay.visible = true;
 
-      const ja = pesquisaTierLiberada(mundo, categoria, tier);
-      const desabP = ja || pesquisaOcupada || r.raro < 5;
-      if (ja) {
-        drawBtn(botao._bg, 0, 0, SMALL_BTN, SMALL_BTN, false, false, true);
-        botao._texto.style.fill = SP.btnDoneText;
-      } else {
-        drawBtn(botao._bg, 0, 0, SMALL_BTN, SMALL_BTN, desabP, false, false);
-        botao._texto.style.fill = desabP ? SP.btnDisabledText : SP.btnText;
+    const treeLabelW = 92;
+    const treeNode = 38;
+    const treeGap = 18;
+    const treeRow = 44;
+    const treeW = 22 + treeLabelW + 5 * treeNode + 4 * treeGap + 22;
+    const treeH = 42 + 3 * treeRow + 24;
+    overlay.x = Math.max(8, Math.floor((W - treeW) / 2));
+    overlay.y = -treeH - 12;
+
+    overlayBg.clear();
+    drawPanelFrame(overlayBg, 0, 0, treeW, treeH);
+    drawTitleBar(overlayBg, 0, 0, treeW, 22);
+    drawInfoField(overlayBg, 10, 28, treeW - 20, treeH - 38);
+
+    const pesquisaOcupada = !!pesqAtual;
+    const xBaseNode = 18 + treeLabelW;
+    const yBaseNode = 44;
+    for (let i = 0; i < 4; i++) {
+      const x1 = xBaseNode + i * (treeNode + treeGap) + treeNode;
+      const x2 = xBaseNode + (i + 1) * (treeNode + treeGap);
+      for (let row = 0; row < 3; row++) {
+        const y = yBaseNode + row * treeRow + treeNode / 2;
+        overlayBg.moveTo(x1 + 3, y).lineTo(x2 - 3, y).stroke({ color: SP.sectionLine, width: 1, alpha: 0.45 });
       }
-      botao.alpha = 1;
     }
-    pesRow++;
+
+    let rowIndex = 0;
+    for (const cat of ['cargueira', 'batedora', 'torreta']) {
+      const rowY = yBaseNode + rowIndex * treeRow;
+      const cl = painel._catLabels[cat];
+      cl.visible = true;
+      cl.x = 18;
+      cl.y = rowY + 9;
+      cl.style.fill = cat === 'cargueira' ? SP.statCyan : SP.textLabel;
+
+      for (const { botao, categoria, tier } of painel._btnPesquisa) {
+        if (categoria !== cat) continue;
+        botao.visible = true;
+        botao.x = xBaseNode + (tier - 1) * (treeNode + treeGap);
+        botao.y = rowY;
+        botao._texto.text = String(tier);
+        botao._texto.x = treeNode / 2;
+        botao._texto.y = treeNode / 2;
+        botao._texto.style.fontSize = 13;
+
+        const concluida = pesquisaTierLiberada(planetaSel, categoria, tier);
+        const emPesquisa = !!pesqAtual && pesqAtual.categoria === categoria && pesqAtual.tier === tier;
+        const disponivel = pesquisaTierDisponivel(planetaSel, categoria, tier);
+        const semRaro = r.raro < CUSTO_PESQUISA_RARO;
+        const desabP = !concluida && !emPesquisa && (!disponivel || pesquisaOcupada || semRaro);
+
+        if (concluida) {
+          drawBtn(botao._bg, 0, 0, treeNode, treeNode, false, false, true);
+          botao._texto.style.fill = SP.btnDoneText;
+        } else if (emPesquisa) {
+          drawBtn(botao._bg, 0, 0, treeNode, treeNode, false, true, false);
+          botao._texto.style.fill = SP.btnActionText;
+        } else {
+          drawBtn(botao._bg, 0, 0, treeNode, treeNode, desabP, disponivel, false);
+          botao._texto.style.fill = desabP ? SP.btnDisabledText : (categoria === 'cargueira' ? SP.statCyan : SP.btnText);
+        }
+      }
+      rowIndex++;
+    }
   }
+
+  // ---- COLUMN 4: FILA ----
+  const col4X = colStartX + edColW + colGap + navColW + colGap + pesColW + colGap;
+  painel._boxFila.visible = true;
+  painel._boxFila.x = col4X;
+  painel._boxFila.y = colY;
+  const filaBg = painel._boxFila._bg;
+  filaBg.clear();
+  drawBox(filaBg, 0, 0, filaColW, colH);
+  painel._boxFila._lbl.x = boxPad;
+  painel._boxFila._lbl.y = boxPad - 2;
+  const atualFila = d.filaProducao.map((item, idx) => {
+      const parsed = parseAcaoNave(item.acao);
+      const prefixo = idx === 0 && (d.construcaoAtual || d.producaoNave) ? '>> ' : `${idx + 1}. `;
+      if (parsed) return `${prefixo}${parsed.tipo === 'colonizadora' ? 'Colonizadora' : `${LABEL_PESQUISA[parsed.tipo] || parsed.tipo} T${parsed.tier}`}`;
+      return `${prefixo}${item.acao === 'fabrica' ? 'Fabrica' : 'Infraestrutura'}`;
+    }).slice(0, 5);
+  const resumoFila = [
+    atualFila.length ? atualFila.join('\n') : 'Fila vazia',
+    '',
+    `Slots: ${d.filaProducao.length}/5`,
+    `Loop: ${d.repetirFilaProducao ? 'ligado' : 'desligado'}`,
+  ];
+  painel._txtFilaResumo.text = resumoFila.join('\n');
+  painel._txtFilaResumo.x = boxPad;
+  painel._txtFilaResumo.y = boxPad + 18;
+  painel._txtFilaResumo.style.wordWrap = true;
+  painel._txtFilaResumo.style.wordWrapWidth = filaColW - boxPad * 2;
+
+  const filaBtnW = filaColW - boxPad * 2;
+  painel._btnFilaRepeat.visible = true;
+  painel._btnFilaRepeat.x = boxPad;
+  painel._btnFilaRepeat.y = colH - BTN_H * 2 - boxPad - 4;
+  painel._btnFilaRepeat._texto.text = d.repetirFilaProducao ? 'Repeticao ON' : 'Repeticao OFF';
+  painel._btnFilaRepeat._texto.x = filaBtnW / 2;
+  painel._btnFilaRepeat._texto.y = BTN_H / 2;
+  drawBtn(painel._btnFilaRepeat._bg, 0, 0, filaBtnW, BTN_H, false, d.repetirFilaProducao, false);
+  painel._btnFilaRepeat._texto.style.fill = d.repetirFilaProducao ? SP.btnActionText : SP.btnText;
+
+  painel._btnFilaLimpar.visible = true;
+  painel._btnFilaLimpar.x = boxPad;
+  painel._btnFilaLimpar.y = colH - BTN_H - boxPad;
+  painel._btnFilaLimpar._texto.text = 'Limpar fila';
+  painel._btnFilaLimpar._texto.x = filaBtnW / 2;
+  painel._btnFilaLimpar._texto.y = BTN_H / 2;
+  drawBtn(painel._btnFilaLimpar._bg, 0, 0, filaBtnW, BTN_H, false, false, false);
+  painel._btnFilaLimpar._texto.style.fill = SP.btnText;
 }
 
 export function definirAcaoPainel(painel: PainelContainer, callback: (acao: string, planeta: Planeta) => void): void {
   painel._onAcaoPlaneta = callback;
+}
+
+export function definirAcaoNavePainel(painel: PainelContainer, callback: (acao: string, nave: Nave) => void): void {
+  painel._onAcaoNave = callback;
 }

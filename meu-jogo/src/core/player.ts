@@ -1,7 +1,9 @@
 import { somClique } from '../audio/som';
 import type { Application } from 'pixi.js';
 import type { Mundo, Camera, Nave, Planeta, Sol } from '../types';
+import { consumirInteracaoUi } from '../ui/interacao-ui';
 import {
+  definirPlanetaRotaCargueira,
   encontrarNaveNoPonto,
   encontrarPlanetaNoPonto,
   encontrarSolNoPonto,
@@ -19,6 +21,7 @@ let cameraDragging = false;
 const cameraLastMouse = { x: 0, y: 0 };
 const clickStartScreen = { x: 0, y: 0 };
 let clickInfo: { nave: Nave | null; planeta: Planeta | null; sol: Sol | null } | null = null;
+let comandoNave: { tipo: 'mover' | 'origem' | 'destino'; nave: Nave | null } | null = null;
 
 export function setTipoJogador(): void {}
 
@@ -33,6 +36,22 @@ export function getZoom(): number {
 export function setCameraPos(x: number, y: number): void {
   camera.x = x;
   camera.y = y;
+}
+
+export function iniciarComandoNave(tipo: 'mover' | 'origem' | 'destino', nave: Nave | null): void {
+  if (!nave) return;
+  comandoNave = { tipo, nave };
+}
+
+export function cancelarComandoNave(): void {
+  comandoNave = null;
+}
+
+export function getTextoComandoNave(): string {
+  if (!comandoNave?.nave?.selecionado) return '';
+  if (comandoNave.tipo === 'mover') return 'Modo movimento: clique no destino';
+  if (comandoNave.tipo === 'origem') return 'Config origem: clique em um planeta seu';
+  return 'Config destino: clique em um planeta seu';
 }
 
 function screenToWorld(sx: number, sy: number, app: Application) {
@@ -90,6 +109,10 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     }
 
     if (e.button !== 0) return;
+    if (consumirInteracaoUi()) {
+      clickInfo = null;
+      return;
+    }
 
     const movedX = e.clientX - clickStartScreen.x;
     const movedY = e.clientY - clickStartScreen.y;
@@ -100,18 +123,30 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       const destinoMapa = screenToWorld(e.clientX, e.clientY, app);
 
       if (clickInfo?.nave) {
+        cancelarComandoNave();
         selecionarNave(mundo, clickInfo.nave);
         somClique();
-      } else if (naveSelecionada && (clickInfo?.planeta || clickInfo?.sol)) {
-        enviarNaveParaAlvo(mundo, naveSelecionada, (clickInfo!.planeta || clickInfo!.sol)!);
-        somClique();
-      } else if (naveSelecionada) {
-        enviarNaveParaPosicao(mundo, naveSelecionada, destinoMapa.x, destinoMapa.y);
-        somClique();
+      } else if (naveSelecionada && comandoNave?.nave === naveSelecionada) {
+        if (comandoNave.tipo === 'mover') {
+          const alvo = (clickInfo?.planeta || clickInfo?.sol) ?? null;
+          const ok = alvo
+            ? enviarNaveParaAlvo(mundo, naveSelecionada, alvo)
+            : enviarNaveParaPosicao(mundo, naveSelecionada, destinoMapa.x, destinoMapa.y);
+          if (ok) {
+            cancelarComandoNave();
+            somClique();
+          }
+        } else if ((comandoNave.tipo === 'origem' || comandoNave.tipo === 'destino') && clickInfo?.planeta?.dados.dono === 'jogador') {
+          definirPlanetaRotaCargueira(naveSelecionada, comandoNave.tipo, clickInfo.planeta);
+          cancelarComandoNave();
+          somClique();
+        }
       } else if (clickInfo?.planeta) {
+        cancelarComandoNave();
         selecionarPlaneta(mundo, clickInfo.planeta);
         somClique();
       } else {
+        cancelarComandoNave();
         limparSelecoes(mundo);
       }
     }

@@ -1,9 +1,109 @@
 import { Graphics } from 'pixi.js';
-import type { Nave, Mundo, Planeta, Sol, AlvoPonto, AcaoNaveParsed } from '../types';
+import type { Nave, Mundo, Planeta, Sol, AlvoPonto, AcaoNaveParsed, Recursos } from '../types';
 import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, formatarId } from './constantes';
 import { cheats } from '../ui/debug';
-import { notifColonizacao } from '../ui/notificacao';
+import { notifColonizacao, mostrarNotificacao } from '../ui/notificacao';
 import { somConquista } from '../audio/som';
+
+function criarCargaVazia(): Recursos {
+  return { comum: 0, raro: 0, combustivel: 0 };
+}
+
+function totalRecursos(recursos: Recursos): number {
+  return recursos.comum + recursos.raro + recursos.combustivel;
+}
+
+function obterPlanetaAlvo(nave: Nave): Planeta | null {
+  return nave.alvo && nave.alvo._tipoAlvo === 'planeta' ? nave.alvo : null;
+}
+
+export function capacidadeCargaCargueira(tier: number): number {
+  return 30 * (2 ** Math.max(0, tier - 1));
+}
+
+function carregarRecursosPlaneta(planeta: Planeta, capacidade: number): Recursos {
+  const carga = criarCargaVazia();
+  let restante = capacidade;
+  for (const tipo of ['comum', 'raro', 'combustivel'] as const) {
+    if (restante <= 0) break;
+    const disponivel = Math.floor(planeta.dados.recursos[tipo]);
+    const quantidade = Math.min(disponivel, restante);
+    planeta.dados.recursos[tipo] -= quantidade;
+    carga[tipo] = quantidade;
+    restante -= quantidade;
+  }
+  return carga;
+}
+
+function descarregarRecursosPlaneta(planeta: Planeta, carga: Recursos): void {
+  planeta.dados.recursos.comum += carga.comum;
+  planeta.dados.recursos.raro += carga.raro;
+  planeta.dados.recursos.combustivel += carga.combustivel;
+}
+
+function totalConfigurado(nave: Nave): number {
+  return totalRecursos(nave.configuracaoCarga);
+}
+
+function carregarConfiguracaoOrigem(nave: Nave, planeta: Planeta): Recursos {
+  const carga = criarCargaVazia();
+  for (const tipo of ['comum', 'raro', 'combustivel'] as const) {
+    const desejado = Math.max(0, Math.floor(nave.configuracaoCarga[tipo]));
+    const disponivel = Math.floor(planeta.dados.recursos[tipo]);
+    const quantidade = Math.min(desejado, disponivel);
+    planeta.dados.recursos[tipo] -= quantidade;
+    carga[tipo] = quantidade;
+  }
+  return carga;
+}
+
+export function ajustarConfiguracaoCarga(nave: Nave, tipo: keyof Recursos, delta: number): void {
+  if (nave.tipo !== 'cargueira') return;
+  const capacidade = capacidadeCargaCargueira(nave.tier);
+  const atual = nave.configuracaoCarga[tipo];
+  const totalSemTipo = totalConfigurado(nave) - atual;
+  const proximo = Math.max(0, Math.min(capacidade - totalSemTipo, atual + delta));
+  nave.configuracaoCarga[tipo] = proximo;
+}
+
+export function definirPlanetaRotaCargueira(nave: Nave, modo: 'origem' | 'destino', planeta: Planeta): void {
+  if (nave.tipo !== 'cargueira' || planeta.dados.dono !== 'jogador') return;
+  nave.rotaCargueira ??= { origem: null, destino: null, loop: false, fase: 'origem' };
+  nave.rotaCargueira[modo] = planeta;
+}
+
+export function alternarLoopCargueira(nave: Nave): void {
+  if (nave.tipo !== 'cargueira') return;
+  nave.rotaCargueira ??= { origem: null, destino: null, loop: false, fase: 'origem' };
+  nave.rotaCargueira.loop = !nave.rotaCargueira.loop;
+}
+
+function processarLoopCargueira(nave: Nave): void {
+  if (nave.tipo !== 'cargueira' || nave.estado !== 'orbitando' || !nave.rotaCargueira?.loop) return;
+  const planetaAtual = obterPlanetaAlvo(nave);
+  const rota = nave.rotaCargueira;
+  if (!planetaAtual || !rota.origem || !rota.destino) return;
+  if (totalConfigurado(nave) <= 0) return;
+
+  if (rota.fase === 'origem' && planetaAtual === rota.origem && totalRecursos(nave.carga) <= 0) {
+    const carga = carregarConfiguracaoOrigem(nave, planetaAtual);
+    if (totalRecursos(carga) <= 0) return;
+    nave.carga = carga;
+    nave.origem = planetaAtual;
+    rota.fase = 'destino';
+    nave.estado = 'viajando';
+    nave.alvo = rota.destino;
+    nave.orbita = null;
+    return;
+  }
+
+  if (rota.fase === 'destino' && planetaAtual === rota.destino && totalRecursos(nave.carga) <= 0) {
+    rota.fase = 'origem';
+    nave.estado = 'viajando';
+    nave.alvo = rota.origem;
+    nave.orbita = null;
+  }
+}
 
 function desenharNaveGfx(nave: Nave): void {
   const g = nave.gfx;
@@ -59,6 +159,9 @@ export function criarNave(mundo: Mundo, planetaOrigem: Planeta, tipo: string, ti
     alvo: planetaOrigem,
     selecionado: false,
     origem: planetaOrigem,
+    carga: criarCargaVazia(),
+    configuracaoCarga: criarCargaVazia(),
+    rotaCargueira: null,
     gfx: new Graphics(),
     _tipoAlvo: 'nave',
     orbita: null,
@@ -94,6 +197,12 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
           finalizarColonizacao(mundo, nave, alvo);
           continue;
         }
+        if (nave.tipo === 'cargueira' && alvo._tipoAlvo === 'planeta' && alvo.dados.dono === 'jogador' && totalRecursos(nave.carga) > 0) {
+          descarregarRecursosPlaneta(alvo, nave.carga);
+          mostrarNotificacao(`Cargueira descarregou ${totalRecursos(nave.carga)} recursos.`, '#60ccff');
+          nave.carga = criarCargaVazia();
+          nave.origem = alvo;
+        }
         if (alvo._tipoAlvo === 'ponto') {
           nave.x = alvo.x; nave.y = alvo.y;
           nave.estado = 'parado'; nave.alvo = null; nave.orbita = null;
@@ -110,6 +219,7 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
       nave.x = nave.alvo.x + Math.cos(nave.orbita.angulo) * nave.orbita.raio;
       nave.y = nave.alvo.y + Math.sin(nave.orbita.angulo) * nave.orbita.raio;
     }
+    processarLoopCargueira(nave);
     nave.gfx.x = nave.x;
     nave.gfx.y = nave.y;
   }

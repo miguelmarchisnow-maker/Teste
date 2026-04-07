@@ -3,6 +3,7 @@ import type { Spritesheet } from 'pixi.js';
 import type { Sol, Planeta, Sistema } from '../types';
 import { DIST_MIN_SISTEMA } from './constantes';
 import { criarPlanetaSprite, TIPO_PLANETA } from './planeta';
+import { criarEstadoPesquisas } from './pesquisa';
 
 function sortearTipoPlaneta(): string {
   const tipos = Object.values(TIPO_PLANETA);
@@ -50,6 +51,7 @@ export function criarSistemaSolar(container: Container, planetaSheet: Spriteshee
       dono: 'neutro',
       tipoPlaneta,
       producao: 1,
+      recursos: { comum: 0, raro: 0, combustivel: 0 },
       tamanho,
       selecionado: false,
       fabricas: 0,
@@ -60,6 +62,10 @@ export function criarSistemaSolar(container: Container, planetaSheet: Spriteshee
       sistemaId: indiceSistema,
       construcaoAtual: null,
       producaoNave: null,
+      filaProducao: [],
+      repetirFilaProducao: false,
+      pesquisas: criarEstadoPesquisas(),
+      pesquisaAtual: null,
     };
     p._tipoAlvo = 'planeta';
     p._orbita = {

@@ -1,7 +1,7 @@
-import type { Mundo, Planeta, AcaoNaveParsed } from '../types';
+import type { Mundo, Planeta, AcaoNaveParsed, ItemFilaProducao } from '../types';
 import { cheats } from '../ui/debug';
 import { CICLO_RECURSO_MS, CUSTO_NAVE_COMUM } from './constantes';
-import { aplicarProducaoCicloAoImperio, calcularCustoTier, calcularTempoConstrucaoMs, calcularTempoColonizadoraMs } from './recursos';
+import { aplicarProducaoCicloAoPlaneta, calcularCustoTier, calcularTempoConstrucaoMs, calcularTempoColonizadoraMs } from './recursos';
 import { criarNave, parseAcaoNave } from './naves';
 import { notifConstrucaoCompleta, notifNaveProducida } from '../ui/notificacao';
 import { somConstrucaoCompleta, somNaveProducida } from '../audio/som';
@@ -44,7 +44,7 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
   planeta.dados.acumuladorRecursosMs += deltaMs;
   while (planeta.dados.acumuladorRecursosMs >= CICLO_RECURSO_MS) {
     planeta.dados.acumuladorRecursosMs -= CICLO_RECURSO_MS;
-    aplicarProducaoCicloAoImperio(mundo, planeta);
+    aplicarProducaoCicloAoPlaneta(planeta);
   }
 
   const construcao = planeta.dados.construcaoAtual;
@@ -52,6 +52,7 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
     if (cheats.construcaoInstantanea) construcao.tempoRestanteMs = 0;
     else construcao.tempoRestanteMs = Math.max(0, construcao.tempoRestanteMs - deltaMs);
     if (construcao.tempoRestanteMs <= 0) {
+      finalizarItemFila(planeta, `construcao:${construcao.tipo}`);
       if (construcao.tipo === 'fabrica') planeta.dados.fabricas = construcao.tierDestino;
       if (construcao.tipo === 'infraestrutura') planeta.dados.infraestrutura = construcao.tierDestino;
       planeta.dados.construcaoAtual = null;
@@ -66,6 +67,7 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
     if (cheats.construcaoInstantanea) producao.tempoRestanteMs = 0;
     else producao.tempoRestanteMs = Math.max(0, producao.tempoRestanteMs - deltaMs);
     if (producao.tempoRestanteMs <= 0) {
+      finalizarItemFila(planeta, `nave:${producao.tipoNave}:${producao.tier}`);
       planeta.dados.producaoNave = null;
       const tipoNave = producao.tipoNave || 'colonizadora';
       const tier = producao.tier || 1;
@@ -75,18 +77,45 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
       somNaveProducida();
     }
   }
+
+  tentarIniciarProximaAcaoFila(mundo, planeta);
+}
+
+function totalItensProduzindo(planeta: Planeta): number {
+  return planeta.dados.filaProducao.length;
+}
+
+function registrarFilaConclusao(planeta: Planeta, item: ItemFilaProducao): void {
+  if (!planeta.dados.repetirFilaProducao) return;
+  if (totalItensProduzindo(planeta) >= 5) return;
+  planeta.dados.filaProducao.push({ acao: item.acao });
+}
+
+function finalizarItemFila(planeta: Planeta, idEsperado: string): void {
+  const atual = planeta.dados.filaProducao[0];
+  if (!atual) return;
+  const idAtual = identificarItemFila(atual.acao);
+  if (idAtual !== idEsperado) return;
+  planeta.dados.filaProducao.shift();
+  registrarFilaConclusao(planeta, atual);
+}
+
+function identificarItemFila(acao: string): string {
+  const parsed = parseAcaoNave(acao);
+  if (parsed) return `nave:${parsed.tipo}:${parsed.tier}`;
+  return `construcao:${acao}`;
 }
 
 function enfileirarProducaoNave(mundo: Mundo, planeta: Planeta, tipoNave: string, tier: number): boolean {
   if (planeta.dados.fabricas < 1 || planeta.dados.producaoNave) return false;
   if (tipoNave !== 'colonizadora') {
     if (planeta.dados.fabricas < tier) return false;
-    const pesq = mundo.pesquisas[tipoNave];
+    const pesq = planeta.dados.pesquisas[tipoNave];
     if (!pesq || !pesq[tier - 1]) return false;
   }
   const tempo = calcularTempoColonizadoraMs(planeta);
-  if (!tempo || mundo.recursosJogador.comum < CUSTO_NAVE_COMUM) return false;
-  mundo.recursosJogador.comum -= CUSTO_NAVE_COMUM;
+  if (!tempo || planeta.dados.recursos.comum < CUSTO_NAVE_COMUM) return false;
+  planeta.dados.recursos.comum -= CUSTO_NAVE_COMUM;
   planeta.dados.producaoNave = {
     tipoNave,
     tier,
@@ -98,41 +127,58 @@ function enfileirarProducaoNave(mundo: Mundo, planeta: Planeta, tipoNave: string
 
 export function construirNoPlaneta(mundo: Mundo, planeta: Planeta, tipo: string): boolean {
   if (!planeta || planeta.dados.dono !== 'jogador') return false;
+  if (tipo === 'fila_toggle_repeat') {
+    planeta.dados.repetirFilaProducao = !planeta.dados.repetirFilaProducao;
+    return true;
+  }
+  if (tipo === 'fila_limpar') {
+    planeta.dados.filaProducao = (planeta.dados.construcaoAtual || planeta.dados.producaoNave)
+      ? planeta.dados.filaProducao.slice(0, 1)
+      : [];
+    planeta.dados.repetirFilaProducao = false;
+    return true;
+  }
+  if (totalItensProduzindo(planeta) >= 5) return false;
+  planeta.dados.filaProducao.push({ acao: tipo });
+  tentarIniciarProximaAcaoFila(mundo, planeta);
+  return true;
+}
 
-  const parsedNave: AcaoNaveParsed | null = parseAcaoNave(tipo);
+function tentarIniciarProximaAcaoFila(mundo: Mundo, planeta: Planeta): void {
+  if (planeta.dados.construcaoAtual || planeta.dados.producaoNave) return;
+  const proximo = planeta.dados.filaProducao[0];
+  if (!proximo) return;
+
+  const parsedNave: AcaoNaveParsed | null = parseAcaoNave(proximo.acao);
   if (parsedNave) {
-    return enfileirarProducaoNave(mundo, planeta, parsedNave.tipo, parsedNave.tier);
+    enfileirarProducaoNave(mundo, planeta, parsedNave.tipo, parsedNave.tier);
+    return;
   }
 
-  if (tipo === 'fabrica') {
-    if (planeta.dados.construcaoAtual) return false;
+  if (proximo.acao === 'fabrica') {
     const custo = calcularCustoTier(planeta.dados.fabricas);
     const tempo = calcularTempoConstrucaoMs(planeta.dados.fabricas);
-    if (!custo || !tempo || mundo.recursosJogador.comum < custo) return false;
-    mundo.recursosJogador.comum -= custo;
+    if (!custo || !tempo || planeta.dados.recursos.comum < custo) return;
+    planeta.dados.recursos.comum -= custo;
     planeta.dados.construcaoAtual = {
       tipo: 'fabrica',
       tierDestino: planeta.dados.fabricas + 1,
       tempoRestanteMs: tempo,
       tempoTotalMs: tempo,
     };
-    return true;
+    return;
   }
 
-  if (tipo === 'infraestrutura') {
-    if (planeta.dados.construcaoAtual) return false;
+  if (proximo.acao === 'infraestrutura') {
     const custo = calcularCustoTier(planeta.dados.infraestrutura);
     const tempo = calcularTempoConstrucaoMs(planeta.dados.infraestrutura);
-    if (!custo || !tempo || mundo.recursosJogador.comum < custo) return false;
-    mundo.recursosJogador.comum -= custo;
+    if (!custo || !tempo || planeta.dados.recursos.comum < custo) return;
+    planeta.dados.recursos.comum -= custo;
     planeta.dados.construcaoAtual = {
       tipo: 'infraestrutura',
       tierDestino: planeta.dados.infraestrutura + 1,
       tempoRestanteMs: tempo,
       tempoTotalMs: tempo,
     };
-    return true;
   }
-
-  return false;
 }

@@ -1,13 +1,14 @@
 import { Application } from 'pixi.js';
 import type { Mundo } from './types';
 import { criarMundo, atualizarMundo, getEstadoJogo, construirNoPlaneta } from './world/mundo';
-import { configurarCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador } from './core/player';
+import { configurarCamera, atualizarCamera, getCamera, iniciarComandoNave, setCameraPos, setTipoJogador } from './core/player';
 import { criarMinimapa, atualizarMinimapa, onMinimapClick } from './ui/minimapa';
-import { criarPainel, atualizarPainel, definirAcaoPainel } from './ui/painel';
+import { criarPainel, atualizarPainel, definirAcaoPainel, definirAcaoNavePainel } from './ui/painel';
 import { getTipos } from './ui/selecao';
 import { criarTutorial, atualizarTutorial } from './ui/tutorial';
 import { criarDebug, atualizarDebug, processarTeclaDebug, getRendererPreference } from './ui/debug';
 import { somVitoria, somDerrota } from './audio/som';
+import { ajustarConfiguracaoCarga, alternarLoopCargueira } from './world/mundo';
 
 const app = new Application();
 await app.init({
@@ -50,6 +51,16 @@ const painel = (criarPainel as any)(app);
 app.stage.addChild(painel);
 definirAcaoPainel(painel, (acao: string, planeta: any) => {
   construirNoPlaneta(mundo, planeta, acao);
+});
+definirAcaoNavePainel(painel, (acao: string, nave: any) => {
+  if (acao === 'comando_nave_mover') iniciarComandoNave('mover', nave);
+  else if (acao === 'comando_nave_origem') iniciarComandoNave('origem', nave);
+  else if (acao === 'comando_nave_destino') iniciarComandoNave('destino', nave);
+  else if (acao === 'comando_nave_loop') alternarLoopCargueira(nave);
+  else if (acao.startsWith('config_cargo_')) {
+    const m = acao.match(/^config_cargo_(comum|raro|combustivel)_(mais|menos)$/);
+    if (m) ajustarConfiguracaoCarga(nave, m[1] as 'comum' | 'raro' | 'combustivel', m[2] === 'mais' ? 5 : -5);
+  }
 });
 
 const tutorial = criarTutorial(app);

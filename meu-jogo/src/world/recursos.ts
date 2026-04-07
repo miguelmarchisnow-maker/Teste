@@ -1,4 +1,4 @@
-import type { Planeta, Mundo, Recursos } from '../types';
+import type { Planeta, Recursos } from '../types';
 import { TIPO_PLANETA } from './planeta';
 import { CICLO_RECURSO_MS, TIER_MAX, CUSTO_BASE_TIER, MULTIPLICADOR_TIER, TEMPO_BASE_CONSTRUCAO_MS, TEMPO_BASE_COLONIZADORA_MS } from './constantes';
 
@@ -14,16 +14,17 @@ export function obterProducaoNaturalCiclo(planeta: Planeta): Recursos {
   }
 }
 
-export function aplicarProducaoCicloAoImperio(mundo: Mundo, planeta: Planeta): void {
+export function aplicarProducaoCicloAoPlaneta(planeta: Planeta): void {
   const base = obterProducaoNaturalCiclo(planeta);
   const mult = planeta.dados.producao || 1;
   const acc = planeta.dados.fracProducao;
+  const recursos = planeta.dados.recursos;
   acc.comum += base.comum * mult;
   acc.raro += base.raro * mult;
   acc.combustivel += base.combustivel * mult;
   for (const k of ['comum', 'raro', 'combustivel'] as const) {
     while (acc[k] >= 1) {
-      mundo.recursosJogador[k] += 1;
+      recursos[k] += 1;
       acc[k] -= 1;
     }
   }

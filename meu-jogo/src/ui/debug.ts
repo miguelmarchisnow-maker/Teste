@@ -679,14 +679,14 @@ export function atualizarDebug(debug: DebugPopup, mundo: Mundo, app: Application
   setData('dbg-sistemas', 'Sistemas', `${mundo.sistemas.length} sistemas, ${mundo.sois.length} sois`);
   setData('dbg-fontes', 'Fontes visao', `${mundo.fontesVisao.length}`);
 
-  const r = mundo.recursosJogador;
-  setData('dbg-recursos', 'Recursos', `C:${Math.floor(r.comum)}  R:${Math.floor(r.raro)}  F:${Math.floor(r.combustivel)}`);
-  const pesq = getPesquisaAtual(mundo);
+  const naveSel = obterNaveSelecionada(mundo);
+  const planetaSel = mundo.planetas.find(p => p.dados.selecionado);
+  const r = planetaSel?.dados.recursos || { comum: 0, raro: 0, combustivel: 0 };
+  setData('dbg-recursos', 'Recursos planeta', `C:${Math.floor(r.comum)}  R:${Math.floor(r.raro)}  F:${Math.floor(r.combustivel)}`);
+  const pesq = getPesquisaAtual(planetaSel || null);
   setData('dbg-pesquisa', 'Pesquisa', pesq ? `${pesq.categoria} T${pesq.tier} (${formatarTempo(pesq.tempoRestanteMs)})` : '--');
   setData('dbg-estado', 'Estado', getEstadoJogo());
 
-  const naveSel = obterNaveSelecionada(mundo);
-  const planetaSel = mundo.planetas.find(p => p.dados.selecionado);
   if (naveSel) {
     setData('dbg-selecao', 'Selecionado', `nave ${naveSel.tipo} T${naveSel.tier} [${naveSel.estado}]`);
   } else if (planetaSel) {
@@ -735,8 +735,11 @@ export function atualizarDebug(debug: DebugPopup, mundo: Mundo, app: Application
 
   // Cheats recursos
   if (cheats.recursosInfinitos) {
-    mundo.recursosJogador.comum = Math.max(mundo.recursosJogador.comum, 9999);
-    mundo.recursosJogador.raro = Math.max(mundo.recursosJogador.raro, 9999);
-    mundo.recursosJogador.combustivel = Math.max(mundo.recursosJogador.combustivel, 9999);
+    for (const planeta of mundo.planetas) {
+      if (planeta.dados.dono !== 'jogador') continue;
+      planeta.dados.recursos.comum = Math.max(planeta.dados.recursos.comum, 9999);
+      planeta.dados.recursos.raro = Math.max(planeta.dados.recursos.raro, 9999);
+      planeta.dados.recursos.combustivel = Math.max(planeta.dados.recursos.combustivel, 9999);
+    }
   }
 }

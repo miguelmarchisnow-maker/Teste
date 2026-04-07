@@ -22,11 +22,26 @@ export interface ProducaoNave {
   tempoTotalMs: number;
 }
 
+export interface ItemFilaProducao {
+  acao: string;
+}
+
+// === Pesquisa ===
+export interface Pesquisa {
+  categoria: string;
+  tier: number;
+  tempoRestanteMs: number;
+  tempoTotalMs: number;
+}
+
+export type PesquisasState = Record<string, boolean[]>;
+
 // === Planeta ===
 export interface DadosPlaneta {
   dono: string;
   tipoPlaneta: string;
   producao: number;
+  recursos: Recursos;
   tamanho: number;
   selecionado: boolean;
   fabricas: number;
@@ -37,6 +52,10 @@ export interface DadosPlaneta {
   sistemaId: number;
   construcaoAtual: Construcao | null;
   producaoNave: ProducaoNave | null;
+  filaProducao: ItemFilaProducao[];
+  repetirFilaProducao: boolean;
+  pesquisas: PesquisasState;
+  pesquisaAtual: Pesquisa | null;
 }
 
 export interface OrbitaPlaneta {
@@ -82,6 +101,14 @@ export interface Nave {
   alvo: Planeta | Sol | AlvoPonto | null;
   selecionado: boolean;
   origem: Planeta;
+  carga: Recursos;
+  configuracaoCarga: Recursos;
+  rotaCargueira: {
+    origem: Planeta | null;
+    destino: Planeta | null;
+    loop: boolean;
+    fase: 'origem' | 'destino';
+  } | null;
   gfx: Graphics;
   _tipoAlvo: 'nave';
   orbita: OrbitaNave | null;
@@ -116,16 +143,6 @@ export interface Sistema {
   planetas: Planeta[];
 }
 
-// === Pesquisa ===
-export interface Pesquisa {
-  categoria: string;
-  tier: number;
-  tempoRestanteMs: number;
-  tempoTotalMs: number;
-}
-
-export type PesquisasState = Record<string, boolean[]>;
-
 // === Mundo ===
 export interface Mundo {
   container: Container;
@@ -140,13 +157,10 @@ export interface Mundo {
   navesContainer: Container;
   planetaSheet: Spritesheet;
   tipoJogador: TipoJogador;
-  recursosJogador: Recursos;
   ultimoTickMs: number;
   visaoContainer: Container;
   memoriaPlanetasContainer: Container;
   fontesVisao: FonteVisao[];
-  pesquisas: PesquisasState;
-  pesquisaAtual: Pesquisa | null;
 }
 
 // === Tipo de Jogador ===

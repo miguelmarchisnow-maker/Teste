@@ -7,7 +7,7 @@ import { aplicarAparenciaTipoPlaneta, criarPlaneta, TIPO_PLANETA } from './plane
 import { criarCamadaMemoria, criarMemoriaVisualPlaneta, registrarMemoriaPlaneta, atualizarVisibilidadeMemoria, atualizarEscalaLabelMemoria } from './nevoa';
 import { criarSistemaSolar } from './sistema';
 import { atualizarNaves, atualizarSelecaoNave } from './naves';
-import { criarEstadoPesquisas, atualizarPesquisaGlobal } from './pesquisa';
+import { atualizarPesquisaPlaneta } from './pesquisa';
 import { atualizarCampoDeVisao } from './visao';
 import { atualizarFilasPlaneta, desenharConstrucoesPlaneta } from './construcao';
 import { profileMark, profileAcumular, profileFlush } from './profiling';
@@ -16,8 +16,8 @@ import { profileMark, profileAcumular, profileFlush } from './profiling';
 export { profiling } from './profiling';
 export { construirNoPlaneta } from './construcao';
 export { calcularCustoTier, calcularTempoConstrucaoMs, calcularTempoColonizadoraMs, calcularTempoCicloPlaneta, calcularTempoRestantePlaneta, getTierMax, textoProducaoCicloPlaneta } from './recursos';
-export { encontrarNaveNoPonto, obterNaveSelecionada, selecionarNave, enviarNaveParaAlvo, enviarNaveParaPosicao, parseAcaoNave } from './naves';
-export { iniciarPesquisa, pesquisaTierLiberada, getPesquisaAtual } from './pesquisa';
+export { encontrarNaveNoPonto, obterNaveSelecionada, selecionarNave, enviarNaveParaAlvo, enviarNaveParaPosicao, parseAcaoNave, capacidadeCargaCargueira, ajustarConfiguracaoCarga, definirPlanetaRotaCargueira, alternarLoopCargueira } from './naves';
+export { iniciarPesquisa, pesquisaTierLiberada, pesquisaTierDisponivel, getPesquisaAtual } from './pesquisa';
 export { nomeTipoPlaneta } from './planeta';
 
 // === Estado do jogo ===
@@ -129,12 +129,9 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
     container, tamanho, planetas, sistemas, sois,
     naves: [] as Nave[], fundo, frotas, frotasContainer, navesContainer,
     planetaSheet, tipoJogador,
-    recursosJogador: { comum: 0, raro: 0, combustivel: 0 },
     ultimoTickMs: performance.now(),
     visaoContainer, memoriaPlanetasContainer,
     fontesVisao: [] as import('../types').FonteVisao[],
-    pesquisas: criarEstadoPesquisas(),
-    pesquisaAtual: null,
   } as Mundo;
 
   for (const planeta of planetas) {
@@ -162,9 +159,9 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   mundo.ultimoTickMs = agora;
 
   let t = profileMark();
-  atualizarPesquisaGlobal(mundo, deltaMs);
 
   for (const planeta of mundo.planetas) {
+    atualizarPesquisaPlaneta(planeta, deltaMs);
     atualizarOrbitaPlaneta(planeta, deltaMs);
     atualizarFilasPlaneta(mundo, planeta, deltaMs);
   }
