@@ -43,6 +43,9 @@ export function atualizarCampoDeVisao(mundo: Mundo, camera: Camera, app: Applica
 
   for (const sol of mundo.sois) {
     sol._visivelAoJogador = cheats.visaoTotal || pontoDentroDaVisao(sol.x, sol.y, fontesVisao);
+    if (sol._visivelAoJogador) {
+      sol._descobertoAoJogador = true;
+    }
   }
 
   for (const planeta of mundo.planetas) {
@@ -52,6 +55,7 @@ export function atualizarCampoDeVisao(mundo: Mundo, camera: Camera, app: Applica
       pontoDentroDaVisao(planeta.x, planeta.y, fontesVisao);
 
     if (planeta._visivelAoJogador) {
+      planeta._descobertoAoJogador = true;
       registrarMemoriaPlaneta(planeta);
     }
 

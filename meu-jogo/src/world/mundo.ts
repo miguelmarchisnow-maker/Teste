@@ -86,6 +86,7 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
   const frotasContainer = new Container();
   const navesContainer = new Container();
   const visaoContainer = new Container();
+  const orbitasContainer = new Container();
   const memoriaPlanetasContainer = criarCamadaMemoria();
 
   container.addChild(frotasContainer);
@@ -110,13 +111,14 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
     }
     if (muitoPerto) continue;
 
-    const sistema = criarSistemaSolar(container, planetaSheet, x, y, sistemas.length);
+    const sistema = criarSistemaSolar(container, orbitasContainer, planetaSheet, x, y, sistemas.length);
     sistemas.push(sistema);
     sois.push(sistema.sol);
     planetas.push(...sistema.planetas);
   }
 
   container.addChild(visaoContainer);
+  container.addChild(orbitasContainer);
   container.addChild(memoriaPlanetasContainer);
 
   if (!planetas.some((p) => p.dados.tipoPlaneta === TIPO_PLANETA.COMUM) && planetas.length > 0) {
@@ -130,7 +132,7 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
     naves: [] as Nave[], fundo, frotas, frotasContainer, navesContainer,
     planetaSheet, tipoJogador,
     ultimoTickMs: performance.now(),
-    visaoContainer, memoriaPlanetasContainer,
+    visaoContainer, orbitasContainer, memoriaPlanetasContainer,
     fontesVisao: [] as import('../types').FonteVisao[],
   } as Mundo;
 
@@ -141,11 +143,17 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
   const planetasComuns = planetas.filter((p) => p.dados.tipoPlaneta === TIPO_PLANETA.COMUM);
   const planetaInicial = planetasComuns[Math.floor(Math.random() * planetasComuns.length)];
   planetaInicial.dados.dono = 'jogador';
+  planetaInicial._descobertoAoJogador = true;
   planetaInicial.dados.producao *= tipoJogador?.bonus?.producao || 1;
   planetaInicial.dados.fabricas += tipoJogador?.bonus?.fabricasIniciais || 0;
   planetaInicial.dados.infraestrutura += tipoJogador?.bonus?.infraestruturaInicial || 0;
   desenharConstrucoesPlaneta(planetaInicial);
   registrarMemoriaPlaneta(planetaInicial);
+
+  const sistemaInicial = sistemas[planetaInicial.dados.sistemaId];
+  if (sistemaInicial?.sol) {
+    sistemaInicial.sol._descobertoAoJogador = true;
+  }
 
   estadoJogo = 'jogando';
   return mundo;
@@ -195,6 +203,18 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     else if (!vis && planeta.visible) planeta.stop();
     planeta.visible = vis;
 
+    const raioOrbita = planeta._orbita.raio;
+    const orbitaNaTela =
+      planeta._orbita.centroX + raioOrbita > esq &&
+      planeta._orbita.centroX - raioOrbita < dir &&
+      planeta._orbita.centroY + raioOrbita > cima &&
+      planeta._orbita.centroY - raioOrbita < baixo;
+    const sistema = mundo.sistemas[planeta.dados.sistemaId];
+    const solDoSistema = sistema?.sol;
+    const orbitaDescoberta = planeta._descobertoAoJogador && !!(solDoSistema?._descobertoAoJogador);
+    planeta._linhaOrbita.visible = orbitaDescoberta && orbitaNaTela;
+    planeta._linhaOrbita.alpha = planeta._visivelAoJogador && !!(solDoSistema?._visivelAoJogador) ? 0.5 : 0.18;
+
     if (vis) {
       const anel = planeta._anel;
       anel.clear();
@@ -213,7 +233,8 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   t = profileMark();
   for (const sol of mundo.sois) {
     const visNaTela = sol.x > esq && sol.x < dir && sol.y > cima && sol.y < baixo;
-    sol.visible = visNaTela && sol._visivelAoJogador;
+    sol.visible = visNaTela && (sol._visivelAoJogador || sol._descobertoAoJogador);
+    sol.alpha = sol._visivelAoJogador ? 1 : 0.28;
   }
 
   for (const nave of mundo.naves) {

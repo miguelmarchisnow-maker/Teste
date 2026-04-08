@@ -70,9 +70,11 @@ export interface Planeta extends AnimatedSprite {
   dados: DadosPlaneta;
   _tipoAlvo: 'planeta';
   _orbita: OrbitaPlaneta;
+  _linhaOrbita: Graphics;
   _anel: Graphics;
   _construcoes: Graphics;
   _visivelAoJogador: boolean;
+  _descobertoAoJogador: boolean;
 }
 
 // === Sol ===
@@ -81,6 +83,7 @@ export interface Sol extends Graphics {
   _cor: number;
   _tipoAlvo: 'sol';
   _visivelAoJogador: boolean;
+  _descobertoAoJogador: boolean;
 }
 
 // === Nave ===
@@ -159,6 +162,7 @@ export interface Mundo {
   tipoJogador: TipoJogador;
   ultimoTickMs: number;
   visaoContainer: Container;
+  orbitasContainer: Container;
   memoriaPlanetasContainer: Container;
   fontesVisao: FonteVisao[];
 }
