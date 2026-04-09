@@ -1,4 +1,4 @@
-import { Mesh, Shader, GlProgram, Geometry, Buffer, State } from 'pixi.js';
+import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State } from 'pixi.js';
 import vertexSrc from '../shaders/planeta.vert?raw';
 import fragmentSrc from '../shaders/planeta.frag?raw';
 import wgslSrc from '../shaders/planeta.wgsl?raw';
@@ -181,46 +181,58 @@ function criarQuadGeometry(): Geometry {
 
 const quadGeometry = criarQuadGeometry();
 
-const glProgram = new GlProgram({
+// Shared programs — created once, reused by all planets/stars
+const sharedGlProgram = GlProgram.from({
   vertex: vertexSrc,
   fragment: fragmentSrc,
+  name: 'planet-shader',
 });
+
+const sharedGpuProgram = GpuProgram.from({
+  vertex: { source: wgslSrc, entryPoint: 'mainVertex' },
+  fragment: { source: wgslSrc, entryPoint: 'mainFragment' },
+  name: 'planet-shader',
+});
+
+function criarUniformsPlaneta(paleta: PaletaPlaneta, seed: number, pixels: number, timeOffset: number): UniformGroup {
+  const c = paleta.colors;
+  return new UniformGroup({
+    uPixels: { value: pixels, type: 'f32' },
+    uTime: { value: timeOffset, type: 'f32' },
+    uSeed: { value: seed, type: 'f32' },
+    uRotation: { value: Math.random() * 6.28, type: 'f32' },
+    uLightOrigin: { value: new Float32Array([0.39, 0.39]), type: 'vec2<f32>' },
+    uTimeSpeed: { value: paleta.timeSpeed, type: 'f32' },
+    uDitherSize: { value: paleta.ditherSize, type: 'f32' },
+    uLightBorder1: { value: paleta.lightBorder1, type: 'f32' },
+    uLightBorder2: { value: paleta.lightBorder2, type: 'f32' },
+    uSize: { value: paleta.size, type: 'f32' },
+    uOctaves: { value: paleta.octaves, type: 'i32' },
+    uPlanetType: { value: paleta.planetType, type: 'i32' },
+    uRiverCutoff: { value: paleta.riverCutoff, type: 'f32' },
+    uLandCutoff: { value: paleta.landCutoff, type: 'f32' },
+    uCloudCover: { value: paleta.cloudCover, type: 'f32' },
+    uStretch: { value: paleta.stretch, type: 'f32' },
+    uCloudCurve: { value: paleta.cloudCurve, type: 'f32' },
+    uColors0: { value: new Float32Array(c[0]), type: 'vec4<f32>' },
+    uColors1: { value: new Float32Array(c[1]), type: 'vec4<f32>' },
+    uColors2: { value: new Float32Array(c[2]), type: 'vec4<f32>' },
+    uColors3: { value: new Float32Array(c[3]), type: 'vec4<f32>' },
+    uColors4: { value: new Float32Array(c[4]), type: 'vec4<f32>' },
+    uColors5: { value: new Float32Array(c[5]), type: 'vec4<f32>' },
+    uTiles: { value: paleta.tiles, type: 'f32' },
+    uCloudAlpha: { value: paleta.cloudAlpha, type: 'f32' },
+  });
+}
 
 function criarShaderPlaneta(tipoPlaneta: string, seed: number): Shader {
   const paleta = gerarPaletaAleatoria(tipoPlaneta);
-  const c = paleta.colors;
+  const planetUniforms = criarUniformsPlaneta(paleta, seed, 64.0, 0.0);
 
-  return Shader.from({
-    gl: { vertex: vertexSrc, fragment: fragmentSrc },
-    resources: {
-      planetUniforms: {
-        uPixels: { value: 64.0, type: 'f32' },
-        uTime: { value: 0.0, type: 'f32' },
-        uSeed: { value: seed, type: 'f32' },
-        uRotation: { value: Math.random() * 6.28, type: 'f32' },
-        uLightOrigin: { value: new Float32Array([0.39, 0.39]), type: 'vec2<f32>' },
-        uTimeSpeed: { value: paleta.timeSpeed, type: 'f32' },
-        uDitherSize: { value: paleta.ditherSize, type: 'f32' },
-        uLightBorder1: { value: paleta.lightBorder1, type: 'f32' },
-        uLightBorder2: { value: paleta.lightBorder2, type: 'f32' },
-        uSize: { value: paleta.size, type: 'f32' },
-        uOctaves: { value: paleta.octaves, type: 'i32' },
-        uPlanetType: { value: paleta.planetType, type: 'i32' },
-        uRiverCutoff: { value: paleta.riverCutoff, type: 'f32' },
-        uLandCutoff: { value: paleta.landCutoff, type: 'f32' },
-        uCloudCover: { value: paleta.cloudCover, type: 'f32' },
-        uStretch: { value: paleta.stretch, type: 'f32' },
-        uCloudCurve: { value: paleta.cloudCurve, type: 'f32' },
-        uColors0: { value: new Float32Array(c[0]), type: 'vec4<f32>' },
-        uColors1: { value: new Float32Array(c[1]), type: 'vec4<f32>' },
-        uColors2: { value: new Float32Array(c[2]), type: 'vec4<f32>' },
-        uColors3: { value: new Float32Array(c[3]), type: 'vec4<f32>' },
-        uColors4: { value: new Float32Array(c[4]), type: 'vec4<f32>' },
-        uColors5: { value: new Float32Array(c[5]), type: 'vec4<f32>' },
-        uTiles: { value: paleta.tiles, type: 'f32' },
-        uCloudAlpha: { value: paleta.cloudAlpha, type: 'f32' },
-      },
-    },
+  return new Shader({
+    gpuProgram: sharedGpuProgram,
+    glProgram: sharedGlProgram,
+    resources: { planetUniforms },
   });
 }
 
@@ -311,38 +323,12 @@ export function criarEstrelaProcedural(
     cloudAlpha: 0.0,
   };
 
-  const c = paleta.colors;
-  const shader = Shader.from({
-    gl: { vertex: vertexSrc, fragment: fragmentSrc },
-    resources: {
-      planetUniforms: {
-        uPixels: { value: 128.0, type: 'f32' },
-        uTime: { value: Math.random() * 100, type: 'f32' },
-        uSeed: { value: seed, type: 'f32' },
-        uRotation: { value: Math.random() * 6.28, type: 'f32' },
-        uLightOrigin: { value: new Float32Array([0.39, 0.39]), type: 'vec2<f32>' },
-        uTimeSpeed: { value: paleta.timeSpeed, type: 'f32' },
-        uDitherSize: { value: paleta.ditherSize, type: 'f32' },
-        uLightBorder1: { value: paleta.lightBorder1, type: 'f32' },
-        uLightBorder2: { value: paleta.lightBorder2, type: 'f32' },
-        uSize: { value: paleta.size, type: 'f32' },
-        uOctaves: { value: paleta.octaves, type: 'i32' },
-        uPlanetType: { value: 4, type: 'i32' },
-        uRiverCutoff: { value: 0.0, type: 'f32' },
-        uLandCutoff: { value: 0.0, type: 'f32' },
-        uCloudCover: { value: 0.0, type: 'f32' },
-        uStretch: { value: 1.0, type: 'f32' },
-        uCloudCurve: { value: 1.3, type: 'f32' },
-        uColors0: { value: new Float32Array(c[0]), type: 'vec4<f32>' },
-        uColors1: { value: new Float32Array(c[1]), type: 'vec4<f32>' },
-        uColors2: { value: new Float32Array(c[2]), type: 'vec4<f32>' },
-        uColors3: { value: new Float32Array(c[3]), type: 'vec4<f32>' },
-        uColors4: { value: new Float32Array(c[4]), type: 'vec4<f32>' },
-        uColors5: { value: new Float32Array(c[5]), type: 'vec4<f32>' },
-        uTiles: { value: paleta.tiles, type: 'f32' },
-        uCloudAlpha: { value: 0.0, type: 'f32' },
-      },
-    },
+  const planetUniforms = criarUniformsPlaneta(paleta, seed, 128.0, Math.random() * 100);
+
+  const shader = new Shader({
+    gpuProgram: sharedGpuProgram,
+    glProgram: sharedGlProgram,
+    resources: { planetUniforms },
   });
 
   const tamanho = raio * 2.9;

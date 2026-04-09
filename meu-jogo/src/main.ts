@@ -18,7 +18,7 @@ await app.init({
   resolution: window.devicePixelRatio || 1,
   autoDensity: true,
   antialias: true,
-  preference: 'webgl', // WebGPU pendente: Mesh com shader customizado requer bind group layout específico
+  preference: getRendererPreference() as 'webgl' | 'webgpu',
 });
 
 document.body.style.margin = '0';
