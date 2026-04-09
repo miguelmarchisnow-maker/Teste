@@ -175,8 +175,12 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     atualizarFilasPlaneta(mundo, planeta, deltaMs);
   }
 
-  atualizarTempoPlanetas([...mundo.planetas, ...mundo.sois], deltaMs);
+  // Pass all objects for time update (skips invisible ones internally)
+  atualizarTempoPlanetas(mundo.planetas, deltaMs);
+  atualizarTempoPlanetas(mundo.sois, deltaMs);
+  // Light update only for visible planets
   for (const planeta of mundo.planetas) {
+    if (!planeta.visible) continue;
     const sistema = mundo.sistemas[planeta.dados.sistemaId];
     if (sistema?.sol) {
       atualizarLuzPlaneta(planeta, sistema.sol.x, sistema.sol.y);

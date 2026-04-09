@@ -1,6 +1,7 @@
 import { Mesh, Shader, GlProgram, Geometry, Buffer, State } from 'pixi.js';
 import vertexSrc from '../shaders/planeta.vert?raw';
 import fragmentSrc from '../shaders/planeta.frag?raw';
+import wgslSrc from '../shaders/planeta.wgsl?raw';
 import { TIPO_PLANETA } from './planeta';
 
 interface PaletaPlaneta {
@@ -18,6 +19,7 @@ interface PaletaPlaneta {
   timeSpeed: number;
   ditherSize: number;
   tiles: number;
+  cloudAlpha: number;
 }
 
 
@@ -101,6 +103,7 @@ function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         timeSpeed: 0.1,
         ditherSize: jitter(3.5, 1.0),
         tiles: 1.0,
+        cloudAlpha: 0.35 + Math.random() * 0.3, // 0.35-0.65: lower=more clouds, higher=fewer
       };
     }
     case TIPO_PLANETA.MARTE: {
@@ -120,6 +123,7 @@ function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         timeSpeed: 0.4,
         ditherSize: 2.0,
         tiles: 1.0,
+        cloudAlpha: 0.0,
       };
     }
     case TIPO_PLANETA.GASOSO:
@@ -140,6 +144,7 @@ function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         timeSpeed: jitter(0.35, 0.15),
         ditherSize: 2.0,
         tiles: 1.0,
+        cloudAlpha: 0.0,
       };
     }
   }
@@ -187,6 +192,7 @@ function criarShaderPlaneta(tipoPlaneta: string, seed: number): Shader {
 
   return Shader.from({
     gl: { vertex: vertexSrc, fragment: fragmentSrc },
+    gpu: { vertex: { entryPoint: 'mainVertex', source: wgslSrc }, fragment: { entryPoint: 'mainFragment', source: wgslSrc } },
     resources: {
       planetUniforms: {
         uPixels: { value: 64.0, type: 'f32' },
@@ -213,6 +219,7 @@ function criarShaderPlaneta(tipoPlaneta: string, seed: number): Shader {
         uColors4: { value: new Float32Array(c[4]), type: 'vec4<f32>' },
         uColors5: { value: new Float32Array(c[5]), type: 'vec4<f32>' },
         uTiles: { value: paleta.tiles, type: 'f32' },
+        uCloudAlpha: { value: paleta.cloudAlpha, type: 'f32' },
       },
     },
   });
@@ -253,11 +260,12 @@ export function criarPlanetaProceduralSprite(
 export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
   const deltaSec = deltaMs / 1000;
   for (const planeta of planetas) {
+    // Only update uniforms for visible planets (off-screen ones are skipped)
+    if (!planeta.visible) continue;
     const shader = (planeta as any)._planetShader as Shader | undefined;
     if (shader) {
       const uniforms = (shader.resources as any).planetUniforms.uniforms;
       uniforms.uTime += deltaSec;
-      // Rotate each planet at its own speed
       const rotSpeed = (planeta as any)._rotSpeed ?? 0;
       uniforms.uRotation += rotSpeed * deltaSec;
     }
@@ -301,11 +309,13 @@ export function criarEstrelaProcedural(
     timeSpeed: 0.1,
     ditherSize: 2.0,
     tiles: 1.0,
+    cloudAlpha: 0.0,
   };
 
   const c = paleta.colors;
   const shader = Shader.from({
     gl: { vertex: vertexSrc, fragment: fragmentSrc },
+    gpu: { vertex: { entryPoint: 'mainVertex', source: wgslSrc }, fragment: { entryPoint: 'mainFragment', source: wgslSrc } },
     resources: {
       planetUniforms: {
         uPixels: { value: 128.0, type: 'f32' },
@@ -332,6 +342,7 @@ export function criarEstrelaProcedural(
         uColors4: { value: new Float32Array(c[4]), type: 'vec4<f32>' },
         uColors5: { value: new Float32Array(c[5]), type: 'vec4<f32>' },
         uTiles: { value: paleta.tiles, type: 'f32' },
+        uCloudAlpha: { value: 0.0, type: 'f32' },
       },
     },
   });

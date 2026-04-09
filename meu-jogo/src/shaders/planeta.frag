@@ -32,6 +32,9 @@ uniform float uCloudCurve;
 // islands
 uniform float uLandCutoff;
 
+// clouds (terran)
+uniform float uCloudAlpha; // 0=no clouds, >0=has clouds
+
 // star
 uniform float uTiles;
 
@@ -148,6 +151,35 @@ vec4 terranPlanet(vec2 uv, vec2 uvRaw) {
     if (river_fbm < fbm1 * 0.5) {
         col = uColors5;
         if (fbm4 + d_light < fbm1 * 1.5) col = uColors4;
+    }
+
+    // Cloud layer (only for terran planets with uCloudAlpha > 0)
+    if (uCloudAlpha > 0.0) {
+        // Clouds use different seed offset, slower speed, and stretched UVs
+        vec2 cloudUV = uv; // already spherified and rotated
+        cloudUV.y += smoothstep(0.0, 1.3, abs(cloudUV.x - 0.4));
+
+        // Use cloudAlpha with slightly different params for cloud pattern
+        float cTime = uTime * uTimeSpeed * 0.5; // clouds move slower
+        float c_noise = 0.0;
+        for (int ci = 0; ci < 9; ci++) {
+            c_noise += circleNoise((cloudUV * uSize * 0.3) + (float(ci + 1) + 10.0) + vec2(cTime, 0.0));
+        }
+        float cloudFbm = fbm(cloudUV * uSize + c_noise + vec2(cTime, 0.0));
+
+        float cloudMask = step(uCloudAlpha, cloudFbm);
+
+        if (cloudMask > 0.0) {
+            // Cloud colors: white in light, grey in shadow, dark in deep shadow
+            // Based on Godot .tscn: (0.96,1,0.91), (0.87,0.88,0.91), (0.41,0.44,0.6), (0.25,0.29,0.45)
+            float d_cloud_light = distance(spherify(floor(vUV * uPixels) / uPixels), uLightOrigin);
+            vec4 cloudCol = vec4(0.96, 1.0, 0.91, 1.0);
+            if (cloudFbm < uCloudAlpha + 0.03) cloudCol = vec4(0.87, 0.88, 0.91, 1.0);
+            if (d_cloud_light + cloudFbm * 0.2 > 0.52) cloudCol = vec4(0.41, 0.44, 0.60, 1.0);
+            if (d_cloud_light + cloudFbm * 0.2 > 0.62) cloudCol = vec4(0.25, 0.29, 0.45, 1.0);
+
+            col = cloudCol;
+        }
     }
 
     return vec4(col.rgb, a * col.a);
