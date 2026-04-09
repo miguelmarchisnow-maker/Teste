@@ -1,12 +1,13 @@
-import { Container, Graphics, Text, Assets, Texture, AnimatedSprite } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { Application, TipoJogador } from '../types';
-import { criarFramesSpriteStrip, SPRITE_PLANETA_POR_TIPO, TIPO_PLANETA } from '../world/planeta';
+import { TIPO_PLANETA } from '../world/planeta';
+import { criarPlanetaProceduralSprite } from '../world/planeta-procedural';
 
 interface AnimatedCard extends Container {
   _baseY: number;
   _animDelay: number;
   _animDone: boolean;
-  _planeta: AnimatedSprite;
+  _planeta: Container;
 }
 
 const W95 = {
@@ -49,14 +50,7 @@ export function getTipos(): TipoJogador[] {
   return TIPOS;
 }
 
-async function carregarFramesPlaneta(): Promise<Texture[]> {
-  const texture: Texture = await Assets.load(SPRITE_PLANETA_POR_TIPO[TIPO_PLANETA.COMUM]);
-  texture.source.scaleMode = 'nearest';
-  return criarFramesSpriteStrip(texture);
-}
-
 export async function criarTelaSelecao(app: Application): Promise<TipoJogador> {
-  const frames = await carregarFramesPlaneta();
   return new Promise<TipoJogador>((resolve) => {
 
     const overlay = new Container();
@@ -151,14 +145,7 @@ export async function criarTelaSelecao(app: Application): Promise<TipoJogador> {
       planetField.moveTo(largCard / 2 + 45, 20).lineTo(largCard / 2 + 45, 110).lineTo(largCard / 2 - 45, 110).stroke({ color: W95.bgLight, width: 1 });
       card.addChild(planetField);
 
-      const planeta = new AnimatedSprite(frames);
-      planeta.anchor.set(0.5);
-      planeta.x = largCard / 2;
-      planeta.y = 65;
-      planeta.width = 70;
-      planeta.height = 70;
-      planeta.animationSpeed = 0.05 + i * 0.012;
-      planeta.gotoAndPlay(i * 10);
+      const planeta = criarPlanetaProceduralSprite(largCard / 2, 65, 70, TIPO_PLANETA.COMUM, 1.0 + i * 2.5);
       planeta.tint = tipo.cor;
       card.addChild(planeta);
 
@@ -252,10 +239,6 @@ export async function criarTelaSelecao(app: Application): Promise<TipoJogador> {
           dialog.y += 2;
           if (closeAlpha <= 0) {
             app.ticker.remove(closeTicker);
-            overlay.children.forEach((c) => {
-              if ((c as AnimatedCard)._planeta) (c as AnimatedCard)._planeta.stop();
-            });
-            planeta.stop();
             app.stage.removeChild(overlay);
             resolve(tipo);
           }

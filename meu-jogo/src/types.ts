@@ -1,5 +1,4 @@
-import type { Container, Graphics, AnimatedSprite, Application, Texture } from 'pixi.js';
-import type { TexturasPlaneta } from './world/planeta';
+import type { Container, Graphics, AnimatedSprite, Sprite, Filter, Application, Texture } from 'pixi.js';
 
 // === Recursos ===
 export interface Recursos {
@@ -67,7 +66,7 @@ export interface OrbitaPlaneta {
   velocidade: number;
 }
 
-export interface Planeta extends AnimatedSprite {
+export interface Planeta extends Container {
   dados: DadosPlaneta;
   _tipoAlvo: 'planeta';
   _orbita: OrbitaPlaneta;
@@ -76,15 +75,17 @@ export interface Planeta extends AnimatedSprite {
   _construcoes: Graphics;
   _visivelAoJogador: boolean;
   _descobertoAoJogador: boolean;
+  _planetFilter: Filter;
 }
 
 // === Sol ===
-export interface Sol extends AnimatedSprite {
+export interface Sol extends Container {
   _raio: number;
   _cor: number;
   _tipoAlvo: 'sol';
   _visivelAoJogador: boolean;
   _descobertoAoJogador: boolean;
+  _planetShader?: any;
 }
 
 // === Nave ===
@@ -162,7 +163,6 @@ export interface Mundo {
   frotasContainer: Container;
   navesContainer: Container;
   rotasContainer: Container;
-  planetaSheet: TexturasPlaneta;
   tipoJogador: TipoJogador;
   ultimoTickMs: number;
   visaoContainer: Container;

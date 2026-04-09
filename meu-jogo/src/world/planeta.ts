@@ -3,14 +3,12 @@ import { Assets, AnimatedSprite, Rectangle, Texture } from 'pixi.js';
 export const TIPO_PLANETA: Record<string, string> = {
   COMUM: 'comum',
   MARTE: 'marte',
-  ROXO: 'roxo',
   GASOSO: 'gasoso',
 };
 
 export const SPRITE_PLANETA_POR_TIPO: Record<string, string> = {
   [TIPO_PLANETA.COMUM]: '/assets/planeta-comum.png',
   [TIPO_PLANETA.MARTE]: '/assets/planeta-rochoso.png',
-  [TIPO_PLANETA.ROXO]: '/assets/planeta-habitavel.png',
   [TIPO_PLANETA.GASOSO]: '/assets/planeta-gasoso.png',
 };
 
@@ -24,8 +22,6 @@ export function nomeTipoPlaneta(tipo: string): string {
       return 'Comum';
     case TIPO_PLANETA.MARTE:
       return 'Marte';
-    case TIPO_PLANETA.ROXO:
-      return 'Roxo';
     case TIPO_PLANETA.GASOSO:
       return 'Gasoso';
     default:

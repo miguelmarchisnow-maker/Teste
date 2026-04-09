@@ -1,8 +1,8 @@
-import { Assets, AnimatedSprite, Container, Graphics, Texture } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import type { Sol, Planeta, Sistema } from '../types';
 import { DIST_MIN_SISTEMA } from './constantes';
-import { criarFramesSpriteStrip, criarPlanetaSprite, TIPO_PLANETA } from './planeta';
-import type { TexturasPlaneta } from './planeta';
+import { TIPO_PLANETA } from './planeta';
+import { criarPlanetaProceduralSprite, criarEstrelaProcedural } from './planeta-procedural';
 import { criarEstadoPesquisas } from './pesquisa';
 
 function sortearTipoPlaneta(): string {
@@ -10,44 +10,20 @@ function sortearTipoPlaneta(): string {
   return tipos[Math.floor(Math.random() * tipos.length)];
 }
 
-let texturaSolPromise: Promise<Texture[]> | null = null;
-
-async function carregarTexturaSol(): Promise<Texture[]> {
-  if (!texturaSolPromise) {
-    texturaSolPromise = Assets.load('/assets/estrela.png').then((texture: Texture) => {
-      texture.source.scaleMode = 'nearest';
-      return criarFramesSpriteStrip(texture, 128, 128);
-    });
-  }
-  return texturaSolPromise;
-}
-
-function criarSol(x: number, y: number, raio: number, cor: number, frames: Texture[]): Sol {
-  const sol = new AnimatedSprite(frames) as Sol;
-  sol.x = x;
-  sol.y = y;
-  sol._raio = raio;
-  sol._cor = cor;
-  sol._tipoAlvo = 'sol';
-  sol._visivelAoJogador = false;
-  sol._descobertoAoJogador = false;
-  sol.anchor.set(0.5);
-  sol.width = raio * 2.9;
-  sol.height = raio * 2.9;
-  sol.tint = 0xffffff;
-  sol.animationSpeed = 0.10;
-  sol.gotoAndPlay(Math.floor(Math.random() * frames.length));
-  return sol;
-}
-
-export async function criarSistemaSolar(container: Container, orbitasContainer: Container, planetaSheet: TexturasPlaneta, centroX: number, centroY: number, indiceSistema: number): Promise<Sistema> {
+export function criarSistemaSolar(container: Container, orbitasContainer: Container, centroX: number, centroY: number, indiceSistema: number): Sistema {
   const corSol = [0xffd166, 0xffb703, 0xfff1a8, 0xf4a261][indiceSistema % 4];
   const quantidadePlanetas = 1 + Math.floor(Math.random() * 5);
   const tamanhosPlaneta = Array.from({ length: quantidadePlanetas }, () => 140 + Math.random() * 170);
   const maiorPlaneta = Math.max(...tamanhosPlaneta);
-  const raioSol = Math.max(110 + Math.random() * 60, maiorPlaneta * 0.7);
-  const texturaSol = await carregarTexturaSol();
-  const sol = criarSol(centroX, centroY, raioSol, corSol, texturaSol);
+  const raioSol = Math.max(110 + Math.random() * 60, maiorPlaneta * 1.5);
+
+  const solMesh = criarEstrelaProcedural(centroX, centroY, raioSol);
+  const sol = solMesh as unknown as Sol;
+  sol._raio = raioSol;
+  sol._cor = corSol;
+  sol._tipoAlvo = 'sol';
+  sol._visivelAoJogador = false;
+  sol._descobertoAoJogador = false;
   sol.visible = false;
   container.addChild(sol);
 
@@ -59,7 +35,7 @@ export async function criarSistemaSolar(container: Container, orbitasContainer: 
   for (let i = 0; i < quantidadePlanetas; i++) {
     const tamanho = tamanhosPlaneta[i];
     const raioPlaneta = tamanho / 2;
-    const distanciaMinDoSol = raioSol + raioPlaneta + 220;
+    const distanciaMinDoSol = raioSol * 1.5 + raioPlaneta + 220;
     const distanciaMinDoAnterior = ultimoRaioOrbita + ultimoRaioPlaneta + raioPlaneta + margemEntreOrbital;
     const baseOrbita = i === 0 ? distanciaMinDoSol : Math.max(distanciaMinDoSol, distanciaMinDoAnterior);
     const raioOrbita = baseOrbita + Math.random() * 70;
@@ -74,13 +50,14 @@ export async function criarSistemaSolar(container: Container, orbitasContainer: 
       alpha: 0.3,
     });
     orbitasContainer.addChild(linhaOrbita);
-    const p = criarPlanetaSprite(
-      planetaSheet,
+
+    const sprite = criarPlanetaProceduralSprite(
       centroX + Math.cos(anguloInicial) * raioOrbita,
       centroY + Math.sin(anguloInicial) * raioOrbita,
       tamanho,
-      tipoPlaneta
-    ) as unknown as Planeta;
+      tipoPlaneta,
+    );
+    const p = sprite as unknown as Planeta;
 
     p.dados = {
       dono: 'neutro',
@@ -113,6 +90,7 @@ export async function criarSistemaSolar(container: Container, orbitasContainer: 
     p._linhaOrbita = linhaOrbita;
     p._visivelAoJogador = false;
     p._descobertoAoJogador = false;
+    p._planetFilter = (sprite as any)._planetFilter;
 
     const anel = new Graphics();
     p.addChild(anel);

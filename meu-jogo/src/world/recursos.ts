@@ -8,7 +8,6 @@ export function obterProducaoNaturalCiclo(planeta: Planeta): Recursos {
   switch (tipo) {
     case TIPO_PLANETA.COMUM: return { comum: 1 + infra, raro: 1, combustivel: 1 };
     case TIPO_PLANETA.MARTE: return { comum: 0.5, raro: 0.5, combustivel: 0.5 };
-    case TIPO_PLANETA.ROXO: return { comum: 2, raro: 3, combustivel: 1 };
     case TIPO_PLANETA.GASOSO: return { comum: 0, raro: 0, combustivel: 7 };
     default: return { comum: 1 + infra, raro: 1, combustivel: 1 };
   }

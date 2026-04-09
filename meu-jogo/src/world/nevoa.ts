@@ -1,10 +1,7 @@
-import { Container, Graphics, Text, AnimatedSprite } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { Planeta, Mundo, FonteVisao, Camera } from '../types';
-import {
-  aplicarAparenciaTipoPlaneta,
-  criarPlanetaSprite,
-  nomeTipoPlaneta,
-} from './planeta';
+import { nomeTipoPlaneta } from './planeta';
+import { criarPlanetaProceduralSprite } from './planeta-procedural';
 
 interface MemoriaPlanetaDados {
   dono: string;
@@ -27,7 +24,7 @@ interface MemoriaPlanetaSnapshot {
 interface MemoriaPlaneta {
   conhecida: boolean;
   visual: Container;
-  fantasma: AnimatedSprite;
+  fantasma: Container;
   anel: Graphics;
   infoBg: Graphics;
   info: Text;
@@ -51,7 +48,7 @@ function capturarMemoriaPlaneta(planeta: Planeta): MemoriaPlanetaSnapshot {
   return {
     x: planeta.x,
     y: planeta.y,
-    frame: planeta.currentFrame ?? 0,
+    frame: 0,
     timestamp: performance.now(),
     dados: {
       dono: planeta.dados.dono,
@@ -99,17 +96,13 @@ export function criarMemoriaVisualPlaneta(mundo: Mundo, planeta: Planeta): void 
   container.eventMode = 'none';
   container.alpha = 0;
 
-  const fantasma = criarPlanetaSprite(
-    mundo.planetaSheet,
+  const fantasma = criarPlanetaProceduralSprite(
     0,
     0,
     planeta.dados.tamanho,
-    planeta.dados.tipoPlaneta
+    planeta.dados.tipoPlaneta,
   );
   fantasma.alpha = ALPHA_FANTASMA;
-  fantasma.animationSpeed = 0;
-  fantasma.gotoAndStop(planeta.currentFrame ?? 0);
-  fantasma.anchor.set(0.5);
   container.addChild(fantasma);
 
   const anel = new Graphics();
@@ -167,9 +160,7 @@ function redesenharVisualMemoria(memoria: MemoriaPlaneta): void {
 
   memoria.fantasma.width = tamanho;
   memoria.fantasma.height = tamanho;
-  memoria.fantasma.gotoAndStop(dados.frame ?? 0);
   memoria.fantasma.alpha = ALPHA_FANTASMA;
-  aplicarAparenciaTipoPlaneta(memoria.fantasma, dados.dados.tipoPlaneta);
 
   memoria.anel.clear();
   const larguraAnel = 1.1;

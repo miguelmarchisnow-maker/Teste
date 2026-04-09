@@ -2,7 +2,8 @@ import { Container } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import type { Mundo, Planeta, Sol, Nave, Camera, TipoJogador } from '../types';
 import { criarFundo, atualizarFundo } from './fundo';
-import { aplicarAparenciaTipoPlaneta, criarPlaneta, TIPO_PLANETA } from './planeta';
+import { TIPO_PLANETA } from './planeta';
+import { atualizarTempoPlanetas, atualizarLuzPlaneta } from './planeta-procedural';
 import { criarCamadaMemoria, criarMemoriaVisualPlaneta, registrarMemoriaPlaneta, atualizarVisibilidadeMemoria, atualizarEscalaLabelMemoria } from './nevoa';
 import { criarSistemaSolar } from './sistema';
 import { atualizarNaves, atualizarSelecaoNave } from './naves';
@@ -79,7 +80,6 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
   const fundo = criarFundo(tamanho);
   container.addChild(fundo);
 
-  const planetaSheet = await criarPlaneta();
   const planetas: Planeta[] = [];
   const sistemas: import('../types').Sistema[] = [];
   const sois: Sol[] = [];
@@ -96,7 +96,7 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
 
   const totalSistemas = 18;
   let tentativasSistema = 0;
-  const DIST_MIN = 2800;
+  const DIST_MIN = 4500;
   while (sistemas.length < totalSistemas && tentativasSistema < totalSistemas * 20) {
     tentativasSistema++;
     const x = 1600 + Math.random() * (tamanho - 3200);
@@ -113,7 +113,7 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
     }
     if (muitoPerto) continue;
 
-    const sistema = await criarSistemaSolar(container, orbitasContainer, planetaSheet, x, y, sistemas.length);
+    const sistema = criarSistemaSolar(container, orbitasContainer, x, y, sistemas.length);
     sistemas.push(sistema);
     sois.push(sistema.sol);
     planetas.push(...sistema.planetas);
@@ -125,15 +125,13 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
   container.addChild(memoriaPlanetasContainer);
 
   if (!planetas.some((p) => p.dados.tipoPlaneta === TIPO_PLANETA.COMUM) && planetas.length > 0) {
-    const p = planetas[0];
-    p.dados.tipoPlaneta = TIPO_PLANETA.COMUM;
-    aplicarAparenciaTipoPlaneta(p, TIPO_PLANETA.COMUM);
+    planetas[0].dados.tipoPlaneta = TIPO_PLANETA.COMUM;
   }
 
   const mundo = {
     container, tamanho, planetas, sistemas, sois,
     naves: [] as Nave[], fundo, frotas, frotasContainer, navesContainer, rotasContainer,
-    planetaSheet, tipoJogador,
+    tipoJogador,
     ultimoTickMs: performance.now(),
     visaoContainer, orbitasContainer, memoriaPlanetasContainer,
     fontesVisao: [] as import('../types').FonteVisao[],
@@ -177,6 +175,18 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     atualizarFilasPlaneta(mundo, planeta, deltaMs);
   }
 
+  // Pass all objects for time update (skips invisible ones internally)
+  atualizarTempoPlanetas(mundo.planetas, deltaMs);
+  atualizarTempoPlanetas(mundo.sois, deltaMs);
+  // Light update only for visible planets
+  for (const planeta of mundo.planetas) {
+    if (!planeta.visible) continue;
+    const sistema = mundo.sistemas[planeta.dados.sistemaId];
+    if (sistema?.sol) {
+      atualizarLuzPlaneta(planeta, sistema.sol.x, sistema.sol.y);
+    }
+  }
+
   atualizarNaves(mundo, deltaMs);
   profileAcumular('logica', t);
 
@@ -202,8 +212,6 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   for (const planeta of mundo.planetas) {
     const visNaTela = planeta.x > esq && planeta.x < dir && planeta.y > cima && planeta.y < baixo;
     const vis = visNaTela && planeta._visivelAoJogador;
-    if (vis && !planeta.visible) planeta.play();
-    else if (!vis && planeta.visible) planeta.stop();
     planeta.visible = vis;
 
     const raioOrbita = planeta._orbita.raio;
@@ -238,8 +246,6 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     const visNaTela = sol.x > esq && sol.x < dir && sol.y > cima && sol.y < baixo;
     sol.visible = visNaTela && (sol._visivelAoJogador || sol._descobertoAoJogador);
     sol.alpha = sol._visivelAoJogador ? 1 : 0.28;
-    if (sol.visible && !sol.playing) sol.play();
-    if (!sol.visible && sol.playing) sol.stop();
   }
 
   for (const nave of mundo.naves) {
