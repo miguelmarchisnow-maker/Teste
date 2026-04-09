@@ -202,9 +202,9 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     const mouseWorld = screenToWorld(e.clientX, e.clientY, app);
 
     if (e.deltaY < 0) {
-      camera.zoom = Math.min(2.0, camera.zoom * 1.1);
+      camera.zoom = camera.zoom * 1.1;
     } else {
-      camera.zoom = Math.max(0.3, camera.zoom / 1.1);
+      camera.zoom = camera.zoom / 1.1;
     }
 
     camera.x = mouseWorld.x - (e.clientX - app.screen.width / 2) / camera.zoom;
