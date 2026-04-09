@@ -96,7 +96,7 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
 
   const totalSistemas = 18;
   let tentativasSistema = 0;
-  const DIST_MIN = 2800;
+  const DIST_MIN = 4500;
   while (sistemas.length < totalSistemas && tentativasSistema < totalSistemas * 20) {
     tentativasSistema++;
     const x = 1600 + Math.random() * (tamanho - 3200);

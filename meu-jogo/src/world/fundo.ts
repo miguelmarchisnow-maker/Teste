@@ -26,7 +26,7 @@ function gerarTile(w: number, h: number, seed: number): Texture {
   let s = seed;
   const rand = (): number => { s = (s * 16807 + 0) % 2147483647; return s / 2147483647; };
 
-  const estrelas = 180;
+  const estrelas = Math.floor(180 * (w / TILE) * (h / TILE));
   for (let i = 0; i < estrelas; i++) {
     const x = rand() * w;
     const y = rand() * h;

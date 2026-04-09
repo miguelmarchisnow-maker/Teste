@@ -35,7 +35,7 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
   for (let i = 0; i < quantidadePlanetas; i++) {
     const tamanho = tamanhosPlaneta[i];
     const raioPlaneta = tamanho / 2;
-    const distanciaMinDoSol = raioSol + raioPlaneta + 220;
+    const distanciaMinDoSol = raioSol * 1.5 + raioPlaneta + 220;
     const distanciaMinDoAnterior = ultimoRaioOrbita + ultimoRaioPlaneta + raioPlaneta + margemEntreOrbital;
     const baseOrbita = i === 0 ? distanciaMinDoSol : Math.max(distanciaMinDoSol, distanciaMinDoAnterior);
     const raioOrbita = baseOrbita + Math.random() * 70;
