@@ -17,22 +17,19 @@ function injectStyles(): void {
 
   const style = document.createElement('style');
   style.textContent = `
+    /* Full-screen centering container. Transparent so the world behind
+       the menu stays visible. The actual visual is the card inside. */
     .loading-screen {
       position: fixed;
       inset: 0;
       z-index: 600;
-      background: rgba(0, 0, 0, 0.55);
-      backdrop-filter: blur(2px);
-      -webkit-backdrop-filter: blur(2px);
-      color: var(--hud-text);
-      font-family: var(--hud-font);
       display: flex;
       align-items: center;
       justify-content: center;
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
-      transition: opacity 300ms ease-out, visibility 0s linear 300ms;
+      transition: opacity 260ms ease-out, visibility 0s linear 260ms;
     }
 
     .loading-screen.visible {
@@ -42,44 +39,65 @@ function injectStyles(): void {
       transition: opacity 200ms ease-out, visibility 0s linear 0s;
     }
 
+    /* A compact HUD-panel card: same tokens as ship-panel / colony-modal. */
+    .loading-card {
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      border-radius: var(--hud-radius);
+      box-shadow: var(--hud-shadow);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      padding: calc(var(--hud-unit) * 1.1) calc(var(--hud-unit) * 1.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.75);
+      font-family: var(--hud-font);
+      color: var(--hud-text);
+      min-width: calc(var(--hud-unit) * 14);
+    }
+
     .loading-label {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 1);
-      letter-spacing: 0.22em;
+      font-size: calc(var(--hud-unit) * 0.85);
+      letter-spacing: 0.18em;
       text-transform: uppercase;
       color: var(--hud-text);
       line-height: 1;
-      display: inline-flex;
-      align-items: baseline;
     }
 
-    /* Three dots that fill in sequentially, hold, then reset. */
-    .loading-dots {
-      display: inline-block;
-      margin-left: calc(var(--hud-unit) * 0.3);
-      width: calc(var(--hud-unit) * 1.2);
-      text-align: left;
-      font-family: inherit;
-      color: var(--hud-text);
+    /* Thin underline bar that slides a bright indicator back and forth. */
+    .loading-bar {
+      width: 100%;
+      height: 2px;
+      background: var(--hud-line);
+      position: relative;
+      overflow: hidden;
     }
 
-    .loading-dots::after {
+    .loading-bar::before {
       content: '';
-      animation: loading-dots 1.4s steps(4, end) infinite;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -30%;
+      width: 30%;
+      background: var(--hud-text);
+      animation: loading-bar-slide 1.6s ease-in-out infinite;
     }
 
-    @keyframes loading-dots {
-      0%   { content: ''; }
-      25%  { content: '.'; }
-      50%  { content: '..'; }
-      75%  { content: '...'; }
-      100% { content: ''; }
+    @keyframes loading-bar-slide {
+      0%   { left: -30%; }
+      50%  { left: 100%; }
+      100% { left: 100%; }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .loading-dots::after {
+      .loading-bar::before {
         animation: none;
-        content: '...';
+        left: 0;
+        width: 100%;
+        opacity: 0.4;
       }
     }
   `;
@@ -93,19 +111,20 @@ export function criarLoadingScreen(): HTMLDivElement {
   const container = document.createElement('div');
   container.className = 'loading-screen';
 
-  const label = document.createElement('div');
+  const card = document.createElement('div');
+  card.className = 'loading-card';
+
+  const label = document.createElement('span');
   label.className = 'loading-label';
+  label.textContent = 'Criando mundo';
+  _labelEl = label;
+  card.appendChild(label);
 
-  const labelText = document.createElement('span');
-  labelText.textContent = 'Criando mundo';
-  _labelEl = labelText;
-  label.appendChild(labelText);
+  const bar = document.createElement('div');
+  bar.className = 'loading-bar';
+  card.appendChild(bar);
 
-  const dots = document.createElement('span');
-  dots.className = 'loading-dots';
-  label.appendChild(dots);
-
-  container.appendChild(label);
+  container.appendChild(card);
 
   document.body.appendChild(container);
   _container = container;
