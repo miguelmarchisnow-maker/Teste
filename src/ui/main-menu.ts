@@ -268,7 +268,7 @@ function buildMainScreen(): HTMLDivElement {
 
   const title = document.createElement('h1');
   title.className = 'menu-title';
-  title.textContent = 'Orbital';
+  title.textContent = 'Orbital Wydra';
   screen.appendChild(title);
 
   const subtitle = document.createElement('div');
