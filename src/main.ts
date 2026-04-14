@@ -17,9 +17,18 @@ import { criarShipPanel, atualizarShipPanel } from './ui/ship-panel';
 import { criarColonizerPanel, atualizarColonizerPanel } from './ui/colonizer-panel';
 import { criarColonyModal, atualizarColonyModal } from './ui/colony-modal';
 import { criarConfirmDialog } from './ui/confirm-dialog';
+import { criarMainMenu, esconderMainMenu } from './ui/main-menu';
 import { somVitoria, somDerrota } from './audio/som';
 
+// Top-level references shared across bootstrap and iniciarJogo.
+let _app: Application | null = null;
+let _hudInstalled = false;
+let _gameStarted = false;
+
 async function bootstrap(): Promise<void> {
+  // Install HUD CSS tokens up front so the main menu can use them.
+  installRootVariables();
+
   const app = new Application();
   await app.init({
     width: window.innerWidth,
@@ -38,37 +47,63 @@ async function bootstrap(): Promise<void> {
     app.renderer.resize(window.innerWidth, window.innerHeight);
   });
 
+  _app = app;
+
+  // Show the main menu. The actual game starts when the player clicks
+  // "Novo Jogo" or picks a save.
+  criarMainMenu({
+    onNewGame: () => {
+      void iniciarJogo();
+    },
+    onLoadGame: (_saveId: string) => {
+      // Phase 2 — save/load not implemented yet. For now a load just
+      // starts a fresh world.
+      void iniciarJogo();
+    },
+  });
+}
+
+async function iniciarJogo(): Promise<void> {
+  if (!_app || _gameStarted) return;
+  _gameStarted = true;
+
+  const app = _app;
+  esconderMainMenu();
+
   const tipoEscolhido = getTipos()[0];
   setTipoJogador();
 
   const mundo = await criarMundo(app, tipoEscolhido) as unknown as Mundo;
   app.stage.addChild(mundo.container);
 
-  const planetaJogador = mundo.planetas.find(p => p.dados.dono === 'jogador');
+  const planetaJogador = mundo.planetas.find((p) => p.dados.dono === 'jogador');
   if (planetaJogador) setCameraPos(planetaJogador.x, planetaJogador.y);
 
   configurarCamera(app, mundo);
 
-  installRootVariables();
-  criarEmpireBadge('Valorian Empire', 24);
-  criarCreditsBar(43892);
-  criarResourceBar();
-  criarChatLog();
-  criarSidebar();
+  if (!_hudInstalled) {
+    _hudInstalled = true;
+    criarEmpireBadge('Valorian Empire', 24);
+    criarCreditsBar(43892);
+    criarResourceBar();
+    criarChatLog();
+    criarSidebar();
+    criarPlanetPanel();
+    criarBuildPanel();
+    criarShipPanel();
+    criarColonizerPanel();
+    criarColonyModal();
+    criarConfirmDialog();
+  }
+
   criarMinimap(app, mundo);
-  criarPlanetPanel();
-  criarBuildPanel();
-  criarShipPanel();
-  criarColonizerPanel();
-  criarColonyModal();
-  criarConfirmDialog();
   onMinimapClick((worldX, worldY) => {
     setCameraPos(worldX, worldY);
   });
   onMinimapZoomIn(() => zoomIn());
   onMinimapZoomOut(() => zoomOut());
 
-  // Keyboard shortcuts for zoom
+  // Keyboard shortcuts for zoom (installed once)
   window.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
