@@ -1,9 +1,75 @@
-import { Graphics } from 'pixi.js';
+import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Nave, Mundo, Planeta, Sol, AlvoPonto, AcaoNaveParsed, Recursos } from '../types';
-import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, formatarId } from './constantes';
+import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, TEMPO_SURVEY_MS, formatarId } from './constantes';
 import { cheats } from '../ui/debug';
 import { notifColonizacao, mostrarNotificacao } from '../ui/notificacao';
 import { somConquista } from '../audio/som';
+import { revelarSistemaCompleto } from './visao';
+
+// ─── Spritesheet loading ────────────────────────────────────────────────────
+
+const SHIPS_SHEET_PATH = 'assets/ships.png';
+const SHIP_SPRITE_CELL = 96;
+
+// Row per ship type within ships.png
+const SHIP_SHEET_ROW: Record<string, number> = {
+  colonizadora: 0,
+  cargueira: 1,
+  batedora: 2,
+  torreta: 3,
+};
+
+// Display size per ship type in world pixels (base size; some ships render bigger)
+const SHIP_DISPLAY_SIZE: Record<string, number> = {
+  colonizadora: 48,
+  cargueira: 36,
+  batedora: 32,
+  torreta: 32,
+};
+
+let _shipsTexture: Texture | null = null;
+const _frameCache = new Map<string, Texture>();
+// Ships created before the sheet finishes loading are queued here so we can
+// swap their placeholder texture once it's ready.
+const _pendingSprites: Array<{ sprite: Sprite; tipo: string; tier: number }> = [];
+
+export async function carregarSpritesheetNaves(): Promise<void> {
+  if (_shipsTexture) return;
+  const tex: Texture = await Assets.load(SHIPS_SHEET_PATH);
+  tex.source.scaleMode = 'nearest';
+  _shipsTexture = tex;
+  for (const { sprite, tipo, tier } of _pendingSprites) {
+    sprite.texture = getShipFrame(tipo, tier);
+  }
+  _pendingSprites.length = 0;
+}
+
+function getShipFrame(tipo: string, tier: number): Texture {
+  if (!_shipsTexture) return Texture.EMPTY;
+  const row = SHIP_SHEET_ROW[tipo] ?? 0;
+  // Colonizadora has only 1 column; everything else is tier-1 = col 0..col 4.
+  const col = tipo === 'colonizadora' ? 0 : Math.max(0, Math.min(4, tier - 1));
+  const key = `${row},${col}`;
+  const cached = _frameCache.get(key);
+  if (cached) return cached;
+  const frame = new Texture({
+    source: _shipsTexture.source,
+    frame: new Rectangle(col * SHIP_SPRITE_CELL, row * SHIP_SPRITE_CELL, SHIP_SPRITE_CELL, SHIP_SPRITE_CELL),
+  });
+  _frameCache.set(key, frame);
+  return frame;
+}
+
+function criarShipSprite(tipo: string, tier: number): Sprite {
+  const tex = _shipsTexture ? getShipFrame(tipo, tier) : Texture.EMPTY;
+  const sprite = new Sprite(tex);
+  sprite.anchor.set(0.5);
+  const displaySize = SHIP_DISPLAY_SIZE[tipo] ?? 32;
+  sprite.width = displaySize;
+  sprite.height = displaySize;
+  if (!_shipsTexture) _pendingSprites.push({ sprite, tipo, tier });
+  return sprite;
+}
 
 const COR_ROTA_NAVE = 0x27465f;
 const COR_PONTO_ROTA_NAVE = 0x3d6888;
@@ -110,25 +176,31 @@ function processarLoopCargueira(nave: Nave): void {
 }
 
 function desenharNaveGfx(nave: Nave): void {
-  const g = nave.gfx;
-  const tipo = nave.tipo || 'colonizadora';
-  const tier = nave.tier || 1;
-  const sel = nave.selecionado ? 0.95 : 0;
-  g.clear();
-  if (tipo === 'colonizadora') {
-    g.poly([0, -10, 8, 8, 0, 4, -8, 8]).fill({ color: 0xffffff, alpha: 0.95 });
-  } else if (tipo === 'cargueira') {
-    const w = 10 + tier * 1.2;
-    g.roundRect(-w, -7, w * 2, 14, 2).fill({ color: 0xa8d4ff, alpha: 0.95 });
-    g.rect(-w * 0.4, -4, w * 0.8, 5).fill({ color: 0x446688, alpha: 0.9 });
-  } else if (tipo === 'batedora') {
-    g.poly([0, -9, 10, 0, 0, 9, -6, 0]).fill({ color: 0xffcc66, alpha: 0.95 });
-  } else if (tipo === 'torreta') {
-    const s = 5 + tier * 0.6;
-    g.rect(-s, -s, s * 2, s * 2).fill({ color: 0xff6666, alpha: 0.95 });
-    g.circle(0, 0, 3).fill({ color: 0xffaaaa, alpha: 0.95 });
+  // Redraws the ring overlay. The sprite itself never needs to be re-rendered.
+  // Called on selection change (static) and each frame while survey is active
+  // (animated pulse). Inexpensive — just one or two circle strokes.
+  const ring = nave._ring;
+  if (!ring) return;
+  ring.clear();
+  const baseRadius = (SHIP_DISPLAY_SIZE[nave.tipo] ?? 32) * 0.55;
+
+  if (nave.estado === 'fazendo_survey' && nave.surveyTempoTotalMs) {
+    const progress = 1 - (nave.surveyTempoRestanteMs ?? 0) / nave.surveyTempoTotalMs;
+    // Outer pulse radius grows then resets 2x during the survey window.
+    const pulse = (performance.now() / 400) % 1;
+    const pulseRadius = baseRadius * (1 + pulse * 2.5);
+    const pulseAlpha = (1 - pulse) * 0.55;
+    ring.circle(0, 0, pulseRadius).stroke({ color: 0x8ce0ff, width: 1.2, alpha: pulseAlpha });
+    // Progress arc at a fixed outer ring.
+    const arcRadius = baseRadius * 1.8;
+    ring.circle(0, 0, arcRadius).stroke({ color: 0x8ce0ff, width: 1, alpha: 0.25 });
+    ring.arc(0, 0, arcRadius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2)
+      .stroke({ color: 0x8ce0ff, width: 2, alpha: 0.9 });
   }
-  g.circle(0, 0, 14).stroke({ color: 0x44aaff, width: 1.2, alpha: sel });
+
+  if (nave.selecionado) {
+    ring.circle(0, 0, baseRadius).stroke({ color: 0x44aaff, width: 1.4, alpha: 0.95 });
+  }
 }
 
 function desenharRotaNave(nave: Nave): void {
@@ -174,6 +246,11 @@ export function entrarEmOrbita(nave: Nave, alvo: Planeta | Sol | AlvoPonto): voi
 }
 
 export function criarNave(mundo: Mundo, planetaOrigem: Planeta, tipo: string, tier: number = 1): Nave {
+  const gfxContainer = new Container();
+  const sprite = criarShipSprite(tipo, tier);
+  const ring = new Graphics();
+  gfxContainer.addChild(sprite, ring);
+
   const nave: Nave = {
     id: formatarId('nave'),
     tipo, tier,
@@ -187,10 +264,12 @@ export function criarNave(mundo: Mundo, planetaOrigem: Planeta, tipo: string, ti
     configuracaoCarga: criarCargaVazia(),
     rotaManual: [],
     rotaCargueira: null,
-    gfx: new Graphics(),
+    gfx: gfxContainer,
     rotaGfx: new Graphics(),
     _tipoAlvo: 'nave',
     orbita: null,
+    _sprite: sprite,
+    _ring: ring,
   };
   atualizarSelecaoNave(nave);
   nave.rotaGfx.eventMode = 'none';
@@ -223,8 +302,10 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
       const velReal = VELOCIDADE_NAVE * (cheats.velocidadeNave ? 10 : 1);
       if (dist <= stopDist + velReal * deltaMs) {
         const proximoPontoManual = alvo._tipoAlvo === 'ponto' ? nave.rotaManual.shift() ?? null : null;
-        if (nave.tipo === 'colonizadora' && alvo._tipoAlvo === 'planeta' && alvo.dados.dono === 'neutro') {
-          finalizarColonizacao(mundo, nave, alvo);
+        // Colonizadora arrives at any orbit-capable target (planet or star) →
+        // enter survey mode instead of colonizing / orbiting immediately.
+        if (nave.tipo === 'colonizadora' && (alvo._tipoAlvo === 'planeta' || alvo._tipoAlvo === 'sol')) {
+          iniciarSurveyColonizadora(mundo, nave, alvo);
           continue;
         }
         if (nave.tipo === 'cargueira' && alvo._tipoAlvo === 'planeta' && alvo.dados.dono === 'jogador' && totalRecursos(nave.carga) > 0) {
@@ -248,15 +329,51 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
       } else if (dist > 0) {
         nave.x += (dx / dist) * velReal * deltaMs;
         nave.y += (dy / dist) * velReal * deltaMs;
+        // Point the sprite along the direction of travel. Sprite nose is up
+        // (negative Y in Pixi), so add PI/2 to atan2(dy, dx).
+        if (nave._sprite) nave._sprite.rotation = Math.atan2(dy, dx) + Math.PI / 2;
       }
     }
     if (nave.estado === 'orbitando' && nave.orbita && nave.alvo) {
+      const prevX = nave.x;
+      const prevY = nave.y;
       nave.orbita.angulo += nave.orbita.velocidade * deltaMs;
       nave.x = nave.alvo.x + Math.cos(nave.orbita.angulo) * nave.orbita.raio;
       nave.y = nave.alvo.y + Math.sin(nave.orbita.angulo) * nave.orbita.raio;
+      // Point tangent to the orbit so the ship nose leads the motion.
+      if (nave._sprite) {
+        const tdx = nave.x - prevX;
+        const tdy = nave.y - prevY;
+        if (tdx !== 0 || tdy !== 0) {
+          nave._sprite.rotation = Math.atan2(tdy, tdx) + Math.PI / 2;
+        }
+      }
+    }
+    if ((nave.estado === 'fazendo_survey' || nave.estado === 'aguardando_decisao') && nave.orbita && nave.alvo) {
+      // Hold a slow orbit around the target while the survey counts down.
+      const prevX = nave.x;
+      const prevY = nave.y;
+      nave.orbita.angulo += nave.orbita.velocidade * 0.5 * deltaMs;
+      nave.x = nave.alvo.x + Math.cos(nave.orbita.angulo) * nave.orbita.raio;
+      nave.y = nave.alvo.y + Math.sin(nave.orbita.angulo) * nave.orbita.raio;
+      if (nave._sprite) {
+        const tdx = nave.x - prevX;
+        const tdy = nave.y - prevY;
+        if (tdx !== 0 || tdy !== 0) {
+          nave._sprite.rotation = Math.atan2(tdy, tdx) + Math.PI / 2;
+        }
+      }
+      if (nave.estado === 'fazendo_survey') {
+        nave.surveyTempoRestanteMs = Math.max(0, (nave.surveyTempoRestanteMs ?? 0) - deltaMs);
+        if (nave.surveyTempoRestanteMs <= 0) {
+          finalizarSurvey(mundo, nave);
+          continue;
+        }
+      }
     }
     processarLoopCargueira(nave);
     desenharRotaNave(nave);
+    if (nave.estado === 'fazendo_survey') desenharNaveGfx(nave);
     nave.gfx.x = nave.x;
     nave.gfx.y = nave.y;
   }
@@ -265,9 +382,74 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
 function finalizarColonizacao(mundo: Mundo, nave: Nave, planeta: Planeta): void {
   planeta.dados.dono = 'jogador';
   planeta.dados.selecionado = false;
+  // Starter bonus: the colonizer's hardware becomes the seed of the colony.
+  // One factory, a starter stockpile, zero infra. Tematic + gives the player
+  // something to work with immediately instead of a blank slate.
+  if (planeta.dados.fabricas < 1) planeta.dados.fabricas = 1;
+  planeta.dados.recursos.comum = Math.max(planeta.dados.recursos.comum, 20);
+  planeta.dados.recursos.raro = Math.max(planeta.dados.recursos.raro, 5);
+  planeta.dados.recursos.combustivel = Math.max(planeta.dados.recursos.combustivel, 5);
   removerNave(mundo, nave);
   notifColonizacao();
   somConquista();
+}
+
+function sistemaIdDoAlvo(alvo: Planeta | Sol): number | null {
+  if (alvo._tipoAlvo === 'planeta') return alvo.dados.sistemaId;
+  // For a star: locate its system by x/y match.
+  return null;
+}
+
+function iniciarSurveyColonizadora(mundo: Mundo, nave: Nave, alvo: Planeta | Sol): void {
+  // Enter a leisurely orbit around the target, then count down the survey.
+  entrarEmOrbita(nave, alvo);
+  nave.estado = 'fazendo_survey';
+  nave.surveyTempoRestanteMs = TEMPO_SURVEY_MS;
+  nave.surveyTempoTotalMs = TEMPO_SURVEY_MS;
+
+  // Reveal the entire system immediately when survey begins — the scanning
+  // pulse is visual flavor, but the intel is what the player paid for.
+  let sistemaId = sistemaIdDoAlvo(alvo);
+  if (sistemaId == null) {
+    // Star target: find the system whose sol matches this object.
+    for (let i = 0; i < mundo.sistemas.length; i++) {
+      if (mundo.sistemas[i].sol === alvo) { sistemaId = i; break; }
+    }
+  }
+  if (sistemaId != null) revelarSistemaCompleto(mundo, sistemaId);
+}
+
+function finalizarSurvey(mundo: Mundo, nave: Nave): void {
+  const alvo = nave.alvo;
+  nave.surveyTempoRestanteMs = undefined;
+  nave.surveyTempoTotalMs = undefined;
+  // If the target is a neutral habitable planet, transition to a pending-
+  // decision state. The colony-modal UI polls for this state and prompts the
+  // player; the ship stays in slow orbit until they choose.
+  if (alvo && alvo._tipoAlvo === 'planeta' && alvo.dados.dono === 'neutro') {
+    nave.estado = 'aguardando_decisao';
+    return;
+  }
+  // Otherwise leave the colonizer parked in orbit as a permanent outpost.
+  nave.estado = 'orbitando';
+  mostrarNotificacao('Survey completo — sem alvo colonizável. Nave em órbita.', '#ffcc66');
+}
+
+/** Called by the colony-modal UI when the player confirms colonization. */
+export function confirmarColonizacao(mundo: Mundo, nave: Nave, nomeOverride?: string): boolean {
+  const alvo = nave.alvo;
+  if (!alvo || alvo._tipoAlvo !== 'planeta') return false;
+  if (nomeOverride && nomeOverride.trim()) {
+    alvo.dados.nome = nomeOverride.trim();
+  }
+  finalizarColonizacao(mundo, nave, alvo);
+  return true;
+}
+
+/** Called by the colony-modal UI when the player chooses to keep the outpost. */
+export function manterComoOutpost(nave: Nave): void {
+  nave.estado = 'orbitando';
+  mostrarNotificacao('Colonizadora mantida em órbita como posto de observação.', '#8ce0ff');
 }
 
 export function encontrarNaveNoPonto(mundoX: number, mundoY: number, mundo: Mundo): Nave | null {
@@ -275,7 +457,10 @@ export function encontrarNaveNoPonto(mundoX: number, mundoY: number, mundo: Mund
     const nave = mundo.naves[i];
     const dx = nave.x - mundoX;
     const dy = nave.y - mundoY;
-    if (dx * dx + dy * dy < 18 * 18) return nave;
+    // Hit-radius scales with the ship's visual size so a 48px colonizadora
+    // is as clickable as its sprite suggests, not stuck at a fixed 18px.
+    const radius = Math.max(14, (SHIP_DISPLAY_SIZE[nave.tipo] ?? 32) * 0.6);
+    if (dx * dx + dy * dy < radius * radius) return nave;
   }
   return null;
 }
@@ -285,15 +470,54 @@ export function obterNaveSelecionada(mundo: Mundo): Nave | null {
 }
 
 export function selecionarNave(mundo: Mundo, nave: Nave | null): void {
-  // Note: limparSelecoes is called from mundo.ts before this
+  // Clear any existing selection (planet or other ship) so only one entity
+  // is ever selected at a time. Mirrors selecionarPlaneta in mundo.ts.
+  for (const p of mundo.planetas) p.dados.selecionado = false;
+  for (const outra of mundo.naves) {
+    if (outra === nave) continue;
+    if (outra.selecionado) {
+      outra.selecionado = false;
+      atualizarSelecaoNave(outra);
+    }
+  }
   if (nave) {
     nave.selecionado = true;
     atualizarSelecaoNave(nave);
   }
 }
 
+export function haColonizadoraRumoAoSistema(mundo: Mundo, sistemaId: number, ignorar?: Nave): boolean {
+  for (const outra of mundo.naves) {
+    if (outra === ignorar) continue;
+    if (outra.tipo !== 'colonizadora') continue;
+    if (outra.estado !== 'viajando' && outra.estado !== 'fazendo_survey') continue;
+    const alvo = outra.alvo;
+    if (!alvo) continue;
+    if (alvo._tipoAlvo === 'planeta' && alvo.dados.sistemaId === sistemaId) return true;
+    if (alvo._tipoAlvo === 'sol') {
+      for (let i = 0; i < mundo.sistemas.length; i++) {
+        if (mundo.sistemas[i].sol === alvo && i === sistemaId) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function enviarNaveParaAlvo(mundo: Mundo, nave: Nave, alvo: Planeta | Sol | AlvoPonto): boolean {
   if (!nave || !alvo) return false;
+  // Cap: only one colonizadora in flight toward a given system at a time.
+  if (nave.tipo === 'colonizadora' && (alvo._tipoAlvo === 'planeta' || alvo._tipoAlvo === 'sol')) {
+    let targetSistema = alvo._tipoAlvo === 'planeta' ? alvo.dados.sistemaId : -1;
+    if (targetSistema < 0) {
+      for (let i = 0; i < mundo.sistemas.length; i++) {
+        if (mundo.sistemas[i].sol === alvo) { targetSistema = i; break; }
+      }
+    }
+    if (targetSistema >= 0 && haColonizadoraRumoAoSistema(mundo, targetSistema, nave)) {
+      mostrarNotificacao('Já existe uma colonizadora a caminho deste sistema.', '#ffcc66');
+      return false;
+    }
+  }
   nave.rotaManual = [];
   nave.estado = 'viajando';
   nave.alvo = alvo;
