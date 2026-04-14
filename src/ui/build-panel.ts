@@ -8,6 +8,7 @@ import {
 } from '../world/mundo';
 import { construirNoPlaneta } from '../world/construcao';
 import { CUSTO_NAVE_COMUM } from '../world/constantes';
+import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
 
 type AbaId = 'edificios' | 'naves' | 'pesquisa';
 
@@ -48,29 +49,21 @@ let _selectedPlanet: Planeta | null = null;
 let _mundoRef: Mundo | null = null;
 let _renderKey = '';
 
-// ─── Spritesheet loader (shared across all cards) ──────────────────────────
-
-const SHEETS: Record<'ships' | 'buildings', { src: string; img: HTMLImageElement | null }> = {
-  ships: { src: 'assets/ships.png', img: null },
-  buildings: { src: 'assets/buildings.png', img: null },
-};
+// ─── Spritesheet loader (shared with naves.ts and ship-panel.ts) ───────────
 
 const _cardSprites: { canvas: HTMLCanvasElement; cell: SpriteCell }[] = [];
 
 function loadSheet(name: 'ships' | 'buildings'): void {
-  if (SHEETS[name].img) return;
-  const img = new Image();
-  img.onload = () => {
-    SHEETS[name].img = img;
+  if (getSpritesheetImage(name)) return;
+  carregarSpritesheet(name).then(() => {
     for (const { canvas, cell } of _cardSprites) {
       if (cell.sheet === name) drawSprite(canvas, cell);
     }
-  };
-  img.src = SHEETS[name].src;
+  });
 }
 
 function drawSprite(canvas: HTMLCanvasElement, cell: SpriteCell): void {
-  const img = SHEETS[cell.sheet].img;
+  const img = getSpritesheetImage(cell.sheet);
   if (!img) return;
   const cssSize = canvas.clientWidth || parseInt(getComputedStyle(canvas).width, 10) || 40;
   if (cssSize === 0) return;

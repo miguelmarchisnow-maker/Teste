@@ -92,7 +92,6 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
     p._linhaOrbita = linhaOrbita;
     p._visivelAoJogador = false;
     p._descobertoAoJogador = false;
-    p._planetFilter = (sprite as any)._planetFilter;
 
     const anel = new Graphics();
     p.addChild(anel);

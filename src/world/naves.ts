@@ -1,18 +1,18 @@
-import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
+import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Nave, Mundo, Planeta, Sol, AlvoPonto, AcaoNaveParsed, Recursos } from '../types';
 import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, TEMPO_SURVEY_MS, formatarId } from './constantes';
 import { cheats } from '../ui/debug';
 import { notifColonizacao, mostrarNotificacao } from '../ui/notificacao';
 import { somConquista } from '../audio/som';
 import { revelarSistemaCompleto } from './visao';
+import { carregarSpritesheet, getSpritesheetTexture, onSpritesheetReady } from './spritesheets';
 
 // ─── Spritesheet loading ────────────────────────────────────────────────────
 
-const SHIPS_SHEET_PATH = 'assets/ships.png';
 const SHIP_SPRITE_CELL = 96;
 
 // Row per ship type within ships.png
-const SHIP_SHEET_ROW: Record<string, number> = {
+export const SHIP_SHEET_ROW: Record<string, number> = {
   colonizadora: 0,
   cargueira: 1,
   batedora: 2,
@@ -27,25 +27,26 @@ const SHIP_DISPLAY_SIZE: Record<string, number> = {
   torreta: 32,
 };
 
-let _shipsTexture: Texture | null = null;
 const _frameCache = new Map<string, Texture>();
 // Ships created before the sheet finishes loading are queued here so we can
 // swap their placeholder texture once it's ready.
 const _pendingSprites: Array<{ sprite: Sprite; tipo: string; tier: number }> = [];
 
-export async function carregarSpritesheetNaves(): Promise<void> {
-  if (_shipsTexture) return;
-  const tex: Texture = await Assets.load(SHIPS_SHEET_PATH);
-  tex.source.scaleMode = 'nearest';
-  _shipsTexture = tex;
-  for (const { sprite, tipo, tier } of _pendingSprites) {
-    sprite.texture = getShipFrame(tipo, tier);
-  }
-  _pendingSprites.length = 0;
+export function carregarSpritesheetNaves(): Promise<void> {
+  return carregarSpritesheet('ships').then(() => {
+    for (const { sprite, tipo, tier } of _pendingSprites) {
+      sprite.texture = getShipFrame(tipo, tier);
+      const displaySize = SHIP_DISPLAY_SIZE[tipo] ?? 32;
+      sprite.width = displaySize;
+      sprite.height = displaySize;
+    }
+    _pendingSprites.length = 0;
+  });
 }
 
 function getShipFrame(tipo: string, tier: number): Texture {
-  if (!_shipsTexture) return Texture.EMPTY;
+  const sheet = getSpritesheetTexture('ships');
+  if (!sheet) return Texture.EMPTY;
   const row = SHIP_SHEET_ROW[tipo] ?? 0;
   // Colonizadora has only 1 column; everything else is tier-1 = col 0..col 4.
   const col = tipo === 'colonizadora' ? 0 : Math.max(0, Math.min(4, tier - 1));
@@ -53,7 +54,7 @@ function getShipFrame(tipo: string, tier: number): Texture {
   const cached = _frameCache.get(key);
   if (cached) return cached;
   const frame = new Texture({
-    source: _shipsTexture.source,
+    source: sheet.source,
     frame: new Rectangle(col * SHIP_SPRITE_CELL, row * SHIP_SPRITE_CELL, SHIP_SPRITE_CELL, SHIP_SPRITE_CELL),
   });
   _frameCache.set(key, frame);
@@ -61,13 +62,21 @@ function getShipFrame(tipo: string, tier: number): Texture {
 }
 
 function criarShipSprite(tipo: string, tier: number): Sprite {
-  const tex = _shipsTexture ? getShipFrame(tipo, tier) : Texture.EMPTY;
+  const hasSheet = !!getSpritesheetTexture('ships');
+  const tex = hasSheet ? getShipFrame(tipo, tier) : Texture.EMPTY;
   const sprite = new Sprite(tex);
   sprite.anchor.set(0.5);
   const displaySize = SHIP_DISPLAY_SIZE[tipo] ?? 32;
   sprite.width = displaySize;
   sprite.height = displaySize;
-  if (!_shipsTexture) _pendingSprites.push({ sprite, tipo, tier });
+  if (!hasSheet) {
+    _pendingSprites.push({ sprite, tipo, tier });
+    // Ensure the load is in flight even if carregarSpritesheetNaves was
+    // called before configurarCamera. Safe to trigger repeatedly.
+    onSpritesheetReady('ships', () => {
+      // no-op here; the pending-swap loop above fires inside carregar…
+    });
+  }
   return sprite;
 }
 
@@ -286,8 +295,21 @@ export function removerNave(mundo: Mundo, nave: Nave): void {
   }
   const idx = mundo.naves.indexOf(nave);
   if (idx >= 0) mundo.naves.splice(idx, 1);
-  if (nave.rotaGfx) mundo.rotasContainer.removeChild(nave.rotaGfx);
-  if (nave.gfx) mundo.navesContainer.removeChild(nave.gfx);
+  // Also drop any pending sprite swap so the eventual spritesheet load
+  // doesn't try to assign a texture on a destroyed sprite.
+  const pendingIdx = _pendingSprites.findIndex((p) => p.sprite === nave._sprite);
+  if (pendingIdx >= 0) _pendingSprites.splice(pendingIdx, 1);
+  if (nave.rotaGfx) {
+    mundo.rotasContainer.removeChild(nave.rotaGfx);
+    nave.rotaGfx.destroy();
+  }
+  if (nave.gfx) {
+    mundo.navesContainer.removeChild(nave.gfx);
+    // destroy({children:true}) tears down the Container + Sprite + Graphics.
+    // The Sprite's texture is a sub-frame backed by the shared sheet — we do
+    // NOT want to destroy the texture source itself.
+    nave.gfx.destroy({ children: true });
+  }
 }
 
 export function atualizarNaves(mundo: Mundo, deltaMs: number): void {

@@ -14,6 +14,7 @@ import { installRootVariables } from './ui/hud-layout';
 import { criarPlanetPanel, atualizarPlanetPanel } from './ui/planet-panel';
 import { criarBuildPanel, atualizarBuildPanel } from './ui/build-panel';
 import { criarShipPanel, atualizarShipPanel } from './ui/ship-panel';
+import { criarColonyModal, atualizarColonyModal } from './ui/colony-modal';
 import { somVitoria, somDerrota } from './audio/som';
 
 async function bootstrap(): Promise<void> {
@@ -56,6 +57,7 @@ async function bootstrap(): Promise<void> {
   criarPlanetPanel();
   criarBuildPanel();
   criarShipPanel();
+  criarColonyModal();
   onMinimapClick((worldX, worldY) => {
     setCameraPos(worldX, worldY);
   });
@@ -97,6 +99,7 @@ async function bootstrap(): Promise<void> {
     atualizarPlanetPanel(mundo, app);
     atualizarBuildPanel(mundo);
     atualizarShipPanel(mundo);
+    atualizarColonyModal(mundo);
     atualizarDebugMenu();
 
     const estado = getEstadoJogo();

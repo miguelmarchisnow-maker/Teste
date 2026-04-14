@@ -30,6 +30,7 @@ export const config: DebugConfig = {
   raioVisaoBase: 900,
   raioVisaoNave: 600,
   raioVisaoBatedora: 1100,
+  raioVisaoColonizadora: 850,
   fogAlpha: 0.75,
   fogThrottle: 3,
 };

@@ -7,6 +7,7 @@ import {
   alternarLoopCargueira,
 } from '../world/mundo';
 import { iniciarComandoNave } from '../core/player';
+import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
 
 // ─── Static lookup tables ───────────────────────────────────────────────────
 
@@ -29,24 +30,14 @@ const SPRITE_CELL = 96;
 
 // ─── Shared spritesheet loader ──────────────────────────────────────────────
 
-let _shipsImage: HTMLImageElement | null = null;
-let _shipsPromise: Promise<HTMLImageElement> | null = null;
-
 function loadShipsSheet(): void {
-  if (_shipsImage || _shipsPromise) return;
-  _shipsPromise = new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      _shipsImage = img;
-      redrawPortrait();
-      resolve(img);
-    };
-    img.src = 'assets/ships.png';
-  });
+  if (getSpritesheetImage('ships')) return;
+  carregarSpritesheet('ships').then(() => redrawPortrait());
 }
 
 function drawShipSprite(canvas: HTMLCanvasElement, row: number, col: number): void {
-  if (!_shipsImage) return;
+  const img = getSpritesheetImage('ships');
+  if (!img) return;
   const cssSize = canvas.clientWidth || parseInt(getComputedStyle(canvas).width, 10) || 64;
   if (cssSize === 0) return;
   const dpr = window.devicePixelRatio || 1;
@@ -57,7 +48,7 @@ function drawShipSprite(canvas: HTMLCanvasElement, row: number, col: number): vo
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(
-    _shipsImage,
+    img,
     col * SPRITE_CELL, row * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL,
     0, 0, canvas.width, canvas.height,
   );

@@ -76,7 +76,6 @@ export interface Planeta extends Container {
   _construcoes: Graphics;
   _visivelAoJogador: boolean;
   _descobertoAoJogador: boolean;
-  _planetFilter: Filter;
 }
 
 // === Sol ===
@@ -103,8 +102,10 @@ export interface Nave {
   dono: string;
   x: number;
   y: number;
-  estado: 'orbitando' | 'viajando' | 'parado';
+  estado: 'orbitando' | 'viajando' | 'parado' | 'fazendo_survey' | 'aguardando_decisao';
   alvo: Planeta | Sol | AlvoPonto | null;
+  surveyTempoRestanteMs?: number;
+  surveyTempoTotalMs?: number;
   selecionado: boolean;
   origem: Planeta;
   carga: Recursos;
@@ -116,11 +117,13 @@ export interface Nave {
     loop: boolean;
     fase: 'origem' | 'destino';
   } | null;
-  gfx: Graphics;
+  gfx: Container;
   rotaGfx: Graphics;
   _tipoAlvo: 'nave';
   orbita: OrbitaNave | null;
   _selecaoAnterior?: boolean;
+  _sprite?: Sprite;
+  _ring?: Graphics;
 }
 
 export interface AlvoPonto {
@@ -205,6 +208,7 @@ export interface DebugConfig {
   raioVisaoBase: number;
   raioVisaoNave: number;
   raioVisaoBatedora: number;
+  raioVisaoColonizadora: number;
   fogAlpha: number;
   fogThrottle: number;
 }
