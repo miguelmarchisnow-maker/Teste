@@ -8,6 +8,7 @@ import {
   recolherColonizadoraParaOrigem,
   sucatearNave,
   ehColonizadoraOutpost,
+  enviarNaveParaPosicao,
 } from '../world/mundo';
 import { TEMPO_SURVEY_MS } from '../world/constantes';
 import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
@@ -153,6 +154,11 @@ function injectStyles(): void {
   const style = document.createElement('style');
   style.textContent = `
     .colonizer-panel {
+      --cp-accent: #8ce0ff;
+      --cp-accent-dim: rgba(140, 224, 255, 0.15);
+      --cp-bg: rgba(6, 14, 22, 0.95);
+      --cp-bg-deep: rgba(3, 8, 14, 0.98);
+
       position: fixed;
       z-index: 100;
       bottom: var(--hud-margin);
@@ -172,6 +178,9 @@ function injectStyles(): void {
         opacity 180ms ease-out,
         transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
         visibility 0s linear 240ms;
+
+      /* Subtle outer glow so the panel reads as special vs the generic ship-panel */
+      filter: drop-shadow(0 0 calc(var(--hud-unit) * 0.6) rgba(140, 224, 255, 0.12));
     }
 
     .colonizer-panel.visible {
@@ -198,39 +207,96 @@ function injectStyles(): void {
       gap: calc(var(--hud-unit) * 0.5);
     }
 
+    /* Tactical-styled panel section: corner brackets instead of a full border,
+       darker background, inset highlight on top edge. */
     .cp-section {
-      background: var(--hud-bg);
-      border: 1px solid var(--hud-border);
-      border-radius: var(--hud-radius);
-      box-shadow: var(--hud-shadow);
-      backdrop-filter: blur(3px);
-      padding: calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 1);
+      position: relative;
+      background: linear-gradient(180deg, var(--cp-bg) 0%, var(--cp-bg-deep) 100%);
+      border: 1px solid rgba(140, 224, 255, 0.22);
+      border-radius: calc(var(--hud-unit) * 0.2);
+      box-shadow:
+        0 0 0 1px rgba(140, 224, 255, 0.06),
+        0 calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 1.2) rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(4px);
+      padding: calc(var(--hud-unit) * 0.85) calc(var(--hud-unit) * 1);
       display: flex;
       align-items: center;
       gap: calc(var(--hud-unit) * 0.8);
     }
 
+    /* Corner brackets: four tiny L-shapes at each corner of every section */
+    .cp-section::before,
+    .cp-section::after {
+      content: '';
+      position: absolute;
+      width: calc(var(--hud-unit) * 0.55);
+      height: calc(var(--hud-unit) * 0.55);
+      border: 1px solid var(--cp-accent);
+      pointer-events: none;
+    }
+    .cp-section::before {
+      top: -1px;
+      left: -1px;
+      border-right: none;
+      border-bottom: none;
+    }
+    .cp-section::after {
+      bottom: -1px;
+      right: -1px;
+      border-left: none;
+      border-top: none;
+    }
+
     /* ── Left: portrait + stage badge ── */
 
     .cp-left {
-      min-width: calc(var(--hud-unit) * 12);
+      min-width: calc(var(--hud-unit) * 13);
     }
 
     .cp-portrait-wrap {
-      width: calc(var(--hud-unit) * 4);
-      height: calc(var(--hud-unit) * 4);
+      width: calc(var(--hud-unit) * 4.8);
+      height: calc(var(--hud-unit) * 4.8);
       flex: 0 0 auto;
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid var(--hud-line);
-      background: rgba(255,255,255,0.02);
-      border-radius: calc(var(--hud-unit) * 0.25);
+      position: relative;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(140, 224, 255, 0.18) 0%, rgba(140, 224, 255, 0.02) 60%, transparent 100%),
+        rgba(6, 14, 22, 0.8);
+      border: 1px solid rgba(140, 224, 255, 0.5);
+      border-radius: calc(var(--hud-unit) * 0.2);
+      box-shadow:
+        inset 0 0 calc(var(--hud-unit) * 1) rgba(140, 224, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    /* Scanning line overlay on portrait — a single horizontal cyan line
+       that sweeps top→bottom */
+    .cp-portrait-wrap::after {
+      content: '';
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      top: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--cp-accent) 50%, transparent 100%);
+      opacity: 0.6;
+      animation: cp-scan 2.5s linear infinite;
+      pointer-events: none;
+    }
+
+    @keyframes cp-scan {
+      0% { transform: translateY(0); opacity: 0; }
+      8% { opacity: 0.8; }
+      92% { opacity: 0.8; }
+      100% { transform: translateY(calc(var(--hud-unit) * 4.8)); opacity: 0; }
     }
 
     .cp-portrait {
-      width: 100%;
-      height: 100%;
+      width: 82%;
+      height: 82%;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
@@ -238,38 +304,58 @@ function injectStyles(): void {
     .cp-left-text {
       display: flex;
       flex-direction: column;
-      gap: calc(var(--hud-unit) * 0.25);
+      gap: calc(var(--hud-unit) * 0.35);
       min-width: 0;
     }
 
     .cp-name {
       font-family: var(--hud-font-display);
       font-size: var(--hud-text-md);
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--hud-text);
       line-height: 1;
       white-space: nowrap;
+      text-shadow: 0 0 calc(var(--hud-unit) * 0.3) rgba(140, 224, 255, 0.35);
     }
 
     .cp-stage-badge {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.35);
       font-family: var(--hud-font);
       font-size: var(--hud-text-sm);
-      letter-spacing: 0.14em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      padding: calc(var(--hud-unit) * 0.25) calc(var(--hud-unit) * 0.5);
+      padding: calc(var(--hud-unit) * 0.3) calc(var(--hud-unit) * 0.55);
       border: 1px solid currentColor;
-      border-radius: calc(var(--hud-unit) * 0.18);
+      background: rgba(140, 224, 255, 0.05);
       line-height: 1;
       white-space: nowrap;
       align-self: flex-start;
     }
 
+    /* LED dot inside the stage badge — pulses when ship is active */
+    .cp-stage-badge::before {
+      content: '';
+      display: inline-block;
+      width: calc(var(--hud-unit) * 0.4);
+      height: calc(var(--hud-unit) * 0.4);
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 calc(var(--hud-unit) * 0.35) currentColor;
+      animation: cp-pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes cp-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+
     /* ── Middle: info + progress ── */
 
     .cp-middle {
-      min-width: calc(var(--hud-unit) * 13);
+      min-width: calc(var(--hud-unit) * 14);
       flex: 1 1 auto;
     }
 
@@ -283,27 +369,30 @@ function injectStyles(): void {
     .cp-info-title {
       font-family: var(--hud-font);
       font-size: var(--hud-text-sm);
-      letter-spacing: 0.1em;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--hud-text-dim);
+      color: var(--cp-accent);
       line-height: 1;
+      opacity: 0.75;
     }
 
     .cp-info-value {
       font-family: var(--hud-font-body);
-      font-size: var(--hud-text-md);
+      font-size: calc(var(--hud-text-md) * 1.15);
       color: var(--hud-text);
       line-height: 1.1;
       white-space: nowrap;
+      text-shadow: 0 0 calc(var(--hud-unit) * 0.25) rgba(140, 224, 255, 0.25);
     }
 
     .cp-progress {
       width: 100%;
-      height: calc(var(--hud-unit) * 0.45);
-      border: 1px solid var(--hud-line);
-      background: rgba(255,255,255,0.04);
+      height: calc(var(--hud-unit) * 0.5);
+      border: 1px solid rgba(140, 224, 255, 0.35);
+      background: rgba(6, 14, 22, 0.8);
       position: relative;
-      margin-top: calc(var(--hud-unit) * 0.2);
+      margin-top: calc(var(--hud-unit) * 0.25);
+      overflow: hidden;
     }
 
     .cp-progress-fill {
@@ -311,8 +400,9 @@ function injectStyles(): void {
       top: 0;
       left: 0;
       bottom: 0;
-      background: #8ce0ff;
+      background: linear-gradient(90deg, rgba(140, 224, 255, 0.55) 0%, var(--cp-accent) 100%);
       transition: width 140ms linear;
+      box-shadow: 0 0 calc(var(--hud-unit) * 0.5) var(--cp-accent);
     }
 
     .cp-progress-label {
@@ -320,7 +410,7 @@ function injectStyles(): void {
       font-size: var(--hud-text-sm);
       color: var(--hud-text-dim);
       letter-spacing: 0.05em;
-      margin-top: calc(var(--hud-unit) * 0.2);
+      margin-top: calc(var(--hud-unit) * 0.25);
       font-variant-numeric: tabular-nums;
     }
 
@@ -328,53 +418,75 @@ function injectStyles(): void {
 
     .cp-actions {
       display: grid;
-      grid-template-columns: repeat(3, auto);
-      gap: calc(var(--hud-unit) * 0.3);
+      grid-template-columns: repeat(2, auto);
+      gap: calc(var(--hud-unit) * 0.35);
       align-items: center;
     }
 
     .cp-btn {
-      min-width: calc(var(--hud-unit) * 2.6);
-      height: calc(var(--hud-unit) * 2.6);
-      padding: 0 calc(var(--hud-unit) * 0.35);
-      border: 1px solid rgba(255,255,255,0.5);
-      border-radius: calc(var(--hud-unit) * 0.2);
-      background: rgba(255,255,255,0.02);
+      min-width: calc(var(--hud-unit) * 3.4);
+      height: calc(var(--hud-unit) * 2.4);
+      padding: 0 calc(var(--hud-unit) * 0.5);
+      border: 1px solid rgba(140, 224, 255, 0.4);
+      background: linear-gradient(180deg, rgba(20, 34, 48, 0.75) 0%, rgba(6, 14, 22, 0.85) 100%);
       color: var(--hud-text);
       cursor: pointer;
       font-family: var(--hud-font);
       font-size: var(--hud-text-sm);
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: calc(var(--hud-unit) * 0.2);
-      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+      transition:
+        background 120ms ease,
+        border-color 120ms ease,
+        transform 120ms ease,
+        box-shadow 140ms ease;
       appearance: none;
       white-space: nowrap;
+      position: relative;
     }
 
-    .cp-btn:hover:not(.disabled):not(.primary) {
-      background: rgba(255,255,255,0.08);
-      border-color: #fff;
+    /* Corner cut accent on buttons — creates the "tactical" bevel look */
+    .cp-btn::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      right: -1px;
+      width: calc(var(--hud-unit) * 0.4);
+      height: calc(var(--hud-unit) * 0.4);
+      border-right: 1px solid var(--cp-accent);
+      border-top: 1px solid var(--cp-accent);
+      opacity: 0.7;
+    }
+
+    .cp-btn:hover:not(.disabled) {
+      border-color: var(--cp-accent);
+      background: linear-gradient(180deg, rgba(30, 54, 78, 0.8) 0%, rgba(10, 20, 30, 0.9) 100%);
       transform: translateY(-1px);
+      box-shadow: 0 0 calc(var(--hud-unit) * 0.5) rgba(140, 224, 255, 0.25);
     }
 
     .cp-btn.primary {
-      background: rgba(140, 224, 255, 0.12);
-      border-color: #8ce0ff;
-      color: #8ce0ff;
+      background: linear-gradient(180deg, rgba(140, 224, 255, 0.18) 0%, rgba(140, 224, 255, 0.06) 100%);
+      border-color: var(--cp-accent);
+      color: var(--cp-accent);
+      text-shadow: 0 0 calc(var(--hud-unit) * 0.4) rgba(140, 224, 255, 0.5);
     }
 
     .cp-btn.primary:hover:not(.disabled) {
-      background: rgba(140, 224, 255, 0.22);
+      background: linear-gradient(180deg, rgba(140, 224, 255, 0.28) 0%, rgba(140, 224, 255, 0.12) 100%);
     }
 
     .cp-btn.active {
-      background: rgba(140, 224, 255, 0.22);
-      border-color: #8ce0ff;
-      color: #8ce0ff;
+      background: linear-gradient(180deg, rgba(140, 224, 255, 0.3) 0%, rgba(140, 224, 255, 0.14) 100%);
+      border-color: var(--cp-accent);
+      color: var(--cp-accent);
+      box-shadow:
+        0 0 calc(var(--hud-unit) * 0.6) rgba(140, 224, 255, 0.4),
+        inset 0 0 calc(var(--hud-unit) * 0.4) rgba(140, 224, 255, 0.25);
     }
 
     .cp-btn.disabled {
@@ -419,49 +531,211 @@ function injectStyles(): void {
       margin-top: calc(var(--hud-unit) * 0.25);
     }
 
-    /* ── Movement sub-panel (floats above the main panel) ── */
-    .cp-move-panel {
+    /* ── Cockpit movement console ──
+       Floats above the main panel, styled like a ship console: metallic
+       gradient background, rivet corners, recessed joystick cavity, D-pad. */
+
+    .cp-cockpit {
       position: fixed;
       z-index: 101;
-      bottom: calc(var(--hud-margin) + var(--hud-unit) * 7);
+      bottom: calc(var(--hud-margin) + var(--hud-unit) * 8);
       left: 50%;
+
+      padding: calc(var(--hud-unit) * 0.9) calc(var(--hud-unit) * 1.1);
+      background:
+        linear-gradient(180deg, rgba(38, 50, 62, 0.95) 0%, rgba(12, 20, 28, 0.98) 100%);
+      border: 1px solid rgba(140, 224, 255, 0.4);
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.5),
+        0 calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 1.6) rgba(0, 0, 0, 0.7),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+
       transform: translateX(-50%) translateY(calc(var(--hud-unit) * 0.6));
-      min-width: calc(var(--hud-unit) * 13);
-      background: var(--hud-bg);
-      border: 1px solid var(--hud-border);
-      border-radius: var(--hud-radius);
-      box-shadow: var(--hud-shadow);
-      backdrop-filter: blur(3px);
-      padding: calc(var(--hud-unit) * 0.8);
-      display: flex;
-      flex-direction: column;
-      gap: calc(var(--hud-unit) * 0.4);
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
       transition:
         opacity 160ms ease-out,
-        transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 200ms;
+        transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 220ms;
     }
 
-    .cp-move-panel.visible {
+    .cp-cockpit.visible {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
       transform: translateX(-50%) translateY(0);
       transition:
         opacity 160ms ease-out,
-        transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1),
         visibility 0s linear 0s;
     }
 
-    .cp-move-hint {
+    /* Rivets at the 4 corners of the cockpit panel */
+    .cp-cockpit::before,
+    .cp-cockpit::after {
+      content: '';
+      position: absolute;
+      width: calc(var(--hud-unit) * 0.3);
+      height: calc(var(--hud-unit) * 0.3);
+      background: radial-gradient(circle at 40% 40%, #888 0%, #333 50%, #111 100%);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(255,255,255,0.15);
+    }
+    .cp-cockpit::before { top: calc(var(--hud-unit) * 0.3); left: calc(var(--hud-unit) * 0.3); }
+    .cp-cockpit::after { top: calc(var(--hud-unit) * 0.3); right: calc(var(--hud-unit) * 0.3); }
+
+    .cp-cockpit-title {
       font-family: var(--hud-font);
       font-size: var(--hud-text-sm);
-      color: var(--hud-text-dim);
-      letter-spacing: 0.06em;
-      line-height: 1.3;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--cp-accent);
+      text-align: center;
+      margin-bottom: calc(var(--hud-unit) * 0.5);
+      opacity: 0.85;
+    }
+
+    .cp-cockpit-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: calc(var(--hud-unit) * 1);
+    }
+
+    /* ── Analog joystick ── */
+
+    .cp-joystick {
+      position: relative;
+      width: calc(var(--hud-unit) * 5);
+      height: calc(var(--hud-unit) * 5);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(12, 20, 28, 0.9) 0%, rgba(2, 6, 10, 1) 70%),
+        #000;
+      border: 2px solid rgba(140, 224, 255, 0.35);
+      box-shadow:
+        inset 0 0 calc(var(--hud-unit) * 1.2) rgba(0, 0, 0, 0.9),
+        inset 0 2px 0 rgba(255, 255, 255, 0.08),
+        0 0 0 1px rgba(0, 0, 0, 0.6);
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .cp-joystick:active {
+      cursor: grabbing;
+    }
+
+    /* Crosshair guides inside the joystick cavity */
+    .cp-joystick::before,
+    .cp-joystick::after {
+      content: '';
+      position: absolute;
+      background: rgba(140, 224, 255, 0.18);
+      pointer-events: none;
+    }
+    .cp-joystick::before {
+      top: 50%;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+    }
+    .cp-joystick::after {
+      left: 50%;
+      top: 10%;
+      bottom: 10%;
+      width: 1px;
+    }
+
+    .cp-joystick-nub {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: calc(var(--hud-unit) * 1.8);
+      height: calc(var(--hud-unit) * 1.8);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 40% 35%, #a8d8f0 0%, #4a7a95 40%, #1e3a4f 80%, #0a1b28 100%);
+      border: 1px solid rgba(140, 224, 255, 0.6);
+      transform: translate(-50%, -50%);
+      box-shadow:
+        0 calc(var(--hud-unit) * 0.2) calc(var(--hud-unit) * 0.4) rgba(0, 0, 0, 0.6),
+        inset 0 1px 1px rgba(255, 255, 255, 0.3);
+      pointer-events: none;
+      transition: background 120ms ease;
+    }
+
+    .cp-joystick.active .cp-joystick-nub {
+      background:
+        radial-gradient(circle at 40% 35%, #ccf0ff 0%, #6aa8c8 40%, #2e5a75 80%, #0a1b28 100%);
+    }
+
+    /* ── D-pad ── */
+
+    .cp-dpad {
+      display: grid;
+      grid-template-columns: repeat(3, calc(var(--hud-unit) * 1.8));
+      grid-template-rows: repeat(3, calc(var(--hud-unit) * 1.8));
+      gap: calc(var(--hud-unit) * 0.12);
+    }
+
+    .cp-dpad-btn {
+      appearance: none;
+      border: 1px solid rgba(140, 224, 255, 0.35);
+      background: linear-gradient(180deg, #2a3a4a 0%, #0c1420 100%);
+      color: var(--cp-accent);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: calc(var(--hud-unit) * 0.9);
+      font-family: monospace;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+        0 1px 2px rgba(0, 0, 0, 0.5);
+      transition: all 80ms ease;
+      user-select: none;
+    }
+
+    .cp-dpad-btn:hover {
+      border-color: var(--cp-accent);
+      background: linear-gradient(180deg, #3a4a5a 0%, #14202c 100%);
+    }
+
+    .cp-dpad-btn:active {
+      background: linear-gradient(180deg, #0c1420 0%, #2a3a4a 100%);
+      box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.7),
+        0 0 calc(var(--hud-unit) * 0.5) rgba(140, 224, 255, 0.3);
+      transform: translateY(1px);
+    }
+
+    .cp-dpad-btn.empty {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      pointer-events: none;
+    }
+
+    .cp-dpad-btn.stop {
+      color: #ff8888;
+      border-color: rgba(255, 136, 136, 0.45);
+      font-size: calc(var(--hud-unit) * 0.7);
+    }
+
+    .cp-dpad-btn.stop:hover {
+      border-color: #ff8888;
+    }
+
+    /* ── Click-to-go mode button (below the joystick+dpad) ── */
+
+    .cp-cockpit-footer {
+      display: flex;
+      gap: calc(var(--hud-unit) * 0.4);
+      margin-top: calc(var(--hud-unit) * 0.65);
+      justify-content: center;
     }
   `;
   document.head.appendChild(style);
@@ -756,42 +1030,160 @@ function renderActions(nave: Nave, stage: Stage): void {
   renderMovePanel(nave);
 }
 
+// Movement command helpers. The D-pad and joystick both boil down to
+// sending the ship to a world-space point at nave.x+dx, nave.y+dy.
+const DPAD_NUDGE_DIST = 700;
+const JOYSTICK_MAX_DIST = 1200;
+
+function moveInDirection(nave: Nave, dx: number, dy: number): void {
+  if (!_mundoRef) return;
+  if (dx === 0 && dy === 0) return;
+  enviarNaveParaPosicao(_mundoRef, nave, nave.x + dx, nave.y + dy);
+}
+
 function renderMovePanel(nave: Nave): void {
   if (!_movePanelEl) return;
-  _movePanelEl.replaceChildren();
   _movePanelEl.classList.toggle('visible', _movePanelOpen);
   if (!_movePanelOpen) return;
 
+  // The cockpit DOM is built once per open — only re-rebuild if empty.
+  if (_movePanelEl.childElementCount !== 0) return;
+
   const title = document.createElement('div');
-  title.className = 'cp-info-title';
-  title.textContent = 'Voo Livre';
+  title.className = 'cp-cockpit-title';
+  title.textContent = '// Console de Navegação //';
   _movePanelEl.appendChild(title);
 
-  const hint = document.createElement('div');
-  hint.className = 'cp-move-hint';
-  const moveActive = getComandoNaveTipo() === 'move_colonizadora';
-  hint.textContent = moveActive
-    ? 'Clique no mapa pra definir destino'
-    : 'Arma modo voo livre';
-  _movePanelEl.appendChild(hint);
+  const row = document.createElement('div');
+  row.className = 'cp-cockpit-row';
+  _movePanelEl.appendChild(row);
 
+  // ── Analog joystick ──
+  const stick = document.createElement('div');
+  stick.className = 'cp-joystick';
+  const nub = document.createElement('div');
+  nub.className = 'cp-joystick-nub';
+  stick.appendChild(nub);
+  row.appendChild(stick);
+
+  const joystickState = { active: false, pointerId: -1 };
+  const resetNub = () => {
+    nub.style.transform = 'translate(-50%, -50%)';
+    stick.classList.remove('active');
+  };
+
+  stick.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    marcarInteracaoUi();
+    joystickState.active = true;
+    joystickState.pointerId = e.pointerId;
+    stick.setPointerCapture(e.pointerId);
+    stick.classList.add('active');
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (!joystickState.active || e.pointerId !== joystickState.pointerId) return;
+    const rect = stick.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = e.clientX - cx;
+    let dy = e.clientY - cy;
+    const maxR = rect.width * 0.35;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxR) {
+      dx = (dx / dist) * maxR;
+      dy = (dy / dist) * maxR;
+    }
+    nub.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  });
+  stick.addEventListener('pointerup', (e) => {
+    if (!joystickState.active || e.pointerId !== joystickState.pointerId) return;
+    const rect = stick.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 5 && _selectedNave) {
+      // Magnitude scales with how far the stick was pushed (0 → 1).
+      const maxR = rect.width * 0.35;
+      const mag = Math.min(1, dist / maxR);
+      const worldDist = JOYSTICK_MAX_DIST * mag;
+      const ux = dx / dist;
+      const uy = dy / dist;
+      moveInDirection(_selectedNave, ux * worldDist, uy * worldDist);
+    }
+    joystickState.active = false;
+    stick.releasePointerCapture(e.pointerId);
+    resetNub();
+  });
+  stick.addEventListener('pointercancel', () => {
+    joystickState.active = false;
+    resetNub();
+  });
+
+  // ── D-pad ──
+  const dpad = document.createElement('div');
+  dpad.className = 'cp-dpad';
+
+  const makeDpadBtn = (label: string, cls: string, dx: number, dy: number, onClick?: () => void) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `cp-dpad-btn ${cls}`;
+    btn.textContent = label;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      marcarInteracaoUi();
+      if (onClick) { onClick(); return; }
+      if (_selectedNave) moveInDirection(_selectedNave, dx, dy);
+    });
+    return btn;
+  };
+  const empty = () => {
+    const d = document.createElement('div');
+    d.className = 'cp-dpad-btn empty';
+    return d;
+  };
+
+  // 3×3 grid; only cardinal cells are active buttons, corners are empty.
+  dpad.appendChild(empty());
+  dpad.appendChild(makeDpadBtn('▲', 'up', 0, -DPAD_NUDGE_DIST));
+  dpad.appendChild(empty());
+  dpad.appendChild(makeDpadBtn('◀', 'left', -DPAD_NUDGE_DIST, 0));
+  dpad.appendChild(makeDpadBtn('■', 'stop', 0, 0, () => {
+    if (_selectedNave) cancelarMovimentoNave(_selectedNave);
+  }));
+  dpad.appendChild(makeDpadBtn('▶', 'right', DPAD_NUDGE_DIST, 0));
+  dpad.appendChild(empty());
+  dpad.appendChild(makeDpadBtn('▼', 'down', 0, DPAD_NUDGE_DIST));
+  dpad.appendChild(empty());
+  row.appendChild(dpad);
+
+  // ── Footer buttons: click-to-go mode + close ──
+  const footer = document.createElement('div');
+  footer.className = 'cp-cockpit-footer';
+  _movePanelEl.appendChild(footer);
+
+  const moveActive = getComandoNaveTipo() === 'move_colonizadora';
   const freeBtn = document.createElement('button');
   freeBtn.type = 'button';
   freeBtn.className = 'cp-btn primary';
   if (moveActive) freeBtn.classList.add('active');
   freeBtn.textContent = moveActive ? 'Aguardando clique...' : 'Click-to-go';
+  freeBtn.title = 'Arma modo voo livre (próximo clique no mapa vira destino)';
   freeBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     marcarInteracaoUi();
     if (getComandoNaveTipo() === 'move_colonizadora') {
       cancelarComandoNave();
-    } else {
-      iniciarComandoNave('move_colonizadora', nave);
+    } else if (_selectedNave) {
+      iniciarComandoNave('move_colonizadora', _selectedNave);
     }
     _renderKey = '';
   });
-  _movePanelEl.appendChild(freeBtn);
+  footer.appendChild(freeBtn);
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -803,9 +1195,13 @@ function renderMovePanel(nave: Nave): void {
     marcarInteracaoUi();
     _movePanelOpen = false;
     if (getComandoNaveTipo() === 'move_colonizadora') cancelarComandoNave();
+    if (_movePanelEl) {
+      _movePanelEl.replaceChildren();
+      _movePanelEl.classList.remove('visible');
+    }
     _renderKey = '';
   });
-  _movePanelEl.appendChild(closeBtn);
+  footer.appendChild(closeBtn);
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -873,7 +1269,7 @@ export function criarColonizerPanel(): HTMLDivElement {
   // Movement sub-panel (separate top-level element so its position is
   // independent of the main panel's layout and its own transition works).
   const movePanel = document.createElement('div');
-  movePanel.className = 'cp-move-panel';
+  movePanel.className = 'cp-cockpit';
   movePanel.addEventListener('pointerdown', () => marcarInteracaoUi());
   _movePanelEl = movePanel;
   document.body.appendChild(movePanel);
@@ -896,7 +1292,10 @@ export function atualizarColonizerPanel(mundo: Mundo): void {
   const nave = obterNaveSelecionada(mundo);
   if (!nave || nave.tipo !== 'colonizadora') {
     _container.classList.remove('visible');
-    _movePanelEl?.classList.remove('visible');
+    if (_movePanelEl) {
+      _movePanelEl.classList.remove('visible');
+      _movePanelEl.replaceChildren();
+    }
     _movePanelOpen = false;
     _selectedNave = null;
     _renderKey = '';
