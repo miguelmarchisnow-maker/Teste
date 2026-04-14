@@ -607,7 +607,8 @@ export function atualizarShipPanel(mundo: Mundo): void {
   _mundoRef = mundo;
 
   const nave = obterNaveSelecionada(mundo);
-  if (!nave) {
+  // Yield to colonizer-panel for colonizadoras — it has its own dedicated UI.
+  if (!nave || nave.tipo === 'colonizadora') {
     _container.classList.remove('visible');
     _selectedShip = null;
     _metaKey = '';
