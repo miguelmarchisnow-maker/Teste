@@ -5,7 +5,7 @@
  */
 
 let _container: HTMLDivElement | null = null;
-let _labelEl: HTMLDivElement | null = null;
+let _labelEl: HTMLSpanElement | null = null;
 let _styleInjected = false;
 let _visibleSince = 0;
 
