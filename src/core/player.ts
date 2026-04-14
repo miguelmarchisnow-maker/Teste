@@ -10,11 +10,14 @@ import {
   encontrarNaveNoPonto,
   encontrarPlanetaNoPonto,
   encontrarSolNoPonto,
+  enviarNaveParaAlvo,
+  enviarNaveParaPosicao,
   limparSelecoes,
   obterNaveSelecionada,
   selecionarNave,
   selecionarPlaneta,
 } from '../world/mundo';
+import { mostrarNotificacao } from '../ui/notificacao';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -22,7 +25,16 @@ let cameraDragging = false;
 const cameraLastMouse = { x: 0, y: 0 };
 const clickStartScreen = { x: 0, y: 0 };
 let clickInfo: { nave: Nave | null; planeta: Planeta | null; sol: Sol | null } | null = null;
-let comandoNave: { tipo: 'mover' | 'origem' | 'destino'; nave: Nave | null; pontos: { x: number; y: number }[] } | null = null;
+// Command modes:
+//   'mover'   — cargueira/batedora/torreta multi-waypoint route mode
+//   'origem'  — cargueira route origin picker
+//   'destino' — cargueira route destination picker
+//   'target_colonizadora' — colonizer-panel armed targeting mode; next
+//                           planet click dispatches the colonizadora there
+//   'move_colonizadora'   — colonizer-panel armed free-move mode; next map
+//                           click sends the colonizadora to that point
+type ComandoTipo = 'mover' | 'origem' | 'destino' | 'target_colonizadora' | 'move_colonizadora';
+let comandoNave: { tipo: ComandoTipo; nave: Nave | null; pontos: { x: number; y: number }[] } | null = null;
 let comandoPreviewGfx: Graphics | null = null;
 // Cached reference so zoomIn/zoomOut (called from keyboard/minimap/ship panel)
 // can anchor the zoom at screen center instead of the origin.
@@ -98,7 +110,7 @@ export function setCameraPos(x: number, y: number): void {
   camera.y = y;
 }
 
-export function iniciarComandoNave(tipo: 'mover' | 'origem' | 'destino', nave: Nave | null): void {
+export function iniciarComandoNave(tipo: ComandoTipo, nave: Nave | null): void {
   if (!nave) return;
   // Self-commit: pressing the Mover button a second time while already in
   // 'mover' mode finalises the waypoint list as a manual route.
@@ -128,12 +140,20 @@ export function cancelarComandoNave(): void {
 
 export function getTextoComandoNave(): string {
   if (!comandoNave?.nave?.selecionado) return '';
-  if (comandoNave.tipo === 'mover') return `Modo movimento: ${comandoNave.pontos.length}/5 pontos, clique no mapa e depois em Mover para iniciar`;
-  if (comandoNave.tipo === 'origem') return 'Config origem: clique em um planeta seu';
-  return 'Config destino: clique em um planeta seu';
+  switch (comandoNave.tipo) {
+    case 'mover': return `Modo movimento: ${comandoNave.pontos.length}/5 pontos, clique no mapa e depois em Mover para iniciar`;
+    case 'origem': return 'Config origem: clique em um planeta seu';
+    case 'destino': return 'Config destino: clique em um planeta seu';
+    case 'target_colonizadora': return 'Modo colonização: clique num planeta alvo';
+    case 'move_colonizadora': return 'Modo voo livre: clique no mapa para definir destino';
+  }
 }
 
-export function getComandoNaveAtual(): { tipo: 'mover' | 'origem' | 'destino'; nave: Nave | null; pontos: { x: number; y: number }[] } | null {
+export function getComandoNaveTipo(): ComandoTipo | null {
+  return comandoNave?.tipo ?? null;
+}
+
+export function getComandoNaveAtual(): { tipo: ComandoTipo; nave: Nave | null; pontos: { x: number; y: number }[] } | null {
   return comandoNave;
 }
 
@@ -212,15 +232,58 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       const destinoMapa = screenToWorld(e.clientX, e.clientY, app);
 
       // Click-arbitration priority (highest to lowest):
-      //   1. Click on a ship                 → select that ship
-      //   2. 'origem'/'destino' mode + planet → set cargueira route
-      //   3. 'mover' mode + empty space      → add waypoint
-      //   4. Click on a planet                → select that planet
-      //   5. Click on empty space             → clear selection
-      // Ships and planets always beat waypoint accumulation, so clicking
-      // a planet while the player is building a manual route will select
-      // the planet and cancel the command instead of silently dropping
-      // a waypoint at the planet's coordinates.
+      //   1. 'target_colonizadora' mode + planet → dispatch colonizadora
+      //   2. 'move_colonizadora' mode + any click → dispatch free move
+      //   3. Click on a ship                 → select that ship
+      //   4. 'origem'/'destino' mode + planet → set cargueira route
+      //   5. 'mover' mode + empty space      → add waypoint
+      //   6. Click on a planet                → select that planet
+      //   7. Click on empty space             → clear selection
+
+      // (1) Colonizadora targeting: consume the click to dispatch.
+      if (
+        naveSelecionada
+        && comandoNave?.nave === naveSelecionada
+        && comandoNave.tipo === 'target_colonizadora'
+      ) {
+        if (clickInfo?.planeta) {
+          const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.planeta);
+          if (ok) {
+            cancelarComandoNave();
+            somClique();
+          }
+        } else if (clickInfo?.sol) {
+          const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.sol);
+          if (ok) {
+            cancelarComandoNave();
+            somClique();
+          }
+        } else {
+          mostrarNotificacao('Clique em um planeta ou estrela pra alvejar.', '#ffcc66');
+        }
+        clickInfo = null;
+        return;
+      }
+
+      // (2) Colonizadora free move: any click becomes the destination.
+      if (
+        naveSelecionada
+        && comandoNave?.nave === naveSelecionada
+        && comandoNave.tipo === 'move_colonizadora'
+      ) {
+        if (clickInfo?.planeta) {
+          enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.planeta);
+        } else if (clickInfo?.sol) {
+          enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.sol);
+        } else {
+          enviarNaveParaPosicao(mundo, naveSelecionada, destinoMapa.x, destinoMapa.y);
+        }
+        cancelarComandoNave();
+        somClique();
+        clickInfo = null;
+        return;
+      }
+
       if (clickInfo?.nave) {
         cancelarComandoNave();
         selecionarNave(mundo, clickInfo.nave);

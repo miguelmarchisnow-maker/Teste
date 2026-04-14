@@ -366,9 +366,12 @@ export function atualizarColonyModal(mundo: Mundo): void {
     return;
   }
 
-  // Find any nave sitting in 'aguardando_decisao' state and open the modal.
+  // Decision UI for colonizadoras is now inlined in colonizer-panel.ts,
+  // so this modal is effectively dormant for that flow. We keep the
+  // hook in case another ship type ever gets a decision state.
   for (const nave of mundo.naves) {
     if (nave.estado !== 'aguardando_decisao') continue;
+    if (nave.tipo === 'colonizadora') continue;
     const alvo = nave.alvo;
     if (!alvo || alvo._tipoAlvo !== 'planeta') continue;
     show(nave, alvo);

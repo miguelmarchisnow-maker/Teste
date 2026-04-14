@@ -11,6 +11,7 @@ import {
 } from '../world/mundo';
 import { TEMPO_SURVEY_MS } from '../world/constantes';
 import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
+import { iniciarComandoNave, cancelarComandoNave, getComandoNaveTipo } from '../core/player';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -42,13 +43,17 @@ let _styleInjected = false;
 let _portraitCanvas: HTMLCanvasElement | null = null;
 let _stageBadgeEl: HTMLDivElement | null = null;
 let _infoTitleEl: HTMLDivElement | null = null;
+let _middleEl: HTMLDivElement | null = null;       // swappable middle section
 let _infoSubtitleEl: HTMLDivElement | null = null;
 let _progressBarEl: HTMLDivElement | null = null;
 let _progressLabelEl: HTMLDivElement | null = null;
 let _actionsEl: HTMLDivElement | null = null;
+let _movePanelEl: HTMLDivElement | null = null;     // movement sub-panel
+let _decisionNameInput: HTMLInputElement | null = null;
 
 let _selectedNave: Nave | null = null;
 let _mundoRef: Mundo | null = null;
+let _movePanelOpen = false;
 
 // Stable key we compare each frame to decide whether to re-render the DOM.
 let _renderKey = '';
@@ -376,6 +381,88 @@ function injectStyles(): void {
       opacity: 0.3;
       cursor: not-allowed;
     }
+
+    /* ── Decision prompt (replaces middle section) ── */
+    .cp-decision {
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.3);
+      min-width: calc(var(--hud-unit) * 13);
+    }
+
+    .cp-name-input {
+      width: 100%;
+      padding: calc(var(--hud-unit) * 0.35) calc(var(--hud-unit) * 0.55);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--hud-line);
+      color: var(--hud-text);
+      font-family: var(--hud-font-body);
+      font-size: var(--hud-text-md);
+      letter-spacing: 0.04em;
+      outline: none;
+      box-sizing: border-box;
+      border-radius: calc(var(--hud-unit) * 0.18);
+    }
+
+    .cp-name-input:focus {
+      border-color: #8ce0ff;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .cp-bonus {
+      font-family: var(--hud-font);
+      font-size: var(--hud-text-sm);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--hud-text-dim);
+      line-height: 1.3;
+      margin-top: calc(var(--hud-unit) * 0.25);
+    }
+
+    /* ── Movement sub-panel (floats above the main panel) ── */
+    .cp-move-panel {
+      position: fixed;
+      z-index: 101;
+      bottom: calc(var(--hud-margin) + var(--hud-unit) * 7);
+      left: 50%;
+      transform: translateX(-50%) translateY(calc(var(--hud-unit) * 0.6));
+      min-width: calc(var(--hud-unit) * 13);
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      border-radius: var(--hud-radius);
+      box-shadow: var(--hud-shadow);
+      backdrop-filter: blur(3px);
+      padding: calc(var(--hud-unit) * 0.8);
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.4);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity 160ms ease-out,
+        transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 200ms;
+    }
+
+    .cp-move-panel.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+      transition:
+        opacity 160ms ease-out,
+        transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 0s;
+    }
+
+    .cp-move-hint {
+      font-family: var(--hud-font);
+      font-size: var(--hud-text-sm);
+      color: var(--hud-text-dim);
+      letter-spacing: 0.06em;
+      line-height: 1.3;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -393,63 +480,332 @@ function computeRenderKey(nave: Nave): string {
     dist == null ? '' : Math.floor(dist / 50),
     Math.floor((nave.surveyTempoRestanteMs ?? 0) / 250),
     nave.origem?.dados.nome ?? '',
+    getComandoNaveTipo() ?? '',
+    _movePanelOpen ? '1' : '0',
   ].join('|');
 }
 
 function renderPanel(nave: Nave): void {
-  if (!_container) return;
+  if (!_container || !_middleEl) return;
   const stage = stageForNave(nave);
   const color = stageColor(stage);
 
   // ── Left section ──
-  if (_infoTitleEl) _infoTitleEl.textContent = nave.origem?.dados.nome ?? '';
+  if (_infoTitleEl) _infoTitleEl.textContent = nave.origem?.dados.nome
+    ? `de ${nave.origem.dados.nome}`
+    : '';
   if (_stageBadgeEl) {
     _stageBadgeEl.textContent = stageLabel(stage);
     _stageBadgeEl.style.color = color;
+    _stageBadgeEl.style.borderColor = color;
   }
 
   // ── Middle section ──
-  if (_infoSubtitleEl && _progressBarEl && _progressLabelEl) {
-    switch (stage) {
-      case 'idle':
-        _infoSubtitleEl.textContent = 'Aguardando ordens';
-        _progressBarEl.style.width = '0%';
-        _progressLabelEl.textContent = '';
-        break;
-      case 'outpost':
-        _infoSubtitleEl.textContent = `Em órbita de ${targetName(nave)}`;
-        _progressBarEl.style.width = '100%';
-        _progressLabelEl.textContent = 'Posto ativo';
-        break;
-      case 'traveling':
-        _infoSubtitleEl.textContent = `Rumo a ${targetName(nave)}`;
-        _progressBarEl.style.width = '0%';
-        _progressLabelEl.textContent = `ETA ${etaLabel(nave)}`;
-        break;
-      case 'surveying': {
-        const pct = Math.round(surveyProgress(nave) * 100);
-        _infoSubtitleEl.textContent = `Escaneando ${targetName(nave)}`;
-        _progressBarEl.style.width = `${pct}%`;
-        _progressLabelEl.textContent = `${surveyCountdownLabel(nave)} restante`;
-        break;
-      }
-      case 'deciding':
-        _infoSubtitleEl.textContent = `Survey completo: ${targetName(nave)}`;
-        _progressBarEl.style.width = '100%';
-        _progressLabelEl.textContent = 'Aguardando sua decisão';
-        break;
-    }
+  // The deciding stage swaps the middle content entirely — it becomes an
+  // inline decision prompt instead of a progress display.
+  if (stage === 'deciding') {
+    renderMiddleDecision(nave);
+  } else {
+    renderMiddleInfo(nave, stage);
   }
 
-  // ── Right section (placeholder for Commit G) ──
-  if (_actionsEl) {
-    _actionsEl.replaceChildren();
-    const placeholder = document.createElement('div');
-    placeholder.className = 'cp-btn disabled';
-    placeholder.textContent = '...';
-    placeholder.title = 'Ações vêm no próximo commit';
-    _actionsEl.appendChild(placeholder);
+  // ── Right section ──
+  renderActions(nave, stage);
+}
+
+function renderMiddleInfo(nave: Nave, stage: Stage): void {
+  if (!_middleEl) return;
+  // Rebuild progress-style middle if it was swapped out for a decision prompt.
+  if (!_infoSubtitleEl || !_progressBarEl || !_progressLabelEl || !_middleEl.contains(_infoSubtitleEl)) {
+    _middleEl.replaceChildren();
+    const info = document.createElement('div');
+    info.className = 'cp-info';
+    const infoTitle = document.createElement('div');
+    infoTitle.className = 'cp-info-title';
+    infoTitle.textContent = 'Missão';
+    const infoValue = document.createElement('div');
+    infoValue.className = 'cp-info-value';
+    _infoSubtitleEl = infoValue;
+    const progress = document.createElement('div');
+    progress.className = 'cp-progress';
+    const progressFill = document.createElement('div');
+    progressFill.className = 'cp-progress-fill';
+    _progressBarEl = progressFill;
+    progress.appendChild(progressFill);
+    const progressLabel = document.createElement('div');
+    progressLabel.className = 'cp-progress-label';
+    _progressLabelEl = progressLabel;
+    info.append(infoTitle, infoValue, progress, progressLabel);
+    _middleEl.appendChild(info);
   }
+
+  switch (stage) {
+    case 'idle':
+      _infoSubtitleEl.textContent = 'Aguardando ordens';
+      _progressBarEl.style.width = '0%';
+      _progressLabelEl.textContent = '';
+      break;
+    case 'outpost':
+      _infoSubtitleEl.textContent = `Em órbita de ${targetName(nave)}`;
+      _progressBarEl.style.width = '100%';
+      _progressLabelEl.textContent = 'Posto ativo';
+      break;
+    case 'traveling':
+      _infoSubtitleEl.textContent = `Rumo a ${targetName(nave)}`;
+      _progressBarEl.style.width = '0%';
+      _progressLabelEl.textContent = `ETA ${etaLabel(nave)}`;
+      break;
+    case 'surveying': {
+      const pct = Math.round(surveyProgress(nave) * 100);
+      _infoSubtitleEl.textContent = `Escaneando ${targetName(nave)}`;
+      _progressBarEl.style.width = `${pct}%`;
+      _progressLabelEl.textContent = `${surveyCountdownLabel(nave)} restante`;
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function renderMiddleDecision(nave: Nave): void {
+  if (!_middleEl) return;
+  const planeta = nave.alvo && nave.alvo._tipoAlvo === 'planeta' ? nave.alvo as Planeta : null;
+  _middleEl.replaceChildren();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'cp-decision';
+
+  const title = document.createElement('div');
+  title.className = 'cp-info-title';
+  title.textContent = 'Survey completo — habitável';
+  wrap.appendChild(title);
+
+  const label = document.createElement('div');
+  label.className = 'cp-info-title';
+  label.textContent = 'Nome da colônia';
+  label.style.marginTop = 'calc(var(--hud-unit) * 0.35)';
+  wrap.appendChild(label);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'cp-name-input';
+  input.maxLength = 32;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.value = planeta?.dados.nome ?? '';
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarDecisao(); }
+    else if (e.key === 'Escape') { e.preventDefault(); decidirOutpost(); }
+  });
+  _decisionNameInput = input;
+  wrap.appendChild(input);
+
+  const bonus = document.createElement('div');
+  bonus.className = 'cp-bonus';
+  bonus.textContent = '+1 Fábrica · +20 Comum · +5 Raro · +5 Combustível';
+  wrap.appendChild(bonus);
+
+  _middleEl.appendChild(wrap);
+
+  // Refocus the input each time so Enter/Esc shortcuts work.
+  setTimeout(() => _decisionNameInput?.focus(), 20);
+
+  // Reset the progress refs so renderMiddleInfo will rebuild on next stage change.
+  _infoSubtitleEl = null;
+  _progressBarEl = null;
+  _progressLabelEl = null;
+}
+
+interface ActionSpec {
+  id: string;
+  label: string;
+  hint?: string;
+  variant?: 'default' | 'primary' | 'active';
+  visible: (nave: Nave, stage: Stage) => boolean;
+  enabled?: (nave: Nave, stage: Stage) => boolean;
+  onClick: (nave: Nave) => void;
+}
+
+const ACTIONS: ActionSpec[] = [
+  {
+    id: 'target',
+    label: 'Target',
+    hint: 'Clique num planeta pra alvejar',
+    variant: 'primary',
+    visible: (_n, stage) => stage === 'idle' || stage === 'outpost',
+    enabled: () => true,
+    onClick: (n) => {
+      if (getComandoNaveTipo() === 'target_colonizadora') {
+        cancelarComandoNave();
+      } else {
+        iniciarComandoNave('target_colonizadora', n);
+      }
+    },
+  },
+  {
+    id: 'move',
+    label: 'Mover',
+    hint: 'Abrir painel de movimento livre',
+    visible: (_n, stage) => stage === 'idle' || stage === 'outpost',
+    enabled: () => true,
+    onClick: () => { _movePanelOpen = !_movePanelOpen; },
+  },
+  {
+    id: 'recall',
+    label: 'Recolher',
+    hint: 'Voltar pra planeta de origem',
+    visible: (_n, stage) => stage === 'outpost' || stage === 'idle',
+    enabled: (n, stage) => stage === 'outpost' || (stage === 'idle' && n.alvo !== n.origem),
+    onClick: (n) => {
+      if (_mundoRef) recolherColonizadoraParaOrigem(_mundoRef, n);
+    },
+  },
+  {
+    id: 'cancel',
+    label: 'Cancelar',
+    hint: 'Parar movimento em trânsito',
+    visible: (_n, stage) => stage === 'traveling',
+    enabled: () => true,
+    onClick: (n) => cancelarMovimentoNave(n),
+  },
+  {
+    id: 'abort_survey',
+    label: 'Abortar',
+    hint: 'Cancelar survey em andamento',
+    visible: (_n, stage) => stage === 'surveying',
+    enabled: () => true,
+    onClick: (n) => cancelarMovimentoNave(n),
+  },
+  {
+    id: 'colonize',
+    label: 'Colonizar',
+    hint: 'Confirmar colonização',
+    variant: 'primary',
+    visible: (_n, stage) => stage === 'deciding',
+    enabled: () => true,
+    onClick: (n) => {
+      if (!_mundoRef) return;
+      const nome = _decisionNameInput?.value.trim() || undefined;
+      confirmarColonizacao(_mundoRef, n, nome);
+    },
+  },
+  {
+    id: 'outpost',
+    label: 'Orbitar',
+    hint: 'Manter como posto de observação',
+    visible: (_n, stage) => stage === 'deciding',
+    enabled: () => true,
+    onClick: (n) => manterComoOutpost(n),
+  },
+  {
+    id: 'scrap',
+    label: 'Sucatear',
+    hint: 'Destruir a nave',
+    visible: (_n, stage) => stage === 'idle' || stage === 'outpost',
+    enabled: () => true,
+    onClick: (n) => {
+      if (_mundoRef && confirm('Sucatear esta colonizadora? Essa ação é permanente.')) {
+        sucatearNave(_mundoRef, n);
+      }
+    },
+  },
+];
+
+function confirmarDecisao(): void {
+  if (!_mundoRef || !_selectedNave) return;
+  const nome = _decisionNameInput?.value.trim() || undefined;
+  confirmarColonizacao(_mundoRef, _selectedNave, nome);
+}
+
+function decidirOutpost(): void {
+  if (!_selectedNave) return;
+  manterComoOutpost(_selectedNave);
+}
+
+function renderActions(nave: Nave, stage: Stage): void {
+  if (!_actionsEl) return;
+  _actionsEl.replaceChildren();
+
+  const visibleActions = ACTIONS.filter((a) => a.visible(nave, stage));
+  const targetingActive = getComandoNaveTipo() === 'target_colonizadora';
+
+  for (const spec of visibleActions) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cp-btn';
+    if (spec.variant === 'primary') btn.classList.add('primary');
+    if (spec.id === 'target' && targetingActive) btn.classList.add('active');
+    if (spec.id === 'move' && _movePanelOpen) btn.classList.add('active');
+    const isEnabled = spec.enabled ? spec.enabled(nave, stage) : true;
+    if (!isEnabled) btn.classList.add('disabled');
+    btn.textContent = spec.label;
+    if (spec.hint) btn.title = spec.hint;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      marcarInteracaoUi();
+      if (!isEnabled || !_selectedNave) return;
+      spec.onClick(_selectedNave);
+      _renderKey = ''; // force refresh on next frame
+    });
+    _actionsEl.appendChild(btn);
+  }
+
+  // Movement sub-panel: shown as a floating panel anchored above the main
+  // panel, containing free-move click + directional nudges.
+  renderMovePanel(nave);
+}
+
+function renderMovePanel(nave: Nave): void {
+  if (!_movePanelEl) return;
+  _movePanelEl.replaceChildren();
+  _movePanelEl.classList.toggle('visible', _movePanelOpen);
+  if (!_movePanelOpen) return;
+
+  const title = document.createElement('div');
+  title.className = 'cp-info-title';
+  title.textContent = 'Voo Livre';
+  _movePanelEl.appendChild(title);
+
+  const hint = document.createElement('div');
+  hint.className = 'cp-move-hint';
+  const moveActive = getComandoNaveTipo() === 'move_colonizadora';
+  hint.textContent = moveActive
+    ? 'Clique no mapa pra definir destino'
+    : 'Arma modo voo livre';
+  _movePanelEl.appendChild(hint);
+
+  const freeBtn = document.createElement('button');
+  freeBtn.type = 'button';
+  freeBtn.className = 'cp-btn primary';
+  if (moveActive) freeBtn.classList.add('active');
+  freeBtn.textContent = moveActive ? 'Aguardando clique...' : 'Click-to-go';
+  freeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    marcarInteracaoUi();
+    if (getComandoNaveTipo() === 'move_colonizadora') {
+      cancelarComandoNave();
+    } else {
+      iniciarComandoNave('move_colonizadora', nave);
+    }
+    _renderKey = '';
+  });
+  _movePanelEl.appendChild(freeBtn);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'cp-btn';
+  closeBtn.textContent = 'Fechar';
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    marcarInteracaoUi();
+    _movePanelOpen = false;
+    if (getComandoNaveTipo() === 'move_colonizadora') cancelarComandoNave();
+    _renderKey = '';
+  });
+  _movePanelEl.appendChild(closeBtn);
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -496,34 +852,11 @@ export function criarColonizerPanel(): HTMLDivElement {
   leftText.append(name, stageBadge, originTitle);
   left.append(portraitWrap, leftText);
 
-  // Middle section
+  // Middle section — content is built dynamically in renderMiddleInfo /
+  // renderMiddleDecision depending on the current stage.
   const middle = document.createElement('div');
   middle.className = 'cp-section cp-middle';
-
-  const info = document.createElement('div');
-  info.className = 'cp-info';
-
-  const infoTitle = document.createElement('div');
-  infoTitle.className = 'cp-info-title';
-  infoTitle.textContent = 'Missão';
-
-  const infoValue = document.createElement('div');
-  infoValue.className = 'cp-info-value';
-  _infoSubtitleEl = infoValue;
-
-  const progress = document.createElement('div');
-  progress.className = 'cp-progress';
-  const progressFill = document.createElement('div');
-  progressFill.className = 'cp-progress-fill';
-  _progressBarEl = progressFill;
-  progress.appendChild(progressFill);
-
-  const progressLabel = document.createElement('div');
-  progressLabel.className = 'cp-progress-label';
-  _progressLabelEl = progressLabel;
-
-  info.append(infoTitle, infoValue, progress, progressLabel);
-  middle.appendChild(info);
+  _middleEl = middle;
 
   // Right section
   const right = document.createElement('div');
@@ -536,6 +869,14 @@ export function criarColonizerPanel(): HTMLDivElement {
   row.append(left, middle, right);
   panel.appendChild(row);
   document.body.appendChild(panel);
+
+  // Movement sub-panel (separate top-level element so its position is
+  // independent of the main panel's layout and its own transition works).
+  const movePanel = document.createElement('div');
+  movePanel.className = 'cp-move-panel';
+  movePanel.addEventListener('pointerdown', () => marcarInteracaoUi());
+  _movePanelEl = movePanel;
+  document.body.appendChild(movePanel);
 
   _container = panel;
   return panel;
@@ -555,6 +896,8 @@ export function atualizarColonizerPanel(mundo: Mundo): void {
   const nave = obterNaveSelecionada(mundo);
   if (!nave || nave.tipo !== 'colonizadora') {
     _container.classList.remove('visible');
+    _movePanelEl?.classList.remove('visible');
+    _movePanelOpen = false;
     _selectedNave = null;
     _renderKey = '';
     return;
