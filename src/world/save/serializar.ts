@@ -1,4 +1,4 @@
-import type { Mundo, Sol, Planeta } from '../../types';
+import type { Mundo, Sol, Planeta, Nave } from '../../types';
 import type {
   MundoDTO,
   SolDTO,
@@ -6,6 +6,9 @@ import type {
   TipoJogadorDTO,
   PlanetaDTO,
   MemoriaPlanetaDTO,
+  NaveDTO,
+  AlvoDTO,
+  RotaCargueiraDTO,
 } from './dto';
 import { CURRENT_SCHEMA_VERSION } from './dto';
 import { getMemoria } from '../nevoa';
@@ -39,6 +42,11 @@ export function serializarMundo(
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((p) => serializarPlaneta(p, agora));
 
+  const naves: NaveDTO[] = mundo.naves
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((n) => serializarNave(n));
+
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     nome,
@@ -50,8 +58,49 @@ export function serializarMundo(
     sistemas,
     sois,
     planetas,
-    naves: [],    // Task 7
+    naves,
     fontesVisao: mundo.fontesVisao.map((f) => ({ x: f.x, y: f.y, raio: f.raio })),
+  };
+}
+
+function serializarNave(nave: Nave): NaveDTO {
+  return {
+    id: nave.id,
+    tipo: nave.tipo,
+    tier: nave.tier,
+    dono: nave.dono,
+    x: nave.x,
+    y: nave.y,
+    estado: nave.estado,
+    carga: { ...nave.carga },
+    configuracaoCarga: { ...nave.configuracaoCarga },
+    orbita: nave.orbita ? { ...nave.orbita } : null,
+    surveyTempoRestanteMs: nave.surveyTempoRestanteMs,
+    surveyTempoTotalMs: nave.surveyTempoTotalMs,
+    thrustX: nave.thrustX,
+    thrustY: nave.thrustY,
+    origemId: nave.origem.id,
+    alvo: serializarAlvo(nave.alvo),
+    rotaManual: nave.rotaManual.map((p) => ({ x: p.x, y: p.y })),
+    rotaCargueira: serializarRotaCargueira(nave.rotaCargueira),
+  };
+}
+
+function serializarAlvo(alvo: Nave['alvo']): AlvoDTO | null {
+  if (!alvo) return null;
+  if (alvo._tipoAlvo === 'planeta') return { tipo: 'planeta', id: alvo.id };
+  if (alvo._tipoAlvo === 'sol') return { tipo: 'sol', id: alvo.id };
+  if (alvo._tipoAlvo === 'ponto') return { tipo: 'ponto', x: alvo.x, y: alvo.y };
+  return null;
+}
+
+function serializarRotaCargueira(rota: Nave['rotaCargueira']): RotaCargueiraDTO | null {
+  if (!rota) return null;
+  return {
+    origemId: rota.origem?.id ?? null,
+    destinoId: rota.destino?.id ?? null,
+    loop: rota.loop,
+    fase: rota.fase,
   };
 }
 

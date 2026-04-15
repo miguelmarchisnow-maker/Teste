@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Mundo, Sol, Sistema, Planeta } from '../../../types';
+import type { Mundo, Sol, Sistema, Planeta, Nave } from '../../../types';
 
 // Mock nevoa to avoid loading pixi.js (which requires DOM) in node test env.
 vi.mock('../../nevoa', () => ({
@@ -127,5 +127,92 @@ describe('serializarMundo — planetas', () => {
     mundo.planetas.push(planeta);
     const dto = serializarMundo(mundo, 'teste');
     expect(dto.planetas[0].memoria).toBeNull();
+  });
+});
+
+function mockNave(id: string, origem: Planeta): Nave {
+  return {
+    id,
+    tipo: 'cargueira',
+    tier: 1,
+    dono: 'jogador',
+    x: 500,
+    y: 600,
+    estado: 'orbitando',
+    alvo: null,
+    selecionado: false,
+    origem,
+    carga: { comum: 5, raro: 0, combustivel: 0 },
+    configuracaoCarga: { comum: 10, raro: 0, combustivel: 0 },
+    rotaManual: [],
+    rotaCargueira: null,
+    _tipoAlvo: 'nave',
+    orbita: { raio: 120, angulo: 0.5, velocidade: 0.001 },
+  } as unknown as Nave;
+}
+
+describe('serializarMundo — naves', () => {
+  it('resolves origem as origemId', () => {
+    const mundo = mockMundo();
+    const planeta = mockPlaneta('pla-0-0');
+    mundo.planetas.push(planeta);
+    const nave = mockNave('nav-0', planeta);
+    mundo.naves.push(nave);
+
+    const dto = serializarMundo(mundo, 'teste');
+
+    expect(dto.naves).toHaveLength(1);
+    expect(dto.naves[0].origemId).toBe('pla-0-0');
+    expect(dto.naves[0].alvo).toBeNull();
+  });
+
+  it('serializes alvo planeta as discriminated union', () => {
+    const mundo = mockMundo();
+    const planeta = mockPlaneta('pla-0-0');
+    mundo.planetas.push(planeta);
+    const nave = mockNave('nav-0', planeta);
+    nave.alvo = planeta;
+    mundo.naves.push(nave);
+
+    const dto = serializarMundo(mundo, 'teste');
+
+    expect(dto.naves[0].alvo).toEqual({ tipo: 'planeta', id: 'pla-0-0' });
+  });
+
+  it('serializes alvo ponto as ponto union', () => {
+    const mundo = mockMundo();
+    const planeta = mockPlaneta('pla-0-0');
+    mundo.planetas.push(planeta);
+    const nave = mockNave('nav-0', planeta);
+    nave.alvo = { _tipoAlvo: 'ponto', x: 999, y: 888 };
+    mundo.naves.push(nave);
+
+    const dto = serializarMundo(mundo, 'teste');
+
+    expect(dto.naves[0].alvo).toEqual({ tipo: 'ponto', x: 999, y: 888 });
+  });
+
+  it('serializes rotaCargueira with origem/destino ids', () => {
+    const mundo = mockMundo();
+    const origem = mockPlaneta('pla-0-0');
+    const destino = mockPlaneta('pla-0-1');
+    mundo.planetas.push(origem, destino);
+    const nave = mockNave('nav-0', origem);
+    nave.rotaCargueira = {
+      origem,
+      destino,
+      loop: true,
+      fase: 'destino',
+    };
+    mundo.naves.push(nave);
+
+    const dto = serializarMundo(mundo, 'teste');
+
+    expect(dto.naves[0].rotaCargueira).toEqual({
+      origemId: 'pla-0-0',
+      destinoId: 'pla-0-1',
+      loop: true,
+      fase: 'destino',
+    });
   });
 });
