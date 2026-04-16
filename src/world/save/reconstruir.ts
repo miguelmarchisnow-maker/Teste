@@ -1,7 +1,7 @@
-import { Graphics } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import type { Mundo, Sol, Planeta, Sistema, Nave, FonteVisao } from '../../types';
-import type { MundoDTO, SolDTO, PlanetaDTO } from './dto';
+import type { MundoDTO, SolDTO, PlanetaDTO, NaveDTO, AlvoDTO } from './dto';
 import { criarMundoVazio, aplicarZOrderMundo, type MundoVazio } from '../mundo';
 import { criarEstrelaProcedural, criarPlanetaProceduralSprite } from '../planeta-procedural';
 import { criarMemoriaVisualPlaneta, restaurarMemoriaPlaneta } from '../nevoa';
@@ -74,14 +74,25 @@ export async function reconstruirMundo(
   const planetas = Array.from(planetasById.values());
   const sois = Array.from(solsById.values());
 
-  // 5. Assemble the Mundo. Naves are filled by Task 10.
+  // 5. Reconstruct naves
+  const naves: Nave[] = [];
+  for (const naveDto of dto.naves) {
+    const nave = reconstruirNave(naveDto, planetasById, solsById);
+    naves.push(nave);
+    if (!factories.skipVisuals) {
+      mv.navesContainer.addChild(nave.gfx);
+      mv.rotasContainer.addChild(nave.rotaGfx);
+    }
+  }
+
+  // 6. Assemble the Mundo.
   const mundo: Mundo = {
     container: mv.container,
     tamanho: mv.tamanho,
     planetas,
     sistemas,
     sois,
-    naves: [] as Nave[],
+    naves,
     fundo: mv.fundo,
     frotas: [] as unknown[],
     frotasContainer: mv.frotasContainer,
@@ -95,7 +106,7 @@ export async function reconstruirMundo(
     fontesVisao: dto.fontesVisao.map((f: FonteVisao) => ({ ...f })),
   } as Mundo;
 
-  // 6. Rebuild fog-of-war memory visuals and restore captured snapshots.
+  // 7. Rebuild fog-of-war memory visuals and restore captured snapshots.
   //    Tests flip skipVisuals so they don't need a real Pixi renderer.
   if (!factories.skipVisuals) {
     for (const planeta of planetas) {
@@ -178,4 +189,81 @@ function reconstruirPlaneta(
   planeta._construcoes = construcoes;
 
   return planeta;
+}
+
+function reconstruirNave(
+  dto: NaveDTO,
+  planetasById: Map<string, Planeta>,
+  solsById: Map<string, Sol>,
+): Nave {
+  const origem = planetasById.get(dto.origemId);
+  if (!origem) throw new Error(`Save corrompido: referência órfã ${dto.origemId}`);
+
+  const alvo = resolverAlvo(dto.alvo, planetasById, solsById);
+
+  let rotaCargueira: Nave['rotaCargueira'] = null;
+  if (dto.rotaCargueira) {
+    const rOrigem = dto.rotaCargueira.origemId
+      ? planetasById.get(dto.rotaCargueira.origemId) ?? null
+      : null;
+    if (dto.rotaCargueira.origemId && !rOrigem) {
+      throw new Error(`Save corrompido: referência órfã ${dto.rotaCargueira.origemId}`);
+    }
+    const rDestino = dto.rotaCargueira.destinoId
+      ? planetasById.get(dto.rotaCargueira.destinoId) ?? null
+      : null;
+    if (dto.rotaCargueira.destinoId && !rDestino) {
+      throw new Error(`Save corrompido: referência órfã ${dto.rotaCargueira.destinoId}`);
+    }
+    rotaCargueira = {
+      origem: rOrigem,
+      destino: rDestino,
+      loop: dto.rotaCargueira.loop,
+      fase: dto.rotaCargueira.fase,
+    };
+  }
+
+  return {
+    id: dto.id,
+    tipo: dto.tipo,
+    tier: dto.tier,
+    dono: dto.dono,
+    x: dto.x,
+    y: dto.y,
+    estado: dto.estado,
+    alvo,
+    surveyTempoRestanteMs: dto.surveyTempoRestanteMs,
+    surveyTempoTotalMs: dto.surveyTempoTotalMs,
+    thrustX: dto.thrustX,
+    thrustY: dto.thrustY,
+    selecionado: false,
+    origem,
+    carga: { ...dto.carga },
+    configuracaoCarga: { ...dto.configuracaoCarga },
+    rotaManual: dto.rotaManual.map((p) => ({ _tipoAlvo: 'ponto' as const, x: p.x, y: p.y })),
+    rotaCargueira,
+    gfx: new Container(),
+    rotaGfx: new Graphics(),
+    _tipoAlvo: 'nave',
+    orbita: dto.orbita ? { ...dto.orbita } : null,
+  } as Nave;
+}
+
+function resolverAlvo(
+  alvoDto: AlvoDTO | null,
+  planetasById: Map<string, Planeta>,
+  solsById: Map<string, Sol>,
+): Nave['alvo'] {
+  if (!alvoDto) return null;
+  if (alvoDto.tipo === 'planeta') {
+    const p = planetasById.get(alvoDto.id);
+    if (!p) throw new Error(`Save corrompido: referência órfã ${alvoDto.id}`);
+    return p;
+  }
+  if (alvoDto.tipo === 'sol') {
+    const s = solsById.get(alvoDto.id);
+    if (!s) throw new Error(`Save corrompido: referência órfã ${alvoDto.id}`);
+    return s;
+  }
+  return { _tipoAlvo: 'ponto', x: alvoDto.x, y: alvoDto.y };
 }

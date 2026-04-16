@@ -1,9 +1,72 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Mundo, Sol, Sistema, Planeta, Nave } from '../../../types';
 
-// Mock nevoa to avoid loading pixi.js (which requires DOM) in node test env.
-vi.mock('../../nevoa', () => ({
-  getMemoria: () => null,
+// Mock modules that touch Pixi internals at import/call time to avoid
+// needing a real GPU renderer in the node test environment.
+
+vi.mock('../../nevoa', () => {
+  const { Container } = require('pixi.js');
+  return {
+    getMemoria: () => null,
+    criarMemoriaVisualPlaneta: () => {},
+    restaurarMemoriaPlaneta: () => {},
+    criarCamadaMemoria: () => new Container(),
+    registrarMemoriaPlaneta: () => {},
+    atualizarVisibilidadeMemoria: () => {},
+    atualizarEscalaLabelMemoria: () => {},
+  };
+});
+
+vi.mock('../../planeta-procedural', () => ({
+  criarEstrelaProcedural: () => {
+    throw new Error('should not be called in tests');
+  },
+  criarPlanetaProceduralSprite: () => {
+    throw new Error('should not be called in tests');
+  },
+  atualizarTempoPlanetas: () => {},
+  atualizarLuzPlaneta: () => {},
+}));
+
+vi.mock('../../nomes', () => ({
+  resetarNomesPlanetas: () => {},
+}));
+
+vi.mock('../../fundo', () => {
+  const { Container } = require('pixi.js');
+  return {
+    criarFundo: () => new Container(),
+    atualizarFundo: () => {},
+  };
+});
+
+vi.mock('../../naves', () => ({
+  atualizarNaves: () => {},
+  atualizarSelecaoNave: () => {},
+  carregarSpritesheetNaves: () => Promise.resolve(),
+}));
+
+vi.mock('../../sistema', () => ({
+  criarSistemaSolar: () => {},
+}));
+
+vi.mock('../../pesquisa', () => ({
+  atualizarPesquisaPlaneta: () => {},
+}));
+
+vi.mock('../../visao', () => ({
+  atualizarCampoDeVisao: () => {},
+}));
+
+vi.mock('../../construcao', () => ({
+  atualizarFilasPlaneta: () => {},
+  desenharConstrucoesPlaneta: () => {},
+}));
+
+vi.mock('../../profiling', () => ({
+  profileMark: () => {},
+  profileAcumular: () => {},
+  profileFlush: () => {},
 }));
 
 import { serializarMundo } from '../serializar';
@@ -214,5 +277,93 @@ describe('serializarMundo — naves', () => {
       loop: true,
       fase: 'destino',
     });
+  });
+});
+
+// ─── Roundtrip tests ─────────────────────────────────────────────────────────
+
+import { reconstruirMundo } from '../reconstruir';
+import type { MundoDTO } from '../dto';
+
+function fakeSol(x: number, y: number, raio: number): Sol {
+  const { Container } = require('pixi.js');
+  const c = new Container();
+  return Object.assign(c, {
+    x,
+    y,
+    _raio: raio,
+    _cor: 0,
+    _tipoAlvo: 'sol',
+    _visivelAoJogador: false,
+    _descobertoAoJogador: false,
+  }) as unknown as Sol;
+}
+
+function fakePlanetaFromFactory(x: number, y: number, _tamanho: number, _tipo: string): Planeta {
+  const { Container } = require('pixi.js');
+  const c = new Container();
+  return Object.assign(c, {
+    x,
+    y,
+    _tipoAlvo: 'planeta',
+    _visivelAoJogador: false,
+    _descobertoAoJogador: false,
+  }) as unknown as Planeta;
+}
+
+describe('reconstruirMundo — roundtrip', () => {
+  it('serialize → reconstruct → serialize produces equivalent DTOs', async () => {
+    const mundo = mockMundo();
+    const planeta = mockPlaneta('pla-0-0');
+    const planeta2 = mockPlaneta('pla-0-1');
+    planeta2.id = 'pla-0-1';
+    mundo.planetas.push(planeta, planeta2);
+    mundo.sistemas[0].planetas.push(planeta, planeta2);
+
+    const nave = mockNave('nav-0', planeta);
+    nave.alvo = planeta2;
+    mundo.naves.push(nave);
+
+    const dto1 = serializarMundo(mundo, 'rt');
+    const fakeApp = { stage: { addChild: () => {} } } as any;
+    const rebuilt = await reconstruirMundo(dto1, fakeApp, {
+      criarSol: fakeSol,
+      criarPlaneta: fakePlanetaFromFactory,
+      skipVisuals: true,
+    });
+
+    const dto2 = serializarMundo(rebuilt, 'rt');
+
+    // Strip transient timestamps for comparison
+    dto1.salvoEm = 0;
+    dto2.salvoEm = 0;
+    dto1.criadoEm = 0;
+    dto2.criadoEm = 0;
+    expect(dto2).toEqual(dto1);
+  });
+
+  it('throws on orphan reference', async () => {
+    const dto: MundoDTO = {
+      schemaVersion: 1,
+      nome: 'corrupt',
+      criadoEm: 0,
+      salvoEm: 0,
+      tempoJogadoMs: 0,
+      tamanho: 1000,
+      tipoJogador: { nome: '', desc: '', cor: 0, bonus: {} },
+      sistemas: [{ id: 'sys-0', x: 0, y: 0, solId: 'sol-missing', planetaIds: [] }],
+      sois: [],
+      planetas: [],
+      naves: [],
+      fontesVisao: [],
+    };
+    const fakeApp = { stage: { addChild: () => {} } } as any;
+    await expect(
+      reconstruirMundo(dto, fakeApp, {
+        criarSol: fakeSol,
+        criarPlaneta: fakePlanetaFromFactory,
+        skipVisuals: true,
+      }),
+    ).rejects.toThrow(/Save corrompido/);
   });
 });
