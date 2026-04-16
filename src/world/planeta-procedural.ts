@@ -1,16 +1,9 @@
-import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite, Container, Rectangle } from 'pixi.js';
-import type { Application } from 'pixi.js';
+import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State } from 'pixi.js';
 import vertexSrc from '../shaders/planeta.vert?raw';
 import fragmentSrc from '../shaders/planeta.frag?raw';
 import wgslSrc from '../shaders/planeta.wgsl?raw';
 import { TIPO_PLANETA } from './planeta';
-import { getConfig, onConfigChange } from '../core/config';
-
-let _appRef: Application | null = null;
-
-export function setAppReferenceForBake(app: Application): void {
-  _appRef = app;
-}
+import { onConfigChange } from '../core/config';
 
 interface PaletaPlaneta {
   planetType: number;
@@ -273,44 +266,6 @@ export function criarPlanetaProceduralSprite(
   (mesh as any)._planetShader = shader;
   (mesh as any)._rotSpeed = rotSpeed;
 
-  // Bake path: capture shader output as static texture when shaderLive=false
-  if (!getConfig().graphics.shaderLive && _appRef) {
-    try {
-      // Force deterministic time before capturing
-      const uniforms = (shader.resources as any).planetUniforms.uniforms;
-      uniforms.uTime = 0;
-      uniforms.uRotation = 0;
-
-      // Clone into a wrapper at origin (same pattern as planet-panel.ts)
-      const frameSize = Math.max(64, tamanho * 1.08);
-      const clone = new Mesh({ geometry: quadGeometry, shader, state });
-      clone.scale.set(tamanho);
-      clone.position.set(frameSize / 2, frameSize / 2);
-      const wrapper = new Container();
-      wrapper.addChild(clone);
-
-      const texture = _appRef.renderer.generateTexture({
-        target: wrapper,
-        frame: new Rectangle(0, 0, frameSize, frameSize),
-        resolution: 1,
-        antialias: true,
-      });
-      clone.destroy();
-      wrapper.destroy();
-
-      const sprite = new Sprite(texture);
-      sprite.anchor.set(0.5);
-      sprite.x = x;
-      sprite.y = y;
-      sprite.width = tamanho;
-      sprite.height = tamanho;
-      mesh.destroy();
-      return sprite as any;
-    } catch (err) {
-      console.warn('[planeta-procedural] bake failed, using live shader:', err);
-    }
-  }
-
   return mesh;
 }
 
@@ -399,41 +354,6 @@ export function criarEstrelaProcedural(
   (mesh as any)._planetShader = shader;
   (mesh as any)._rotSpeed = 0.005 + Math.random() * 0.01;
 
-  // Bake path: capture shader output as static texture when shaderLive=false
-  if (!getConfig().graphics.shaderLive && _appRef) {
-    try {
-      const uniforms = (shader.resources as any).planetUniforms.uniforms;
-      uniforms.uTime = 0;
-      uniforms.uRotation = 0;
-
-      const frameSize = Math.max(64, tamanho * 1.08);
-      const clone = new Mesh({ geometry: quadGeometry, shader, state });
-      clone.scale.set(tamanho);
-      clone.position.set(frameSize / 2, frameSize / 2);
-      const wrapper = new Container();
-      wrapper.addChild(clone);
-
-      const texture = _appRef.renderer.generateTexture({
-        target: wrapper,
-        frame: new Rectangle(0, 0, frameSize, frameSize),
-        resolution: 1,
-        antialias: true,
-      });
-      clone.destroy();
-      wrapper.destroy();
-
-      const sprite = new Sprite(texture);
-      sprite.anchor.set(0.5);
-      sprite.x = x;
-      sprite.y = y;
-      sprite.width = tamanho;
-      sprite.height = tamanho;
-      mesh.destroy();
-      return sprite as any;
-    } catch (err) {
-      console.warn('[planeta-procedural] star bake failed, using live shader:', err);
-    }
-  }
 
   return mesh;
 }
