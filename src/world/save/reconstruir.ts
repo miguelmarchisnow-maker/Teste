@@ -71,6 +71,15 @@ export async function reconstruirMundo(
     return { id: sistemaDto.id, x: sistemaDto.x, y: sistemaDto.y, sol, planetas };
   });
 
+  // Reassign dados.sistemaId to match the new array index, since the
+  // serializer sorts by string id (lexicographic) which differs from
+  // the original numeric creation order for indices >= 10.
+  for (let i = 0; i < sistemas.length; i++) {
+    for (const p of sistemas[i].planetas) {
+      p.dados.sistemaId = i;
+    }
+  }
+
   const planetas = Array.from(planetasById.values());
   const sois = Array.from(solsById.values());
 
@@ -168,6 +177,7 @@ function reconstruirPlaneta(
   };
   planeta._visivelAoJogador = dto.visivelAoJogador;
   planeta._descobertoAoJogador = dto.descobertoAoJogador;
+  planeta.visible = dto.visivelAoJogador;
 
   // Recreate the Graphics children that criarSistemaSolar normally
   // attaches: the orbit ring (in orbitasContainer) and the selection

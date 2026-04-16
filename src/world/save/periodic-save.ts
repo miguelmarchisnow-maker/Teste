@@ -33,8 +33,11 @@ export class PeriodicBackend implements StorageBackend {
 
   salvar(dto: MundoDTO): void {
     const json = JSON.stringify(dto);
-    localStorage.setItem(saveKey(dto.nome), json);
+    // Update index first (smaller payload, cheaper). If data write fails
+    // due to quota, a dangling index entry is less harmful than orphaned
+    // save data invisible to the listing.
     this.atualizarIndice(dto);
+    localStorage.setItem(saveKey(dto.nome), json);
   }
 
   apagar(nome: string): void {
