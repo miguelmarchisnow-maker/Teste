@@ -315,6 +315,8 @@ export function criarPlanetaProceduralSprite(
 }
 
 export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
+  // When shaderLive is off, freeze all shader animations (no reload needed)
+  if (!getConfig().graphics.shaderLive) return;
   const deltaSec = deltaMs / 1000;
   for (const planeta of planetas) {
     // Only update uniforms for visible planets (off-screen ones are skipped)

@@ -149,11 +149,8 @@ Quando ligado, planetas e estrelas t\u00EAm anima\u00E7\u00E3o de
 superf\u00EDcie renderizada por shader em tempo real \u2014
 bonito mas caro.
 
-Quando desligado, o shader roda uma vez na cria\u00E7\u00E3o
-e o resultado \u00E9 guardado como textura fixa: mesmo
-visual, anima\u00E7\u00E3o congelada, desempenho muito maior.
-
-Requer recarregar o jogo.`,
+Quando desligado, a anima\u00E7\u00E3o congela imediatamente.
+Mesmo visual, desempenho muito maior.`,
   autosave: `Intervalo de autosave\n\nCom que frequ\u00EAncia o jogo salva automaticamente.\n'Desligado' desativa o autosave \u2014 s\u00F3 salva manualmente.`,
   saveMode: `Save experimental (IndexedDB)\n\nQuando ligado, salva em tempo real via IndexedDB\nem vez do m\u00E9todo padr\u00E3o por localStorage.\n\nMais r\u00E1pido e confi\u00E1vel para saves grandes.`,
   confirmar: `Confirmar a\u00E7\u00F5es destrutivas
@@ -880,7 +877,6 @@ function renderGraphicsTabAvancado(body: HTMLDivElement): void {
     cb.checked = gfx.shaderLive;
     cb.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, shaderLive: cb.checked } });
-      showReloadBanner(row);
     });
     row.appendChild(cb);
     body.appendChild(row);
