@@ -3,11 +3,25 @@ import { aplicarPreset, presetBateComFlagsDerivadas } from '../core/graphics-pre
 import { comHelp } from './tooltip';
 import { abrirRendererInfoModal } from './renderer-info-modal';
 import { toast } from './toast';
+import { confirmarAcao } from './confirmar-acao';
 
 type Tab = 'audio' | 'graphics' | 'gameplay';
 
 let _overlay: HTMLDivElement | null = null;
 let _currentTab: Tab = 'audio';
+let _refreshBody: (() => void) | null = null;
+let _fullscreenListenerInstalled = false;
+
+function instalarFullscreenListener(): void {
+  if (_fullscreenListenerInstalled) return;
+  _fullscreenListenerInstalled = true;
+  document.addEventListener('fullscreenchange', () => {
+    const isFs = !!document.fullscreenElement;
+    if (getConfig().graphics.fullscreen !== isFs) {
+      setConfig({ graphics: { ...getConfig().graphics, fullscreen: isFs } });
+    }
+  });
+}
 let _styleInjected = false;
 
 // ─── Tooltip texts ───────────────────────────────────────────────────
@@ -227,6 +241,7 @@ function showReloadBanner(afterRow: HTMLDivElement): void {
 
 export function abrirSettings(): void {
   injectStyles();
+  instalarFullscreenListener();
   if (_overlay) return;
 
   const overlay = document.createElement('div');
@@ -289,16 +304,16 @@ export function abrirSettings(): void {
   const resetAll = document.createElement('button');
   resetAll.textContent = 'Resetar tudo';
   resetAll.addEventListener('click', () => {
-    if (!confirm('Resetar todas as configura\u00E7\u00F5es?')) return;
-    resetarTudo();
-    refreshBody();
+    confirmarAcao('Resetar todas as configurações?', () => {
+      resetarTudo();
+      refreshBody();
+    });
   });
   footer.append(resetTab, resetAll);
   card.appendChild(footer);
 
   function refreshBody(): void {
     body.replaceChildren();
-    // Update tab active class
     tabsEl.querySelectorAll('.settings-tab').forEach((b, i) => {
       b.classList.toggle('active', tabs[i][0] === _currentTab);
     });
@@ -306,23 +321,30 @@ export function abrirSettings(): void {
     else if (_currentTab === 'graphics') renderGraphicsTab(body);
     else renderGameplayTab(body);
   }
+  _refreshBody = refreshBody;
   refreshBody();
 
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) fecharSettings();
   });
-  window.addEventListener('keydown', function esc(e) {
-    if (e.key === 'Escape') {
-      fecharSettings();
-      window.removeEventListener('keydown', esc);
-    }
-  });
+  function onEsc(e: KeyboardEvent): void {
+    if (e.key === 'Escape') fecharSettings();
+  }
+  window.addEventListener('keydown', onEsc);
+  _escListener = onEsc;
 
   document.body.appendChild(overlay);
   _overlay = overlay;
 }
 
+let _escListener: ((e: KeyboardEvent) => void) | null = null;
+
 export function fecharSettings(): void {
+  if (_escListener) {
+    window.removeEventListener('keydown', _escListener);
+    _escListener = null;
+  }
+  _refreshBody = null;
   _overlay?.remove();
   _overlay = null;
 }
@@ -418,6 +440,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
     }
     select.addEventListener('change', () => {
       aplicarPreset(select.value as typeof gfx.qualidadeEfeitos);
+      _refreshBody?.();
     });
     row.appendChild(select);
 
