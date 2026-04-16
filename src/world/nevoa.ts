@@ -2,6 +2,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { Planeta, Mundo, FonteVisao, Camera } from '../types';
 import { nomeTipoPlaneta } from './planeta';
 import { criarPlanetaProceduralSprite } from './planeta-procedural';
+import { calcularBoundsViewport } from './viewport-bounds';
 
 interface MemoriaPlanetaDados {
   dono: string;
@@ -326,13 +327,13 @@ let _fogProfFrames: number = 0;
 export function desenharNeblinaVisao(mundo: Mundo, fontesVisao: FonteVisao[], camera: Camera, screenW: number, screenH: number, zoom: number): void {
   _fogFrame++;
 
-  const invZoom = 1 / (zoom || 1);
-  const margem = 1500 * invZoom;
-
-  const worldX = camera.x - margem;
-  const worldY = camera.y - margem;
-  const worldW = screenW * invZoom + margem * 2;
-  const worldH = screenH * invZoom + margem * 2;
+  // margemMin=0 (sem piso constante), margemMultiplier=1500 (replica
+  // exatamente o comportamento original margem=1500*invZoom).
+  const bounds = calcularBoundsViewport(camera.x, camera.y, zoom, screenW, screenH, 0, 1500);
+  const worldX = bounds.esq;
+  const worldY = bounds.cima;
+  const worldW = bounds.dir - bounds.esq;
+  const worldH = bounds.baixo - bounds.cima;
 
   // Resolução fixa — nunca muda com zoom
   const canvasW = FOG_MAX_W;
