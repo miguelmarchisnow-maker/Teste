@@ -1,0 +1,181 @@
+import { Graphics } from 'pixi.js';
+import type { Application } from 'pixi.js';
+import type { Mundo, Sol, Planeta, Sistema, Nave, FonteVisao } from '../../types';
+import type { MundoDTO, SolDTO, PlanetaDTO } from './dto';
+import { criarMundoVazio, aplicarZOrderMundo, type MundoVazio } from '../mundo';
+import { criarEstrelaProcedural, criarPlanetaProceduralSprite } from '../planeta-procedural';
+import { criarMemoriaVisualPlaneta, restaurarMemoriaPlaneta } from '../nevoa';
+import { resetarNomesPlanetas } from '../nomes';
+
+export interface ReconstruirFactories {
+  criarSol: (x: number, y: number, raio: number) => Sol;
+  criarPlaneta: (x: number, y: number, tamanho: number, tipo: string) => Planeta;
+  /**
+   * When true, skip Pixi-dependent visual reconstruction (fog-of-war
+   * memory visuals, stage mounting). Tests pass this to run without a
+   * real renderer.
+   */
+  skipVisuals?: boolean;
+}
+
+const defaultFactories: ReconstruirFactories = {
+  criarSol: (x, y, raio) => criarEstrelaProcedural(x, y, raio) as unknown as Sol,
+  criarPlaneta: (x, y, tamanho, tipo) =>
+    criarPlanetaProceduralSprite(x, y, tamanho, tipo) as unknown as Planeta,
+};
+
+export async function reconstruirMundo(
+  dto: MundoDTO,
+  app: Application,
+  factories: ReconstruirFactories = defaultFactories,
+): Promise<Mundo> {
+  resetarNomesPlanetas();
+
+  const mv = criarMundoVazio(dto.tamanho);
+
+  // 1. Reconstruct sois first — they hold the system centers planets
+  //    orbit around.
+  const solsById = new Map<string, Sol>();
+  for (const solDto of dto.sois) {
+    const sol = reconstruirSol(solDto, factories);
+    solsById.set(sol.id, sol);
+    mv.container.addChild(sol);
+  }
+
+  // 2. Reconstruct planetas — position is derived from the saved orbit
+  //    (centro + angulo + raio) so we don't need to persist x/y.
+  const planetasById = new Map<string, Planeta>();
+  for (const planetaDto of dto.planetas) {
+    const planeta = reconstruirPlaneta(planetaDto, factories, mv);
+    planetasById.set(planeta.id, planeta);
+    mv.container.addChild(planeta);
+  }
+
+  // 3. Stack the overlay containers (orbits, fleets, ships, routes, fog,
+  //    memory) on top of the sol/planet meshes we just added.
+  aplicarZOrderMundo(mv);
+
+  // 4. Reconstruct sistemas, resolving sol/planeta references by id.
+  const sistemas: Sistema[] = dto.sistemas.map((sistemaDto) => {
+    const sol = solsById.get(sistemaDto.solId);
+    if (!sol) {
+      throw new Error(`Save corrompido: sistema ${sistemaDto.id} referencia sol inexistente ${sistemaDto.solId}`);
+    }
+    const planetas = sistemaDto.planetaIds.map((pid) => {
+      const p = planetasById.get(pid);
+      if (!p) {
+        throw new Error(`Save corrompido: sistema ${sistemaDto.id} referencia planeta inexistente ${pid}`);
+      }
+      return p;
+    });
+    return { id: sistemaDto.id, x: sistemaDto.x, y: sistemaDto.y, sol, planetas };
+  });
+
+  const planetas = Array.from(planetasById.values());
+  const sois = Array.from(solsById.values());
+
+  // 5. Assemble the Mundo. Naves are filled by Task 10.
+  const mundo: Mundo = {
+    container: mv.container,
+    tamanho: mv.tamanho,
+    planetas,
+    sistemas,
+    sois,
+    naves: [] as Nave[],
+    fundo: mv.fundo,
+    frotas: [] as unknown[],
+    frotasContainer: mv.frotasContainer,
+    navesContainer: mv.navesContainer,
+    rotasContainer: mv.rotasContainer,
+    tipoJogador: dto.tipoJogador,
+    ultimoTickMs: performance.now(),
+    visaoContainer: mv.visaoContainer,
+    orbitasContainer: mv.orbitasContainer,
+    memoriaPlanetasContainer: mv.memoriaPlanetasContainer,
+    fontesVisao: dto.fontesVisao.map((f: FonteVisao) => ({ ...f })),
+  } as Mundo;
+
+  // 6. Rebuild fog-of-war memory visuals and restore captured snapshots.
+  //    Tests flip skipVisuals so they don't need a real Pixi renderer.
+  if (!factories.skipVisuals) {
+    for (const planeta of planetas) {
+      criarMemoriaVisualPlaneta(mundo, planeta);
+      const dtoRef = dto.planetas.find((p) => p.id === planeta.id);
+      if (!dtoRef?.memoria) continue;
+      const m = dtoRef.memoria;
+      restaurarMemoriaPlaneta(planeta, {
+        conhecida: m.conhecida,
+        x: m.snapshotX,
+        y: m.snapshotY,
+        // Rebase the absolute save-time timestamp onto the current
+        // performance.now() clock so "X minutes ago" labels stay correct.
+        timestamp: performance.now() - m.idadeMs,
+        dados: { ...m.dados },
+      });
+    }
+    app.stage.addChild(mundo.container);
+  }
+
+  return mundo;
+}
+
+function reconstruirSol(dto: SolDTO, factories: ReconstruirFactories): Sol {
+  const sol = factories.criarSol(dto.x, dto.y, dto.raio);
+  sol.id = dto.id;
+  sol._raio = dto.raio;
+  sol._cor = dto.cor;
+  sol._tipoAlvo = 'sol';
+  sol._visivelAoJogador = dto.visivelAoJogador;
+  sol._descobertoAoJogador = dto.descobertoAoJogador;
+  sol.visible = dto.visivelAoJogador || dto.descobertoAoJogador;
+  return sol;
+}
+
+function reconstruirPlaneta(
+  dto: PlanetaDTO,
+  factories: ReconstruirFactories,
+  mv: MundoVazio,
+): Planeta {
+  const x = dto.orbita.centroX + Math.cos(dto.orbita.angulo) * dto.orbita.raio;
+  const y = dto.orbita.centroY + Math.sin(dto.orbita.angulo) * dto.orbita.raio;
+  const planeta = factories.criarPlaneta(x, y, dto.dados.tamanho, dto.dados.tipoPlaneta);
+  planeta.id = dto.id;
+  planeta._tipoAlvo = 'planeta';
+  planeta._orbita = { ...dto.orbita };
+  planeta.dados = {
+    ...dto.dados,
+    recursos: { ...dto.dados.recursos },
+    fracProducao: { ...dto.dados.fracProducao },
+    pesquisas: Object.fromEntries(
+      Object.entries(dto.dados.pesquisas).map(([k, v]) => [k, [...v]]),
+    ),
+    filaProducao: dto.dados.filaProducao.map((i) => ({ ...i })),
+    construcaoAtual: dto.dados.construcaoAtual ? { ...dto.dados.construcaoAtual } : null,
+    producaoNave: dto.dados.producaoNave ? { ...dto.dados.producaoNave } : null,
+    pesquisaAtual: dto.dados.pesquisaAtual ? { ...dto.dados.pesquisaAtual } : null,
+    selecionado: false,
+  };
+  planeta._visivelAoJogador = dto.visivelAoJogador;
+  planeta._descobertoAoJogador = dto.descobertoAoJogador;
+
+  // Recreate the Graphics children that criarSistemaSolar normally
+  // attaches: the orbit ring (in orbitasContainer) and the selection
+  // ring / construction overlay (children of the planeta itself).
+  const linhaOrbita = new Graphics();
+  linhaOrbita.visible = false;
+  linhaOrbita
+    .circle(dto.orbita.centroX, dto.orbita.centroY, dto.orbita.raio)
+    .stroke({ color: 0xffd166, width: 2, alpha: 0.3 });
+  mv.orbitasContainer.addChild(linhaOrbita);
+  planeta._linhaOrbita = linhaOrbita;
+
+  const anel = new Graphics();
+  planeta.addChild(anel);
+  planeta._anel = anel;
+
+  const construcoes = new Graphics();
+  planeta.addChild(construcoes);
+  planeta._construcoes = construcoes;
+
+  return planeta;
+}
