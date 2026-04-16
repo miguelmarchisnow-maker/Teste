@@ -83,7 +83,7 @@ function deepClone<T>(x: T): T {
 function mergeDeep<T>(base: T, over: any): T {
   const out: any = Array.isArray(base) ? [...(base as any)] : { ...base };
   if (!over || typeof over !== 'object') return out;
-  for (const k in over) {
+  for (const k of Object.keys(over)) {
     const v = over[k];
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       out[k] = mergeDeep((base as any)?.[k] ?? {}, v);
@@ -117,7 +117,7 @@ function load(): OrbitalConfig {
 
 export function getConfig(): OrbitalConfig {
   if (!_cache) _cache = load();
-  return { ..._cache };
+  return deepClone(_cache);
 }
 
 export function onConfigChange(fn: ConfigListener): () => void {
@@ -140,7 +140,7 @@ export function setConfig(partial: DeepPartial<OrbitalConfig>): void {
   try {
     const snapshot = Array.from(_listeners);
     for (const fn of snapshot) {
-      try { fn(_cache); } catch (err) { console.error('[config] listener error:', err); }
+      try { fn(deepClone(_cache!)); } catch (err) { console.error('[config] listener error:', err); }
     }
   } finally {
     _notifying = false;
