@@ -8,6 +8,7 @@
 import { marcarInteracaoUi } from './interacao-ui';
 import { getBackendAtivo } from '../world/save';
 import type { SaveMetadata } from '../world/save';
+import { montarSettingsPanel } from './settings-panel';
 
 interface MainMenuOptions {
   onNewGame: () => void;
@@ -430,10 +431,7 @@ function buildSettingsScreen(): HTMLDivElement {
   title.textContent = 'Configurações';
   screen.appendChild(title);
 
-  const placeholder = document.createElement('div');
-  placeholder.className = 'menu-saves-empty';
-  placeholder.textContent = 'Em breve';
-  screen.appendChild(placeholder);
+  screen.appendChild(montarSettingsPanel());
 
   return screen;
 }
