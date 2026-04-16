@@ -72,6 +72,10 @@ const STORAGE_KEY = 'orbital_config';
 
 let _cache: OrbitalConfig | null = null;
 
+type ConfigListener = (cfg: OrbitalConfig) => void;
+const _listeners = new Set<ConfigListener>();
+let _notifying = false;
+
 function deepClone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x));
 }
@@ -116,12 +120,30 @@ export function getConfig(): OrbitalConfig {
   return { ..._cache };
 }
 
+export function onConfigChange(fn: ConfigListener): () => void {
+  _listeners.add(fn);
+  return () => _listeners.delete(fn);
+}
+
 export function setConfig(partial: DeepPartial<OrbitalConfig>): void {
+  if (_notifying) {
+    console.error('[config] reentrant setConfig — ignored. Listener bug:', partial);
+    return;
+  }
   _cache = mergeDeep(getConfig(), partial);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache));
-  } catch {
-    /* quota exhausted */
+  } catch (err) {
+    console.warn('[config] persist failed:', err);
+  }
+  _notifying = true;
+  try {
+    const snapshot = Array.from(_listeners);
+    for (const fn of snapshot) {
+      try { fn(_cache); } catch (err) { console.error('[config] listener error:', err); }
+    }
+  } finally {
+    _notifying = false;
   }
 }
 
@@ -136,4 +158,6 @@ export function setConfigDuranteBoot(partial: DeepPartial<OrbitalConfig>): void 
 
 export function resetConfigForTest(): void {
   _cache = null;
+  _listeners.clear();
+  _notifying = false;
 }
