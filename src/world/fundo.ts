@@ -1,4 +1,5 @@
 import { Sprite, Texture, Container } from 'pixi.js';
+import { getConfig } from '../core/config';
 
 const TILE = 2048;
 
@@ -26,7 +27,8 @@ function gerarTile(w: number, h: number, seed: number): Texture {
   let s = seed;
   const rand = (): number => { s = (s * 16807 + 0) % 2147483647; return s / 2147483647; };
 
-  const estrelas = Math.floor(180 * (w / TILE) * (h / TILE));
+  const densidade = getConfig().graphics.densidadeStarfield;
+  const estrelas = Math.max(1, Math.floor(180 * (w / TILE) * (h / TILE) * densidade));
   for (let i = 0; i < estrelas; i++) {
     const x = rand() * w;
     const y = rand() * h;
