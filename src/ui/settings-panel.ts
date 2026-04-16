@@ -68,11 +68,11 @@ Biblioteca gr\u00E1fica que o jogo usa pra desenhar.
   e Edge atuais suportam bem; Firefox e Safari ainda
   t\u00EAm suporte limitado.
 
-\u2022 Software
-  Modo de compatibilidade m\u00E1xima: WebGL 1 sem
-  antialias, resolu\u00E7\u00E3o 1x, qualidade M\u00EDnimo
-  aplicada automaticamente. Use quando o jogo
-  estiver travando ou com artefatos visuais.
+\u2022 Software (Canvas)
+  Renderiza\u00E7\u00E3o por software via Canvas 2D, sem
+  usar a GPU. Muito mais lento mas funciona em
+  qualquer dispositivo. Aplica qualidade M\u00EDnimo
+  automaticamente. Shaders n\u00E3o funcionam neste modo.
 
 \u2022 Fallback autom\u00E1tico
   Se o WebGPU falhar ao iniciar, o jogo volta sozinho

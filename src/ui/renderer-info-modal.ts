@@ -301,7 +301,7 @@ export function abrirRendererInfoModal(app: Application): void {
   if (cfg.renderer === 'software') {
     const b = document.createElement('div');
     b.className = 'renderer-info-banner info';
-    b.textContent = 'ℹ Modo Software ativo — WebGL 1, sem antialias, resolução 1x, qualidade Mínimo. O navegador ainda usa a GPU para WebGL, mas com configurações mínimas.';
+    b.textContent = 'ℹ Modo Software ativo — Canvas 2D, sem GPU, resolução 1x, qualidade Mínimo. Shaders não funcionam neste modo.';
     card.appendChild(b);
   } else if (info.software) {
     const b = document.createElement('div');

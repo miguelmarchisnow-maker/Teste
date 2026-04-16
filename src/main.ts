@@ -58,24 +58,12 @@ async function bootstrap(): Promise<void> {
     baseInit.powerPreference = gfx.gpuPreference;
   }
 
-  // Software mode: force WebGL 1, no antialias, 1x resolution, Mínimo preset
-  const effectiveRenderer = gfx.renderer === 'software' ? 'webgl' : gfx.renderer;
+  // Software mode: Canvas 2D renderer (no GPU), Mínimo preset
+  const effectiveRenderer = gfx.renderer === 'software' ? 'canvas' : gfx.renderer;
   if (gfx.renderer === 'software') {
     baseInit.antialias = false;
     baseInit.resolution = 1;
     baseInit.autoDensity = false;
-    // Force WebGL 1 context (most compatible)
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl', {
-      antialias: false,
-      premultipliedAlpha: true,
-      failIfMajorPerformanceCaveat: false,
-      powerPreference: 'low-power',
-    });
-    if (gl) {
-      baseInit.context = gl as any;
-      baseInit.canvas = canvas as any;
-    }
     // Apply Mínimo preset via boot path (no observers)
     setConfigDuranteBoot({
       graphics: {
@@ -112,7 +100,12 @@ async function bootstrap(): Promise<void> {
   try {
     await app.init({ ...baseInit, preference: effectiveRenderer });
   } catch (err) {
-    if (gfx.renderer === 'webgpu') {
+    if (gfx.renderer === 'software') {
+      console.warn('[renderer] Canvas renderer failed, falling back to WebGL:', err);
+      setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
+      await app.init({ ...baseInit, preference: 'webgl' });
+      window.setTimeout(() => toast('Renderizador Canvas indisponível — usando WebGL', 'err'), 2000);
+    } else if (gfx.renderer === 'webgpu') {
       console.warn('[renderer] WebGPU failed, falling back to WebGL:', err);
       setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
       await app.init({ ...baseInit, preference: 'webgl' });
