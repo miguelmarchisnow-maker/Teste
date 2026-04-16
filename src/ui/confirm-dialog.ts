@@ -189,6 +189,8 @@ export function criarConfirmDialog(): void {
 
   const modal = document.createElement('div');
   modal.className = 'confirm-dialog';
+  modal.setAttribute('data-ui', 'true');
+  modal.style.pointerEvents = 'auto';
   modal.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     marcarInteracaoUi();

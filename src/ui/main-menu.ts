@@ -483,6 +483,8 @@ export function criarMainMenu(options: MainMenuOptions): HTMLDivElement {
 
   const container = document.createElement('div');
   container.className = 'main-menu';
+  container.setAttribute('data-ui', 'true');
+  container.style.pointerEvents = 'auto';
 
   // Back button (hidden on main screen)
   const back = document.createElement('button');
