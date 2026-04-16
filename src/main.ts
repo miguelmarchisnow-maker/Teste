@@ -58,32 +58,30 @@ async function bootstrap(): Promise<void> {
     baseInit.powerPreference = gfx.gpuPreference;
   }
 
-  // Software renderer: force WebGL with a manually-created context
-  // requesting low-power preference to encourage software fallback
+  // Software mode: WebGL 1 with minimal settings + auto-apply Mínimo preset
   const effectiveRenderer = gfx.renderer === 'software' ? 'webgl' : gfx.renderer;
+  if (gfx.renderer === 'software') {
+    baseInit.antialias = false;
+    baseInit.resolution = 1;
+    // Apply minimo preset on boot for maximum performance
+    const { aplicarPreset } = await import('./core/graphics-preset');
+    aplicarPreset('minimo');
+  }
 
   // Optional: WebGL version forced context injection
-  if (effectiveRenderer === 'webgl' && (gfx.webglVersion !== 'auto' || gfx.renderer === 'software')) {
+  if (effectiveRenderer === 'webgl' && gfx.webglVersion !== 'auto') {
     const canvas = document.createElement('canvas');
-    const ctxOpts: WebGLContextAttributes = {
-      antialias: gfx.renderer !== 'software',
-      premultipliedAlpha: true,
-      failIfMajorPerformanceCaveat: false,
-    };
-    if (gfx.renderer === 'software') {
-      ctxOpts.powerPreference = 'low-power';
-    } else if (gfx.gpuPreference !== 'auto') {
+    const ctxOpts: WebGLContextAttributes = { antialias: true, premultipliedAlpha: true };
+    if (gfx.gpuPreference !== 'auto') {
       ctxOpts.powerPreference = gfx.gpuPreference;
     }
-    const glVersion = gfx.renderer === 'software' ? 'webgl' : (gfx.webglVersion === '1' ? 'webgl' : 'webgl2');
-    const gl = canvas.getContext(glVersion, ctxOpts);
+    const gl = gfx.webglVersion === '1'
+      ? canvas.getContext('webgl', ctxOpts)
+      : canvas.getContext('webgl2', ctxOpts);
     if (gl) {
       baseInit.context = gl as any;
       baseInit.canvas = canvas as any;
-      if (gfx.renderer !== 'software') {
-        // keep existing behavior
-      }
-    } else if (gfx.renderer !== 'software') {
+    } else {
       console.warn(`[renderer] WebGL ${gfx.webglVersion} indisponível, caindo pra auto`);
       setConfigDuranteBoot({ graphics: { ...gfx, webglVersion: 'auto' } });
     }

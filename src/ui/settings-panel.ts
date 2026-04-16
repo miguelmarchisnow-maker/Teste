@@ -69,9 +69,10 @@ Biblioteca gr\u00E1fica que o jogo usa pra desenhar.
   t\u00EAm suporte limitado.
 
 \u2022 Software
-  For\u00E7a renderiza\u00E7\u00E3o por software (sem GPU).
-  Muito lento, mas funciona quando a acelera\u00E7\u00E3o
-  por hardware est\u00E1 com problemas.
+  Modo de compatibilidade m\u00E1xima: WebGL 1 sem
+  antialias, resolu\u00E7\u00E3o 1x, qualidade M\u00EDnimo
+  aplicada automaticamente. Use quando o jogo
+  estiver travando ou com artefatos visuais.
 
 \u2022 Fallback autom\u00E1tico
   Se o WebGPU falhar ao iniciar, o jogo volta sozinho
