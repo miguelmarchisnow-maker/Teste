@@ -2,7 +2,7 @@ import { Application } from 'pixi.js';
 import type { Mundo, TipoJogador } from './types';
 import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo } from './world/mundo';
 import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu } from './world/mundo-menu';
-import { configurarCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom } from './core/player';
+import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom } from './core/player';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
 import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
 import { criarChatLog, destruirChatLog } from './ui/chat-log';
@@ -33,6 +33,7 @@ let _mundoMenu: MundoMenu | null = null;
 let _gameStarted = false;
 let _hudInstalled = false;
 let _transitioning = false;
+let _fimTocado = false;
 
 // Cinematic camera state during the main menu. Accumulated seconds,
 // fed into layered sines for a non-circular, more organic drift.
@@ -115,8 +116,6 @@ function startTicker(): void {
   if (!_app) return;
   const app = _app;
 
-  let fimTocado = false;
-
   app.ticker.add(() => {
     app.ticker.speed = getDebugState().gameSpeed;
 
@@ -179,12 +178,12 @@ function startTicker(): void {
     atualizarHudBannerErro();
 
     const estado = getEstadoJogo();
-    if (estado === 'vitoria' && !fimTocado) {
+    if (estado === 'vitoria' && !_fimTocado) {
       somVitoria();
-      fimTocado = true;
-    } else if (estado === 'derrota' && !fimTocado) {
+      _fimTocado = true;
+    } else if (estado === 'derrota' && !_fimTocado) {
       somDerrota();
-      fimTocado = true;
+      _fimTocado = true;
     }
   });
 }
@@ -360,7 +359,11 @@ async function voltarAoMenu(): Promise<void> {
   if (!_app) return;
   const app = _app;
 
-  // 1. Tear down game world
+  // 1. Tear down camera listeners (must happen before mundo is destroyed
+  // since listeners close over the mundo reference)
+  destruirCamera();
+
+  // 2. Tear down game world
   if (_mundo) {
     destruirMundo(_mundo, app);
     _mundo = null;
@@ -393,6 +396,7 @@ async function voltarAoMenu(): Promise<void> {
 
   _gameStarted = false;
   _transitioning = false;
+  _fimTocado = false;
 
   // 3. Recreate menu background world
   const mundoMenu = await criarMundoMenu(app);
