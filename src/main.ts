@@ -1,33 +1,39 @@
 import { Application } from 'pixi.js';
-import type { Mundo } from './types';
-import { criarMundo, atualizarMundo, getEstadoJogo } from './world/mundo';
+import type { Mundo, TipoJogador } from './types';
+import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo } from './world/mundo';
 import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu } from './world/mundo-menu';
-import { configurarCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom } from './core/player';
-import { getTipos } from './ui/selecao';
-import { criarSidebar } from './ui/sidebar';
-import { criarEmpireBadge } from './ui/empire-badge';
-import { criarChatLog } from './ui/chat-log';
-import { criarResourceBar } from './ui/resource-bar';
-import { criarCreditsBar } from './ui/credits-bar';
-import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMinimapZoomOut } from './ui/minimap';
-import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats } from './ui/debug-menu';
+import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom } from './core/player';
+import { criarSidebar, destruirSidebar } from './ui/sidebar';
+import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
+import { criarChatLog, destruirChatLog } from './ui/chat-log';
+import { criarResourceBar, destruirResourceBar } from './ui/resource-bar';
+import { criarCreditsBar, destruirCreditsBar } from './ui/credits-bar';
+import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMinimapZoomOut, destruirMinimap } from './ui/minimap';
+import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats, destruirDebugMenu } from './ui/debug-menu';
 import { installRootVariables } from './ui/hud-layout';
-import { criarPlanetPanel, atualizarPlanetPanel } from './ui/planet-panel';
-import { criarBuildPanel, atualizarBuildPanel } from './ui/build-panel';
-import { criarShipPanel, atualizarShipPanel } from './ui/ship-panel';
-import { criarColonizerPanel, atualizarColonizerPanel } from './ui/colonizer-panel';
-import { criarColonyModal, atualizarColonyModal } from './ui/colony-modal';
-import { criarConfirmDialog } from './ui/confirm-dialog';
-import { criarMainMenu, esconderMainMenu } from './ui/main-menu';
+import { criarPlanetPanel, atualizarPlanetPanel, destruirPlanetPanel } from './ui/planet-panel';
+import { criarBuildPanel, atualizarBuildPanel, destruirBuildPanel } from './ui/build-panel';
+import { criarShipPanel, atualizarShipPanel, destruirShipPanel } from './ui/ship-panel';
+import { criarColonizerPanel, atualizarColonizerPanel, destruirColonizerPanel } from './ui/colonizer-panel';
+import { criarColonyModal, atualizarColonyModal, destruirColonyModal } from './ui/colony-modal';
+import { criarConfirmDialog, destruirConfirmDialog } from './ui/confirm-dialog';
+import { criarMainMenu, esconderMainMenu, mostrarMainMenu } from './ui/main-menu';
+import { abrirPauseMenu, isPauseMenuOpen } from './ui/pause-menu';
+import { reconstruirMundo, iniciarAutosave, instalarListenersCicloDeVida, acumularTempoJogado, lerEMigrar, recuperarEmergency, salvarAgora, getBackendAtivo, getUltimoErro } from './world/save';
+import type { MundoDTO } from './world/save';
+import { toast } from './ui/toast';
+import { abrirNewWorldModal } from './ui/new-world-modal';
 import { criarLoadingScreen, mostrarCarregando, esconderCarregando } from './ui/loading-screen';
 import { somVitoria, somDerrota } from './audio/som';
 
-// Top-level state shared across bootstrap and iniciarJogo.
+// Top-level state shared across bootstrap, iniciarJogoNovo, and carregarMundo.
 let _app: Application | null = null;
 let _mundo: Mundo | null = null;
 let _mundoMenu: MundoMenu | null = null;
 let _gameStarted = false;
 let _hudInstalled = false;
+let _transitioning = false;
+let _fimTocado = false;
 
 // Cinematic camera state during the main menu. Accumulated seconds,
 // fed into layered sines for a non-circular, more organic drift.
@@ -72,6 +78,11 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    if (e.key === 'Escape' && _gameStarted && !isPauseMenuOpen()) {
+      e.preventDefault();
+      abrirPauseMenu();
+      return;
+    }
     if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn(); }
     else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
   });
@@ -86,20 +97,24 @@ async function bootstrap(): Promise<void> {
 
   criarMainMenu({
     onNewGame: () => {
-      void iniciarJogo();
+      abrirNewWorldModal({
+        onConfirm: (nome, tipoJogador) => { void iniciarJogoNovo(nome, tipoJogador); },
+        onCancel: () => {},
+      });
     },
-    onLoadGame: (_saveId: string) => {
-      // Phase 2: save/load not implemented yet.
-      void iniciarJogo();
-    },
+    onLoadGame: (nome: string) => { void carregarMundo(nome); },
+  });
+
+  instalarListenersCicloDeVida();
+
+  window.addEventListener('orbital:voltar-ao-menu', () => {
+    void voltarAoMenu();
   });
 }
 
 function startTicker(): void {
   if (!_app) return;
   const app = _app;
-
-  let fimTocado = false;
 
   app.ticker.add(() => {
     app.ticker.speed = getDebugState().gameSpeed;
@@ -137,6 +152,7 @@ function startTicker(): void {
     // ── Game phase: full update of the real world + HUD ──
     if (!_mundo) return;
     const mundo = _mundo;
+    acumularTempoJogado(app.ticker.deltaMS);
 
     const c = getCheats();
     if (c.recursosInfinitos) {
@@ -159,47 +175,34 @@ function startTicker(): void {
     atualizarColonizerPanel(mundo);
     atualizarColonyModal(mundo);
     atualizarDebugMenu();
+    atualizarHudBannerErro();
 
     const estado = getEstadoJogo();
-    if (estado === 'vitoria' && !fimTocado) {
+    if (estado === 'vitoria' && !_fimTocado) {
       somVitoria();
-      fimTocado = true;
-    } else if (estado === 'derrota' && !fimTocado) {
+      _fimTocado = true;
+    } else if (estado === 'derrota' && !_fimTocado) {
       somDerrota();
-      fimTocado = true;
+      _fimTocado = true;
     }
   });
 }
 
-async function iniciarJogo(): Promise<void> {
-  if (!_app || _gameStarted) return;
+async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJogadoMs: number): Promise<void> {
+  if (!_app) return;
   const app = _app;
 
-  esconderMainMenu();
-  mostrarCarregando('Criando mundo');
-
-  // Let the browser paint the loader before we start hogging the main
-  // thread with world generation.
-  await new Promise<void>((r) => requestAnimationFrame(() => r()));
-
-  // Tear down the menu background world so it doesn't keep running in
-  // parallel with the real one.
   if (_mundoMenu) {
     destruirMundoMenu(_mundoMenu, app);
     _mundoMenu = null;
   }
 
-  // Build the real game world.
-  const tipoEscolhido = getTipos()[0];
-  setTipoJogador();
-  const mundo = await criarMundo(app, tipoEscolhido) as unknown as Mundo;
   app.stage.addChild(mundo.container);
   _mundo = mundo;
 
   const planetaJogador = mundo.planetas.find((p) => p.dados.dono === 'jogador');
   if (planetaJogador) setCameraPos(planetaJogador.x, planetaJogador.y);
   setZoom(1.0);
-
   configurarCamera(app, mundo);
 
   if (!_hudInstalled) {
@@ -226,13 +229,202 @@ async function iniciarJogo(): Promise<void> {
     criarDebugMenu(app, mundo);
   }
 
-  // Flip the flag LAST so the ticker doesn't try to read _mundo before
-  // all the HUD panels are ready.
   _gameStarted = true;
-
-  // Hold the loader for a minimum duration so the transition isn't a
-  // single-frame flash even on fast machines, then fade it out.
+  iniciarAutosave({ mundo, nome, criadoEm, tempoJogadoMs });
+  salvarAgora();
   await esconderCarregando();
+}
+
+async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador): Promise<void> {
+  if (!_app || _gameStarted || _transitioning) return;
+  _transitioning = true;
+  const app = _app;
+
+  esconderMainMenu();
+  mostrarCarregando('Criando mundo');
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+  setTipoJogador();
+  const mundo = await criarMundo(app, tipoJogador) as unknown as Mundo;
+  await entrarNoJogo(mundo, nome, Date.now(), 0);
+}
+
+function mostrarModalSaveCorrompido(nome: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error('[save] load failed:', err);
+  const action = prompt(
+    `Não foi possível carregar "${nome}".\n\nErro: ${msg}\n\nDigite APAGAR pra remover o save, ou EXPORTAR pra baixar o JSON cru.`,
+    '',
+  );
+  if (action === 'APAGAR') {
+    void getBackendAtivo().apagar(nome);
+    toast('Save apagado', 'info');
+  } else if (action === 'EXPORTAR') {
+    try {
+      // Read raw string directly — carregar() swallows parse errors,
+      // which defeats the purpose of exporting corrupt data.
+      const rawStr = localStorage.getItem(`orbital_save:${nome}`);
+      if (!rawStr) {
+        toast('Nada para exportar', 'err');
+        return;
+      }
+      const blob = new Blob([rawStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${nome}-corrupt.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      toast('Save exportado', 'info');
+    } catch (e) {
+      toast('Falha ao exportar', 'err');
+    }
+  }
+}
+
+let _bannerEl: HTMLDivElement | null = null;
+let _bannerLastErr: Error | null = null;
+function atualizarHudBannerErro(): void {
+  const err = getUltimoErro();
+  if (err === _bannerLastErr) return;
+  _bannerLastErr = err;
+  if (!_bannerEl) {
+    _bannerEl = document.createElement('div');
+    _bannerEl.style.cssText = `
+      position: fixed;
+      top: var(--hud-margin);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 107, 107, 0.15);
+      border: 1px solid #ff6b6b;
+      border-radius: var(--hud-radius);
+      color: #ff6b6b;
+      padding: calc(var(--hud-unit) * 0.5) calc(var(--hud-unit) * 1);
+      font-family: var(--hud-font);
+      font-size: calc(var(--hud-unit) * 0.85);
+      z-index: 400;
+      display: none;
+    `;
+    document.body.appendChild(_bannerEl);
+  }
+  if (err) {
+    _bannerEl.textContent = `Falha ao salvar: ${err.message}`;
+    _bannerEl.style.display = '';
+  } else {
+    _bannerEl.style.display = 'none';
+  }
+}
+
+async function carregarMundo(nome: string): Promise<void> {
+  if (!_app || _gameStarted || _transitioning) return;
+  _transitioning = true;
+  const app = _app;
+
+  esconderMainMenu();
+  mostrarCarregando(`Carregando mundo: ${nome}`);
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+  let dto: MundoDTO | null = null;
+  try {
+    dto = await recuperarEmergency(nome);
+    if (!dto) dto = await lerEMigrar(nome);
+  } catch (err) {
+    _transitioning = false;
+    await esconderCarregando();
+    mostrarMainMenu();
+    mostrarModalSaveCorrompido(nome, err);
+    return;
+  }
+  if (!dto) {
+    _transitioning = false;
+    await esconderCarregando();
+    mostrarMainMenu();
+    toast(`Save "${nome}" não encontrado`, 'err');
+    return;
+  }
+
+  try {
+    setTipoJogador();
+    const mundo = await reconstruirMundo(dto, app);
+    await entrarNoJogo(mundo, nome, dto.criadoEm, dto.tempoJogadoMs);
+  } catch (err) {
+    _transitioning = false;
+    await esconderCarregando();
+    mostrarMainMenu();
+    mostrarModalSaveCorrompido(nome, err);
+  }
+}
+
+async function voltarAoMenu(): Promise<void> {
+  if (!_app) return;
+  const app = _app;
+
+  // 1. Black overlay covers everything during teardown so the user
+  //    sees a smooth fade instead of a frame of destroyed content.
+  const curtain = document.createElement('div');
+  curtain.style.cssText = `
+    position: fixed; inset: 0; z-index: 999;
+    background: #000; opacity: 0;
+    transition: opacity 400ms ease-out;
+  `;
+  document.body.appendChild(curtain);
+  // Fade to black (400ms)
+  requestAnimationFrame(() => { curtain.style.opacity = '1'; });
+  await new Promise<void>((r) => setTimeout(r, 420));
+
+  // 2. Tear down camera listeners (must happen before mundo is destroyed
+  //    since listeners close over the mundo reference)
+  destruirCamera();
+
+  // 3. Tear down game world
+  if (_mundo) {
+    destruirMundo(_mundo, app);
+    _mundo = null;
+  }
+
+  // 4. Tear down all HUD panels
+  if (_hudInstalled) {
+    destruirSidebar();
+    destruirEmpireBadge();
+    destruirCreditsBar();
+    destruirResourceBar();
+    destruirChatLog();
+    destruirPlanetPanel();
+    destruirBuildPanel();
+    destruirShipPanel();
+    destruirColonizerPanel();
+    destruirColonyModal();
+    destruirConfirmDialog();
+    destruirMinimap();
+    destruirDebugMenu();
+    _hudInstalled = false;
+  }
+
+  // Remove error banner if present
+  if (_bannerEl) {
+    _bannerEl.remove();
+    _bannerEl = null;
+    _bannerLastErr = null;
+  }
+
+  _gameStarted = false;
+  _transitioning = false;
+  _fimTocado = false;
+
+  // 5. Recreate menu background world (behind the curtain)
+  const mundoMenu = await criarMundoMenu(app);
+  app.stage.addChild(mundoMenu.container);
+  _mundoMenu = mundoMenu;
+  setCameraPos(mundoMenu.sistema.sol.x, mundoMenu.sistema.sol.y);
+  setZoom(0.55);
+  _cinematicTime = 0;
+
+  // 6. Show main menu, then fade out the curtain to reveal it
+  mostrarMainMenu();
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  curtain.style.transition = 'opacity 400ms ease-out';
+  curtain.style.opacity = '0';
+  setTimeout(() => curtain.remove(), 420);
 }
 
 void bootstrap();

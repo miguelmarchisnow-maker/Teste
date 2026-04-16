@@ -68,6 +68,7 @@ export interface OrbitaPlaneta {
 }
 
 export interface Planeta extends Container {
+  id: string;
   dados: DadosPlaneta;
   _tipoAlvo: 'planeta';
   _orbita: OrbitaPlaneta;
@@ -80,6 +81,7 @@ export interface Planeta extends Container {
 
 // === Sol ===
 export interface Sol extends Container {
+  id: string;
   _raio: number;
   _cor: number;
   _tipoAlvo: 'sol';
@@ -152,6 +154,7 @@ export interface Camera {
 
 // === Sistema Solar ===
 export interface Sistema {
+  id: string;
   x: number;
   y: number;
   sol: Sol;

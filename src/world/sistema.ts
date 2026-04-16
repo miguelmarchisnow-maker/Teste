@@ -20,6 +20,7 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
 
   const solMesh = criarEstrelaProcedural(centroX, centroY, raioSol);
   const sol = solMesh as unknown as Sol;
+  sol.id = `sol-${indiceSistema}`;
   sol._raio = raioSol;
   sol._cor = corSol;
   sol._tipoAlvo = 'sol';
@@ -59,6 +60,7 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
       tipoPlaneta,
     );
     const p = sprite as unknown as Planeta;
+    p.id = `pla-${indiceSistema}-${i}`;
 
     p.dados = {
       dono: 'neutro',
@@ -108,7 +110,7 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
     ultimoRaioPlaneta = raioPlaneta;
   }
 
-  return { x: centroX, y: centroY, sol, planetas };
+  return { id: `sys-${indiceSistema}`, x: centroX, y: centroY, sol, planetas };
 }
 
 export { DIST_MIN_SISTEMA };

@@ -164,7 +164,26 @@ function screenToWorld(sx: number, sy: number, app: Application) {
   };
 }
 
+let _cameraAbort: AbortController | null = null;
+
+export function destruirCamera(): void {
+  if (_cameraAbort) {
+    _cameraAbort.abort();
+    _cameraAbort = null;
+  }
+  if (comandoPreviewGfx) {
+    comandoPreviewGfx.destroy();
+    comandoPreviewGfx = null;
+  }
+}
+
 export function configurarCamera(app: Application, mundo: Mundo): void {
+  // Clean up previous listeners if re-configuring
+  destruirCamera();
+
+  _cameraAbort = new AbortController();
+  const signal = _cameraAbort.signal;
+
   const canvas = app.canvas;
   _appRef = app;
   if (!comandoPreviewGfx) {
@@ -173,7 +192,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     mundo.rotasContainer.addChild(comandoPreviewGfx);
   }
 
-  canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault());
+  canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault(), { signal });
 
   canvas.addEventListener('mousedown', (e: MouseEvent) => {
     if (e.button === 0) {
@@ -199,7 +218,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       cameraLastMouse.x = e.clientX;
       cameraLastMouse.y = e.clientY;
     }
-  });
+  }, { signal });
 
   canvas.addEventListener('mousemove', (e: MouseEvent) => {
     if (!cameraDragging) return;
@@ -210,7 +229,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     camera.y -= dy / camera.zoom;
     cameraLastMouse.x = e.clientX;
     cameraLastMouse.y = e.clientY;
-  });
+  }, { signal });
 
   window.addEventListener('mouseup', (e: MouseEvent) => {
     if (cameraDragging) {
@@ -320,7 +339,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     }
 
     clickInfo = null;
-  });
+  }, { signal });
 
   // Global Escape: cancels any active command mode, unless the user is
   // currently typing in an input (e.g. the colony-modal name field).
@@ -332,7 +351,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       cancelarComandoNave();
       e.preventDefault();
     }
-  });
+  }, { signal });
 
   canvas.addEventListener('wheel', (e: WheelEvent) => {
     e.preventDefault();
@@ -341,7 +360,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     const sy = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
     aplicarZoom(camera.zoom * factor, sx, sy);
-  }, { passive: false });
+  }, { passive: false, signal });
 }
 
 export function cancelarRotaNaveSelecionada(mundo: Mundo): void {

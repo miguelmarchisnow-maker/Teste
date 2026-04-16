@@ -1,4 +1,5 @@
 import { registerSidebar, unregisterSidebar, onLayoutChange } from './hud-layout';
+import { abrirPauseMenu } from './pause-menu';
 
 const SPRITE_SRC_SIZE = 32;
 const SPRITESHEET = 'assets/hud-icons.png';
@@ -140,6 +141,20 @@ function injectStyles(): void {
       font-weight: 400;
       line-height: 1;
     }
+
+    .sidebar-separator {
+      width: 80%;
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      margin: var(--sb-gap) 0;
+    }
+
+    .sidebar-btn-text {
+      font-size: var(--sb-label);
+      letter-spacing: 1px;
+      font-family: "Silkscreen", "VT323", monospace;
+      text-transform: uppercase;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -185,6 +200,17 @@ export function criarSidebar(): HTMLDivElement {
   for (const item of NAV_ITEMS) {
     sidebar.appendChild(createNavButton(item));
   }
+
+  // ── Menu button ──
+  const btnMenuOpen = document.createElement('button');
+  btnMenuOpen.type = 'button';
+  btnMenuOpen.className = 'sidebar-btn sidebar-btn-text';
+  btnMenuOpen.textContent = 'MENU';
+  btnMenuOpen.addEventListener('click', (e) => {
+    e.preventDefault();
+    abrirPauseMenu();
+  });
+  sidebar.appendChild(btnMenuOpen);
 
   _container = sidebar;
   document.body.appendChild(sidebar);
