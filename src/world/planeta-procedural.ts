@@ -1,4 +1,4 @@
-import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite } from 'pixi.js';
+import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite, Container, Rectangle } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import vertexSrc from '../shaders/planeta.vert?raw';
 import fragmentSrc from '../shaders/planeta.frag?raw';
@@ -276,26 +276,34 @@ export function criarPlanetaProceduralSprite(
   // Bake path: capture shader output as static texture when shaderLive=false
   if (!getConfig().graphics.shaderLive && _appRef) {
     try {
-      // Force deterministic time (frame 0) before capturing
-      const bakeShader = (mesh as any)._planetShader as Shader | undefined;
-      if (bakeShader) {
-        const uniforms = (bakeShader.resources as any).planetUniforms.uniforms;
-        uniforms.uTime = 0;
-        uniforms.uRotation = 0;
-      }
+      // Force deterministic time before capturing
+      const uniforms = (shader.resources as any).planetUniforms.uniforms;
+      uniforms.uTime = 0;
+      uniforms.uRotation = 0;
+
+      // Clone into a wrapper at origin (same pattern as planet-panel.ts)
+      const frameSize = Math.max(64, tamanho * 1.08);
+      const clone = new Mesh({ geometry: quadGeometry, shader, state });
+      clone.scale.set(tamanho);
+      clone.position.set(frameSize / 2, frameSize / 2);
+      const wrapper = new Container();
+      wrapper.addChild(clone);
+
       const texture = _appRef.renderer.generateTexture({
-        target: mesh,
+        target: wrapper,
+        frame: new Rectangle(0, 0, frameSize, frameSize),
         resolution: 1,
         antialias: true,
       });
+      clone.destroy();
+      wrapper.destroy();
+
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
       sprite.x = x;
       sprite.y = y;
       sprite.width = tamanho;
       sprite.height = tamanho;
-      // Copy metadata so downstream code (atualizarTempoPlanetas etc)
-      // sees no shader → skips update (which is what we want for baked)
       mesh.destroy();
       return sprite as any;
     } catch (err) {
@@ -388,25 +396,32 @@ export function criarEstrelaProcedural(
   // Bake path: capture shader output as static texture when shaderLive=false
   if (!getConfig().graphics.shaderLive && _appRef) {
     try {
-      const bakeShader = (mesh as any)._planetShader as Shader | undefined;
-      if (bakeShader) {
-        const uniforms = (bakeShader.resources as any).planetUniforms.uniforms;
-        uniforms.uTime = 0;
-        uniforms.uRotation = 0;
-      }
+      const uniforms = (shader.resources as any).planetUniforms.uniforms;
+      uniforms.uTime = 0;
+      uniforms.uRotation = 0;
+
+      const frameSize = Math.max(64, tamanho * 1.08);
+      const clone = new Mesh({ geometry: quadGeometry, shader, state });
+      clone.scale.set(tamanho);
+      clone.position.set(frameSize / 2, frameSize / 2);
+      const wrapper = new Container();
+      wrapper.addChild(clone);
+
       const texture = _appRef.renderer.generateTexture({
-        target: mesh,
+        target: wrapper,
+        frame: new Rectangle(0, 0, frameSize, frameSize),
         resolution: 1,
         antialias: true,
       });
+      clone.destroy();
+      wrapper.destroy();
+
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
       sprite.x = x;
       sprite.y = y;
-      const bakeTamanho = raio * 2.9;
-      sprite.width = bakeTamanho;
-      sprite.height = bakeTamanho;
-      (mesh as any)._planetShader = undefined;
+      sprite.width = tamanho;
+      sprite.height = tamanho;
       mesh.destroy();
       return sprite as any;
     } catch (err) {
