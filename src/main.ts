@@ -250,17 +250,34 @@ async function carregarMundo(nome: string): Promise<void> {
   mostrarCarregando(`Carregando mundo: ${nome}`);
   await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-  const dto = await lerEMigrar(nome);
+  let dto;
+  try {
+    dto = await lerEMigrar(nome);
+  } catch (err) {
+    _transitioning = false;
+    await esconderCarregando();
+    mostrarMainMenu();
+    alert(`Erro ao carregar "${nome}": ${err instanceof Error ? err.message : err}`);
+    return;
+  }
   if (!dto) {
+    _transitioning = false;
     await esconderCarregando();
     mostrarMainMenu();
     alert(`Não foi possível carregar o mundo "${nome}".`);
     return;
   }
 
-  setTipoJogador();
-  const mundo = await reconstruirMundo(dto, app);
-  await entrarNoJogo(mundo, nome, dto.criadoEm, dto.tempoJogadoMs);
+  try {
+    setTipoJogador();
+    const mundo = await reconstruirMundo(dto, app);
+    await entrarNoJogo(mundo, nome, dto.criadoEm, dto.tempoJogadoMs);
+  } catch (err) {
+    _transitioning = false;
+    await esconderCarregando();
+    mostrarMainMenu();
+    alert(`Erro ao reconstruir "${nome}": ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 void bootstrap();
