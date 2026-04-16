@@ -2,7 +2,7 @@ import { Application } from 'pixi.js';
 import type { Mundo, TipoJogador } from './types';
 import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo } from './world/mundo';
 import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu } from './world/mundo-menu';
-import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom } from './core/player';
+import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera } from './core/player';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
 import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
 import { criarChatLog, destruirChatLog } from './ui/chat-log';
@@ -131,6 +131,7 @@ async function bootstrap(): Promise<void> {
   // the whole thing fits nicely in view.
   setCameraPos(mundoMenu.sistema.sol.x, mundoMenu.sistema.sol.y);
   setZoom(0.55);
+  instalarEdgeScroll();
 
   // Keyboard zoom — installed once, active during both menu and game.
   window.addEventListener('keydown', (e) => {
@@ -224,6 +225,7 @@ function startTicker(): void {
 
     const camera = getCamera();
     atualizarCamera(mundo, app);
+    aplicarEdgeScrollAoCamera(app.ticker.deltaMS);
     atualizarMundo(mundo, app, camera);
 
     atualizarMinimap(camera);
