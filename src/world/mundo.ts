@@ -259,15 +259,14 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   profileAcumular('logica', t);
 
   const zoom = camera.zoom || 1;
-  const zoomSafe = camera.zoom || 1;
 
   t = profileMark();
   atualizarFundo(
     mundo.fundo as ReturnType<typeof criarFundo>,
     camera.x,
     camera.y,
-    app.screen.width / zoomSafe,
-    app.screen.height / zoomSafe,
+    app.screen.width / zoom,
+    app.screen.height / zoom,
   );
   profileAcumular('fundo', t);
 
