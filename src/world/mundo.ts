@@ -298,7 +298,8 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     const sistema = mundo.sistemas[planeta.dados.sistemaId];
     const solDoSistema = sistema?.sol;
     const orbitaDescoberta = planeta._descobertoAoJogador && !!(solDoSistema?._descobertoAoJogador);
-    planeta._linhaOrbita.visible = orbitaDescoberta && orbitaNaTela;
+    const mostrarOrbitas = getConfig().graphics.mostrarOrbitas;
+    planeta._linhaOrbita.visible = mostrarOrbitas && orbitaDescoberta && orbitaNaTela;
     planeta._linhaOrbita.alpha = planeta._visivelAoJogador && !!(solDoSistema?._visivelAoJogador) ? 0.5 : 0.18;
 
     if (vis) {
