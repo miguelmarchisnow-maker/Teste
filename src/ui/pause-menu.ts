@@ -184,7 +184,23 @@ export function abrirPauseMenu(): void {
     const btnConfirm = criarBotao('Sair', () => {
       salvarAgora();
       pararAutosave();
-      window.dispatchEvent(new CustomEvent('orbital:voltar-ao-menu'));
+      // Fade to black before reload for a smooth transition
+      if (_container) {
+        const c = _container;
+        c.style.transition = 'background 400ms ease-out, backdrop-filter 400ms ease-out';
+        c.style.background = 'rgba(0, 0, 0, 1)';
+        const cardEl = c.querySelector('.pm-card') as HTMLElement | null;
+        if (cardEl) {
+          cardEl.style.transition = 'opacity 250ms ease-out, transform 300ms ease-out';
+          cardEl.style.opacity = '0';
+          cardEl.style.transform = 'translateY(calc(var(--hud-unit) * -0.5)) scale(0.97)';
+        }
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('orbital:voltar-ao-menu'));
+        }, 420);
+      } else {
+        window.dispatchEvent(new CustomEvent('orbital:voltar-ao-menu'));
+      }
     }, 'danger');
 
     row.append(btnCancel, btnConfirm);
