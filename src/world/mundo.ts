@@ -14,6 +14,10 @@ import { atualizarFilasPlaneta, desenharConstrucoesPlaneta } from './construcao'
 import { profileMark, profileAcumular, profileFlush } from './profiling';
 import { getConfig } from '../core/config';
 
+// Cached lazy import to avoid circular dep (mundo → save → reconstruir → mundo)
+// and eliminate per-frame Promise allocation from dynamic import().
+let _marcarTudoDirty: ((mundo: Mundo) => void) | null = null;
+
 // === Re-exports para manter compatibilidade de imports externos ===
 export { profiling } from './profiling';
 export { construirNoPlaneta } from './construcao';
@@ -325,7 +329,14 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   profileFlush();
 
   if (getConfig().saveMode === 'experimental') {
-    import('./save').then(({ marcarTudoDirty }) => marcarTudoDirty(mundo));
+    if (_marcarTudoDirty) {
+      _marcarTudoDirty(mundo);
+    } else {
+      import('./save').then(({ marcarTudoDirty }) => {
+        _marcarTudoDirty = marcarTudoDirty;
+        marcarTudoDirty(mundo);
+      });
+    }
   }
 
   verificarEstadoJogo(mundo);

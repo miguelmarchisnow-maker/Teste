@@ -93,6 +93,9 @@ export function iniciarFlushController(): void {
   _flushTimer = window.setInterval(() => {
     void flushSeDirty();
   }, 500);
+  // TODO: add requestIdleCallback scheduling per spec §5.4 for better
+  // responsiveness — flush during browser idle periods instead of
+  // competing with rendering on the setInterval tick.
 }
 
 export function pararFlushController(): void {
@@ -208,8 +211,18 @@ export function notificarMudancaConfig(): void {
 export function trocarModoSave(): void {
   _ultimoSaveAt = 0; // bypass throttle for drain-save
   salvarAgora();
+  // Stop both controllers before switching
+  if (_timerId !== null) { clearInterval(_timerId); _timerId = null; }
+  pararFlushController();
   _backend = criarBackend();
-  if (_mundoAtivo) reagendarTimer();
+  if (_mundoAtivo) {
+    const cfg = getConfig();
+    if (cfg.saveMode === 'experimental') {
+      iniciarFlushController();
+    } else {
+      reagendarTimer();
+    }
+  }
 }
 
 export function instalarListenersCicloDeVida(): void {
