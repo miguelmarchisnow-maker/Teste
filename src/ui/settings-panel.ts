@@ -68,6 +68,11 @@ Biblioteca gr\u00E1fica que o jogo usa pra desenhar.
   e Edge atuais suportam bem; Firefox e Safari ainda
   t\u00EAm suporte limitado.
 
+\u2022 Software
+  For\u00E7a renderiza\u00E7\u00E3o por software (sem GPU).
+  Muito lento, mas funciona quando a acelera\u00E7\u00E3o
+  por hardware est\u00E1 com problemas.
+
 \u2022 Fallback autom\u00E1tico
   Se o WebGPU falhar ao iniciar, o jogo volta sozinho
   pro WebGL e avisa na tela.
@@ -744,9 +749,10 @@ function renderGraphicsTabMotor(body: HTMLDivElement): void {
     const select = criarSelect([
       ['webgl', 'WebGL'],
       ['webgpu', 'WebGPU'],
+      ['software', 'Software'],
     ], gfx.renderer);
     select.addEventListener('change', () => {
-      setConfig({ graphics: { ...getConfig().graphics, renderer: select.dataset.value! as 'webgl' | 'webgpu' } });
+      setConfig({ graphics: { ...getConfig().graphics, renderer: select.dataset.value! as any } });
       showReloadBanner(row);
     });
     row.appendChild(select);

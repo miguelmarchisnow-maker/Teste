@@ -58,34 +58,46 @@ async function bootstrap(): Promise<void> {
     baseInit.powerPreference = gfx.gpuPreference;
   }
 
+  // Software renderer: force WebGL with a manually-created context
+  // requesting low-power preference to encourage software fallback
+  const effectiveRenderer = gfx.renderer === 'software' ? 'webgl' : gfx.renderer;
+
   // Optional: WebGL version forced context injection
-  if (gfx.renderer === 'webgl' && gfx.webglVersion !== 'auto') {
+  if (effectiveRenderer === 'webgl' && (gfx.webglVersion !== 'auto' || gfx.renderer === 'software')) {
     const canvas = document.createElement('canvas');
-    const ctxOpts: WebGLContextAttributes = { antialias: true, premultipliedAlpha: true };
-    if (gfx.gpuPreference !== 'auto') {
+    const ctxOpts: WebGLContextAttributes = {
+      antialias: gfx.renderer !== 'software',
+      premultipliedAlpha: true,
+      failIfMajorPerformanceCaveat: false,
+    };
+    if (gfx.renderer === 'software') {
+      ctxOpts.powerPreference = 'low-power';
+    } else if (gfx.gpuPreference !== 'auto') {
       ctxOpts.powerPreference = gfx.gpuPreference;
     }
-    const gl = gfx.webglVersion === '1'
-      ? canvas.getContext('webgl', ctxOpts)
-      : canvas.getContext('webgl2', ctxOpts);
+    const glVersion = gfx.renderer === 'software' ? 'webgl' : (gfx.webglVersion === '1' ? 'webgl' : 'webgl2');
+    const gl = canvas.getContext(glVersion, ctxOpts);
     if (gl) {
       baseInit.context = gl as any;
       baseInit.canvas = canvas as any;
-    } else {
+      if (gfx.renderer !== 'software') {
+        // keep existing behavior
+      }
+    } else if (gfx.renderer !== 'software') {
       console.warn(`[renderer] WebGL ${gfx.webglVersion} indisponível, caindo pra auto`);
       setConfigDuranteBoot({ graphics: { ...gfx, webglVersion: 'auto' } });
     }
   }
 
   try {
-    await app.init({ ...baseInit, preference: gfx.renderer });
+    await app.init({ ...baseInit, preference: effectiveRenderer });
   } catch (err) {
     if (gfx.renderer === 'webgpu') {
       console.warn('[renderer] WebGPU failed, falling back to WebGL:', err);
       setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
       await app.init({ ...baseInit, preference: 'webgl' });
       window.setTimeout(() => toast('WebGPU indisponível — usando WebGL', 'err'), 2000);
-    } else if (gfx.renderer === 'webgl' && gfx.webglVersion !== 'auto') {
+    } else if (effectiveRenderer === 'webgl' && gfx.webglVersion !== 'auto') {
       console.warn(`[renderer] WebGL ${gfx.webglVersion} forçado falhou, caindo pra auto:`, err);
       setConfigDuranteBoot({ graphics: { ...getConfig().graphics, webglVersion: 'auto' } });
       delete baseInit.context;

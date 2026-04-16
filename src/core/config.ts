@@ -19,7 +19,7 @@ export interface OrbitalConfig {
     scanlines: boolean;
     mostrarFps: boolean;
     fpsCap: number;
-    renderer: 'webgl' | 'webgpu';
+    renderer: 'webgl' | 'webgpu' | 'software';
     webglVersion: 'auto' | '1' | '2';
     gpuPreference: 'auto' | 'high-performance' | 'low-power';
     mostrarOrbitas: boolean;
