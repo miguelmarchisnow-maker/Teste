@@ -1,4 +1,5 @@
 import type { Application } from 'pixi.js';
+import { getConfig } from '../core/config';
 
 interface RendererInfo {
   motor: string;
@@ -239,7 +240,25 @@ export function abrirRendererInfoModal(app: Application): void {
   header.append(title, closeX);
   card.appendChild(header);
 
-  card.append(row('Motor', info.motor));
+  // ── Config section: what the user selected ──
+  const cfg = getConfig().graphics;
+  const rendererLabels: Record<string, string> = { webgl: 'WebGL', webgpu: 'WebGPU', software: 'Software' };
+  const gpuPrefLabels: Record<string, string> = { auto: 'Automático', 'high-performance': 'Alta performance', 'low-power': 'Economia' };
+  card.append(row('Modo configurado', rendererLabels[cfg.renderer] ?? cfg.renderer));
+  if (cfg.renderer === 'webgl') {
+    card.append(row('Versão WebGL', cfg.webglVersion === 'auto' ? 'Automático' : `WebGL ${cfg.webglVersion} forçado`));
+  }
+  card.append(row('Preferência GPU', gpuPrefLabels[cfg.gpuPreference] ?? cfg.gpuPreference));
+  card.append(row('Resolução', `${Math.round(window.innerWidth * (cfg.renderer === 'software' ? 1 : window.devicePixelRatio))} × ${Math.round(window.innerHeight * (cfg.renderer === 'software' ? 1 : window.devicePixelRatio))}`));
+  card.append(row('Qualidade', cfg.qualidadeEfeitos.charAt(0).toUpperCase() + cfg.qualidadeEfeitos.slice(1)));
+
+  // ── Hardware section: what the GPU reports ──
+  const hwSec = document.createElement('div');
+  hwSec.className = 'renderer-info-section';
+  hwSec.textContent = 'Hardware detectado';
+  card.appendChild(hwSec);
+
+  card.append(row('Motor ativo', info.motor));
   card.append(row('Versão', info.versao));
   card.append(row('GPU', info.gpu));
   card.append(row('Vendor', info.vendor));
