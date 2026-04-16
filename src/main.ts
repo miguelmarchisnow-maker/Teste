@@ -26,6 +26,7 @@ import { getConfig, setConfigDuranteBoot, onConfigChange } from './core/config';
 import { abrirNewWorldModal } from './ui/new-world-modal';
 import { criarLoadingScreen, mostrarCarregando, esconderCarregando } from './ui/loading-screen';
 import { somVitoria, somDerrota } from './audio/som';
+import { setAppReferenceForBake } from './world/planeta-procedural';
 // Top-level state shared across bootstrap, iniciarJogoNovo, and carregarMundo.
 let _app: Application | null = null;
 let _mundo: Mundo | null = null;
@@ -162,6 +163,7 @@ async function bootstrap(): Promise<void> {
 
   _app = app;
   (window as any)._app = app;
+  setAppReferenceForBake(app);
 
   // Build the menu background: a lightweight single-system world, not
   // the full 18-system game world. When the player clicks Novo Jogo we
