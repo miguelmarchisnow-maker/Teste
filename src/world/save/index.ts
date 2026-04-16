@@ -174,9 +174,16 @@ export function salvarAgora(): void {
       criadoEm: _criadoEm,
       tempoJogadoMs: _tempoJogadoMs,
     });
-    _backend.salvar(dto);
+    const result = _backend.salvar(dto);
     _ultimoSaveAt = now;
     _ultimoErro = null;
+    // Handle async backends (ExperimentalBackend returns a Promise)
+    if (result instanceof Promise) {
+      result.catch((err) => {
+        _ultimoErro = err instanceof Error ? err : new Error(String(err));
+        console.error('[save] autosave failed (async):', err);
+      });
+    }
   } catch (err) {
     _ultimoErro = err instanceof Error ? err : new Error(String(err));
     console.error('[save] autosave failed:', err);
@@ -199,8 +206,10 @@ export function notificarMudancaConfig(): void {
 }
 
 export function trocarModoSave(): void {
+  _ultimoSaveAt = 0; // bypass throttle for drain-save
   salvarAgora();
   _backend = criarBackend();
+  if (_mundoAtivo) reagendarTimer();
 }
 
 export function instalarListenersCicloDeVida(): void {
@@ -240,15 +249,22 @@ export async function recuperarEmergency(nome: string): Promise<MundoDTO | null>
   const key = `orbital_emergency:${nome}`;
   const raw = localStorage.getItem(key);
   if (!raw) return null;
+  let dto: MundoDTO;
   try {
-    const dto = JSON.parse(raw) as MundoDTO;
-    localStorage.removeItem(key);
-    await _backend.salvar(dto);
-    return dto;
+    dto = JSON.parse(raw) as MundoDTO;
   } catch (err) {
     console.error('[save] emergency blob corrupt:', err);
     localStorage.removeItem(key);
     return null;
+  }
+  try {
+    await _backend.salvar(dto);
+    localStorage.removeItem(key); // only remove after backend save succeeds
+    return dto;
+  } catch (err) {
+    console.error('[save] emergency recovery backend write failed:', err);
+    // Keep the blob in localStorage for next attempt
+    return dto; // still return it so the game can load
   }
 }
 
