@@ -283,6 +283,8 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   atualizarCampoDeVisao(mundo, camera, app);
   profileAcumular('fog', t);
 
+  const gfxCfg = getConfig().graphics;
+
   t = profileMark();
   for (const planeta of mundo.planetas) {
     const visNaTela = planeta.x > esq && planeta.x < dir && planeta.y > cima && planeta.y < baixo;
@@ -298,8 +300,7 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     const sistema = mundo.sistemas[planeta.dados.sistemaId];
     const solDoSistema = sistema?.sol;
     const orbitaDescoberta = planeta._descobertoAoJogador && !!(solDoSistema?._descobertoAoJogador);
-    const mostrarOrbitas = getConfig().graphics.mostrarOrbitas;
-    planeta._linhaOrbita.visible = mostrarOrbitas && orbitaDescoberta && orbitaNaTela;
+    planeta._linhaOrbita.visible = gfxCfg.mostrarOrbitas && orbitaDescoberta && orbitaNaTela;
     planeta._linhaOrbita.alpha = planeta._visivelAoJogador && !!(solDoSistema?._visivelAoJogador) ? 0.5 : 0.18;
 
     if (vis) {
@@ -312,7 +313,7 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
       desenharConstrucoesPlaneta(planeta);
     }
 
-    atualizarVisibilidadeMemoria(planeta, planeta._visivelAoJogador, esq, dir, cima, baixo);
+    atualizarVisibilidadeMemoria(planeta, planeta._visivelAoJogador, esq, dir, cima, baixo, gfxCfg.maxFantasmas);
     atualizarEscalaLabelMemoria(planeta, zoom);
   }
   aplicarLimiteFantasmas(mundo);

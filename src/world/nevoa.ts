@@ -257,11 +257,10 @@ function formatarTempoPassado(ms: number): string {
   return `~${Math.floor(min / 60)}h atrás`;
 }
 
-export function atualizarVisibilidadeMemoria(planeta: Planeta, visivelAoJogador: boolean, esq: number, dir: number, cima: number, baixo: number): void {
+export function atualizarVisibilidadeMemoria(planeta: Planeta, visivelAoJogador: boolean, esq: number, dir: number, cima: number, baixo: number, maxFantasmas: number): void {
   const memoria = memorias.get(planeta);
   if (!memoria) return;
 
-  const maxFantasmas = getConfig().graphics.maxFantasmas;
   if (maxFantasmas === 0) {
     memoria.visual.visible = false;
     return;
