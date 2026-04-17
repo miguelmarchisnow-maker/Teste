@@ -30,151 +30,17 @@ function instalarFullscreenListener(): void {
 }
 let _styleInjected = false;
 
-// ─── Tooltip texts ───────────────────────────────────────────────────
+// ─── Tooltip keys (resolved via t() at render time) ──────────────────
 
-const TOOLTIPS = {
-  qualidade: `Qualidade
+type TooltipKey =
+  | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'fpsCap'
+  | 'renderer' | 'webglVersion' | 'gpuPref' | 'verInfo' | 'orbitas'
+  | 'starfield' | 'fantasmas' | 'shaderLive' | 'autosave' | 'saveMode'
+  | 'confirmar' | 'edge';
 
-Preset que ajusta m\u00FAltiplas op\u00E7\u00F5es avan\u00E7adas de
-uma vez. Use 'Baixo' ou 'M\u00EDnimo' se o jogo estiver
-travando.
-
-Mostra '(personalizado)' quando voc\u00EA mexeu em
-op\u00E7\u00F5es avan\u00E7adas depois de escolher um preset.`,
-  fullscreen: `Fullscreen
-
-Alterna tela cheia. O navegador pode pedir
-permiss\u00E3o na primeira vez.`,
-  scanlines: `Scanlines CRT
-
-Efeito visual retr\u00F4 com linhas horizontais
-sobrepostas. Custo de desempenho: desprez\u00EDvel.`,
-  fps: `Mostrar FPS
-
-Exibe o contador de quadros por segundo no canto
-da tela. \u00DAtil pra diagnosticar queda de desempenho.`,
-  fpsCap: `Limite de FPS
-
-Limita a taxa de quadros. Valores menores
-economizam CPU/GPU e bateria em laptops.
-
-'Sem limite' deixa o jogo rodar t\u00E3o r\u00E1pido quanto
-o navegador permitir.`,
-  renderer: `Motor de renderiza\u00E7\u00E3o
-
-Biblioteca gr\u00E1fica que o jogo usa pra desenhar.
-
-\u2022 WebGL
-  Padr\u00E3o est\u00E1vel. Funciona em todos os navegadores
-  modernos e \u00E9 a escolha segura.
-
-\u2022 WebGPU
-  Sucessor do WebGL, pode ser 20\u201340% mais r\u00E1pido em
-  hardware moderno. Exige navegador recente: Chrome
-  e Edge atuais suportam bem; Firefox e Safari ainda
-  t\u00EAm suporte limitado.
-
-\u2022 Software (Canvas)
-  Renderiza\u00E7\u00E3o por software via Canvas 2D, sem
-  usar a GPU. Muito mais lento mas funciona em
-  qualquer dispositivo. Aplica qualidade M\u00EDnimo
-  automaticamente. Shaders n\u00E3o funcionam neste modo.
-
-\u2022 Fallback autom\u00E1tico
-  Se o WebGPU falhar ao iniciar, o jogo volta sozinho
-  pro WebGL e avisa na tela.
-
-Mudan\u00E7a exige recarregar o jogo.`,
-  webglVersion: `Vers\u00E3o do WebGL
-
-Vers\u00E3o da especifica\u00E7\u00E3o usada pela pipeline gr\u00E1fica.
-
-\u2022 Autom\u00E1tico
-  O Pixi escolhe WebGL 2 se dispon\u00EDvel, com fallback
-  pra WebGL 1. Recomendado pra 99% dos casos.
-
-\u2022 WebGL 2 for\u00E7ado
-  For\u00E7a a vers\u00E3o mais nova, mais r\u00E1pida e com mais
-  features. Falha ao iniciar se sua GPU ou driver
-  n\u00E3o suportar.
-
-\u2022 WebGL 1 for\u00E7ado
-  For\u00E7a a vers\u00E3o antiga, compat\u00EDvel com GPUs muito
-  velhas e drivers bugados. Use s\u00F3 se o WebGL 2
-  estiver crashando ou renderizando com artefatos.
-
-S\u00F3 aplica quando o motor \u00E9 WebGL (ignorado em WebGPU).
-Requer recarregar o jogo.`,
-  gpuPref: `Prefer\u00EAncia de GPU
-
-Diz ao navegador qual GPU usar \u2014 importa em laptops
-que t\u00EAm tanto uma GPU integrada (economia) quanto
-uma discreta (performance).
-
-\u2022 Autom\u00E1tico
-  O navegador decide. Geralmente integrada pra
-  economizar bateria. Recomendado.
-
-\u2022 Alta performance
-  For\u00E7a a GPU discreta. Jogo roda mais r\u00E1pido mas
-  consome muito mais bateria em laptops.
-
-\u2022 Economia de energia
-  For\u00E7a a GPU integrada. Menor performance, mas
-  m\u00E1xima autonomia em laptops.
-
-Em desktops com uma GPU s\u00F3, n\u00E3o muda nada.
-Requer recarregar o jogo.`,
-  verInfo: `Ver informa\u00E7\u00F5es do renderer
-
-Abre um di\u00E1logo com detalhes t\u00E9cnicos da pipeline
-gr\u00E1fica ativa: motor em uso, GPU, vendor, vers\u00E3o,
-capacidades (tamanho m\u00E1ximo de textura, vertex
-attribs, extens\u00F5es suportadas) e aviso se estiver
-rodando em software.
-
-\u00DAtil pra debug e pra saber se vale a pena tentar
-WebGPU ou se h\u00E1 problema de acelera\u00E7\u00E3o.`,
-  orbitas: `Mostrar \u00F3rbitas
-
-Desenha as linhas circulares que mostram o caminho
-dos planetas em volta da estrela. Desligar reduz
-custo de rendering em sistemas com muitos planetas.`,
-  starfield: `Densidade de estrelas
-
-Quantas estrelas comp\u00F5em o fundo espacial.
-
-Valores baixos ganham performance em m\u00E1quinas
-fracas. Requer recarregar o jogo pra aplicar
-(o starfield \u00E9 gerado uma vez na cria\u00E7\u00E3o do mundo).`,
-  fantasmas: `Max fantasmas
-
-N\u00FAmero m\u00E1ximo de planetas 'lembrados' que aparecem
-como sombra quando saem do seu campo de vis\u00E3o.
-
-Limitar reduz custo de rendering sem alterar o
-gameplay \u2014 o jogo ainda lembra de todos, s\u00F3 mostra
-os N mais recentes visualmente.`,
-  shaderLive: `Shader ao vivo
-
-Quando ligado, planetas e estrelas t\u00EAm anima\u00E7\u00E3o de
-superf\u00EDcie renderizada por shader em tempo real \u2014
-bonito mas caro.
-
-Quando desligado, a anima\u00E7\u00E3o congela imediatamente.
-Mesmo visual, desempenho muito maior.`,
-  autosave: `Intervalo de autosave\n\nCom que frequ\u00EAncia o jogo salva automaticamente.\n'Desligado' desativa o autosave \u2014 s\u00F3 salva manualmente.`,
-  saveMode: `Save experimental (IndexedDB)\n\nQuando ligado, salva em tempo real via IndexedDB\nem vez do m\u00E9todo padr\u00E3o por localStorage.\n\nMais r\u00E1pido e confi\u00E1vel para saves grandes.`,
-  confirmar: `Confirmar a\u00E7\u00F5es destrutivas
-
-Mostra um di\u00E1logo de confirma\u00E7\u00E3o antes de a\u00E7\u00F5es
-irrevers\u00EDveis como sucatear naves ou apagar saves.`,
-  edge: `Edge-scroll
-
-Move a c\u00E2mera automaticamente quando o cursor do
-mouse fica perto das bordas da tela. Desliga se
-o cursor estiver sobre um painel de interface.`,
-};
+function tooltip(key: TooltipKey): string {
+  return t(`tooltips.${key}`);
+}
 
 // ─── Custom select helper ────────────────────────────────────────────
 
@@ -356,12 +222,12 @@ function injectStyles(): void {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function rowWithLabel(text: string, tooltipKey: keyof typeof TOOLTIPS): [HTMLDivElement, HTMLLabelElement] {
+function rowWithLabel(text: string, tooltipKey: TooltipKey): [HTMLDivElement, HTMLLabelElement] {
   const row = document.createElement('div');
   row.className = 'settings-row';
   const lbl = document.createElement('label');
   lbl.textContent = text;
-  comHelp(lbl, TOOLTIPS[tooltipKey]);
+  comHelp(lbl, tooltip(tooltipKey));
   row.appendChild(lbl);
   return [row, lbl];
 }
@@ -579,10 +445,10 @@ function renderAudioTab(body: HTMLDivElement): void {
   const cfg = getConfig();
   type CatKey = 'master' | 'sfx' | 'ui' | 'aviso';
   const cats: Array<[CatKey, string]> = [
-    ['master', 'Master'],
-    ['sfx', 'SFX Jogo'],
-    ['ui', 'SFX UI'],
-    ['aviso', 'Avisos'],
+    ['master', t('settings.audio.master')],
+    ['sfx', t('settings.audio.sfx')],
+    ['ui', t('settings.audio.ui')],
+    ['aviso', t('settings.audio.aviso')],
   ];
   for (const [key, label] of cats) {
     const row = document.createElement('div');
@@ -617,7 +483,7 @@ function renderAudioTab(body: HTMLDivElement): void {
 
     const muteBtn = document.createElement('button');
     muteBtn.className = 'mute-btn';
-    muteBtn.textContent = cfg.audio[key].muted ? 'MUTE' : 'ON';
+    muteBtn.textContent = cfg.audio[key].muted ? t('settings.audio.mute') : t('settings.audio.on');
     if (cfg.audio[key].muted) muteBtn.classList.add('muted');
     muteBtn.addEventListener('click', () => {
       const current = getConfig();
@@ -628,7 +494,7 @@ function renderAudioTab(body: HTMLDivElement): void {
           [key]: { ...current.audio[key], muted: newMuted },
         },
       });
-      muteBtn.textContent = newMuted ? 'MUTE' : 'ON';
+      muteBtn.textContent = newMuted ? t('settings.audio.mute') : t('settings.audio.on');
       muteBtn.classList.toggle('muted', newMuted);
     });
     row.appendChild(muteBtn);
@@ -647,16 +513,16 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
   // Qualidade
   {
-    const [row] = rowWithLabel('Qualidade', 'qualidade');
+    const [row] = rowWithLabel(t('settings.row.qualidade'), 'qualidade');
     const isCustom = !presetBateComFlagsDerivadas(cfg);
     const options: Array<[string, string]> = [
-      ['alto', 'Alto'],
-      ['medio', 'M\u00E9dio'],
-      ['baixo', 'Baixo'],
-      ['minimo', 'M\u00EDnimo'],
+      ['alto', t('settings.opt.alto')],
+      ['medio', t('settings.opt.medio')],
+      ['baixo', t('settings.opt.baixo')],
+      ['minimo', t('settings.opt.minimo')],
     ];
     if (isCustom) {
-      options.push(['personalizado', 'Personalizado']);
+      options.push(['personalizado', t('settings.opt.personalizado')]);
     }
     const select = criarSelect(options, isCustom ? 'personalizado' : gfx.qualidadeEfeitos);
     select.addEventListener('change', () => {
@@ -671,7 +537,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
   // Fullscreen
   {
-    const [row] = rowWithLabel('Fullscreen', 'fullscreen');
+    const [row] = rowWithLabel(t('settings.row.fullscreen'), 'fullscreen');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gfx.fullscreen;
@@ -681,7 +547,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
         document.documentElement.requestFullscreen().catch((err) => {
           console.warn('[fullscreen] blocked:', err);
           cb.checked = false;
-          toast('Fullscreen bloqueado pelo navegador', 'err');
+          toast(t('toast.fullscreen_bloqueado'), 'err');
         });
       } else {
         document.exitFullscreen().catch(() => {});
@@ -694,7 +560,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
   // Scanlines
   {
-    const [row] = rowWithLabel('Scanlines CRT', 'scanlines');
+    const [row] = rowWithLabel(t('settings.row.scanlines'), 'scanlines');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gfx.scanlines;
@@ -707,7 +573,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
   // Mostrar FPS
   {
-    const [row] = rowWithLabel('Mostrar FPS', 'fps');
+    const [row] = rowWithLabel(t('settings.row.mostrar_fps'), 'fps');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gfx.mostrarFps;
@@ -720,9 +586,9 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
   // FPS cap
   {
-    const [row] = rowWithLabel('Limite de FPS', 'fpsCap');
+    const [row] = rowWithLabel(t('settings.row.limite_fps'), 'fpsCap');
     const select = criarSelect([
-      ['0', 'Sem limite'],
+      ['0', t('settings.opt.sem_limite')],
       ['30', '30'],
       ['60', '60'],
       ['120', '120'],
@@ -752,11 +618,11 @@ function renderGraphicsTabMotor(body: HTMLDivElement): void {
 
   // Renderer
   {
-    const [row] = rowWithLabel('Motor de renderiza\u00E7\u00E3o', 'renderer');
+    const [row] = rowWithLabel(t('settings.row.renderer'), 'renderer');
     const select = criarSelect([
-      ['webgl', 'WebGL'],
-      ['webgpu', 'WebGPU'],
-      ['software', 'Software'],
+      ['webgl', t('settings.opt.webgl')],
+      ['webgpu', t('settings.opt.webgpu')],
+      ['software', t('settings.opt.software')],
     ], gfx.renderer);
     select.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, renderer: select.dataset.value! as any } });
@@ -768,11 +634,11 @@ function renderGraphicsTabMotor(body: HTMLDivElement): void {
 
   // WebGL version (only if renderer=webgl)
   if (gfx.renderer === 'webgl') {
-    const [row] = rowWithLabel('Vers\u00E3o do WebGL', 'webglVersion');
+    const [row] = rowWithLabel(t('settings.row.webgl_version'), 'webglVersion');
     const select = criarSelect([
-      ['auto', 'Autom\u00E1tico'],
-      ['2', 'WebGL 2 for\u00E7ado'],
-      ['1', 'WebGL 1 for\u00E7ado'],
+      ['auto', t('settings.opt.automatico')],
+      ['2', t('settings.opt.webgl2_forcado')],
+      ['1', t('settings.opt.webgl1_forcado')],
     ], gfx.webglVersion);
     select.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, webglVersion: select.dataset.value! as typeof gfx.webglVersion } });
@@ -784,11 +650,11 @@ function renderGraphicsTabMotor(body: HTMLDivElement): void {
 
   // GPU preference
   {
-    const [row] = rowWithLabel('Prefer\u00EAncia de GPU', 'gpuPref');
+    const [row] = rowWithLabel(t('settings.row.gpu_pref'), 'gpuPref');
     const select = criarSelect([
-      ['auto', 'Autom\u00E1tico'],
-      ['high-performance', 'Alta performance'],
-      ['low-power', 'Economia de energia'],
+      ['auto', t('settings.opt.automatico')],
+      ['high-performance', t('settings.opt.alta_perf')],
+      ['low-power', t('settings.opt.economia')],
     ], gfx.gpuPreference);
     select.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, gpuPreference: select.dataset.value! as typeof gfx.gpuPreference } });
@@ -811,7 +677,7 @@ function renderGraphicsTabMotor(body: HTMLDivElement): void {
     });
     row.appendChild(btn);
     const helpWrap = document.createElement('span');
-    comHelp(helpWrap, TOOLTIPS.verInfo);
+    comHelp(helpWrap, tooltip('verInfo'));
     row.appendChild(helpWrap);
     body.appendChild(row);
   }
@@ -829,7 +695,7 @@ function renderGraphicsTabAvancado(body: HTMLDivElement): void {
 
   // Mostrar \u00F3rbitas
   {
-    const [row] = rowWithLabel('Mostrar \u00F3rbitas', 'orbitas');
+    const [row] = rowWithLabel(t('settings.row.mostrar_orbitas'), 'orbitas');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gfx.mostrarOrbitas;
@@ -842,7 +708,7 @@ function renderGraphicsTabAvancado(body: HTMLDivElement): void {
 
   // Densidade de estrelas
   {
-    const [row] = rowWithLabel('Densidade de estrelas', 'starfield');
+    const [row] = rowWithLabel(t('settings.row.densidade_estrelas'), 'starfield');
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.min = '0';
@@ -866,14 +732,14 @@ function renderGraphicsTabAvancado(body: HTMLDivElement): void {
 
   // Max fantasmas
   {
-    const [row] = rowWithLabel('Max fantasmas', 'fantasmas');
+    const [row] = rowWithLabel(t('settings.row.max_fantasmas'), 'fantasmas');
     const select = criarSelect([
-      ['-1', 'Ilimitado'],
+      ['-1', t('settings.opt.ilimitado')],
       ['50', '50'],
       ['30', '30'],
       ['15', '15'],
       ['5', '5'],
-      ['0', 'Desligado'],
+      ['0', t('settings.opt.desligado')],
     ], String(gfx.maxFantasmas));
     select.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, maxFantasmas: Number(select.dataset.value!) } });
@@ -884,7 +750,7 @@ function renderGraphicsTabAvancado(body: HTMLDivElement): void {
 
   // Shader ao vivo
   {
-    const [row] = rowWithLabel('Shader ao vivo', 'shaderLive');
+    const [row] = rowWithLabel(t('settings.row.shader_live'), 'shaderLive');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gfx.shaderLive;
@@ -903,13 +769,13 @@ function renderGameplayTab(body: HTMLDivElement): void {
 
   // Autosave
   {
-    const [row] = rowWithLabel('Intervalo de autosave', 'autosave');
+    const [row] = rowWithLabel(t('settings.row.autosave'), 'autosave');
     const select = criarSelect([
-      ['0', 'Desligado'],
-      ['30000', '30 segundos'],
-      ['60000', '1 minuto'],
-      ['120000', '2 minutos'],
-      ['300000', '5 minutos'],
+      ['0', t('settings.opt.desligado')],
+      ['30000', t('settings.opt.autosave_30s')],
+      ['60000', t('settings.opt.autosave_1m')],
+      ['120000', t('settings.opt.autosave_2m')],
+      ['300000', t('settings.opt.autosave_5m')],
     ], String(getConfig().autosaveIntervalMs));
     select.addEventListener('change', () => {
       setConfig({ autosaveIntervalMs: Number(select.dataset.value!) });
@@ -922,14 +788,14 @@ function renderGameplayTab(body: HTMLDivElement): void {
 
   // Modo de save
   {
-    const [row] = rowWithLabel('Save experimental (IndexedDB)', 'saveMode');
+    const [row] = rowWithLabel(t('settings.row.save_experimental'), 'saveMode');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = getConfig().saveMode === 'experimental';
     cb.addEventListener('change', () => {
       setConfig({ saveMode: cb.checked ? 'experimental' : 'periodic' });
       import('../world/save').then(({ trocarModoSave }) => trocarModoSave());
-      import('./toast').then(({ toast }) => toast(cb.checked ? 'Modo experimental ativado' : 'Modo padr\u00E3o ativado', 'info'));
+      import('./toast').then(({ toast }) => toast(cb.checked ? t('toast.save_experimental_on') : t('toast.save_padrao_on'), 'info'));
     });
     row.appendChild(cb);
     body.appendChild(row);
@@ -937,7 +803,7 @@ function renderGameplayTab(body: HTMLDivElement): void {
 
   // Confirmar destrutivo
   {
-    const [row] = rowWithLabel('Confirmar a\u00E7\u00F5es destrutivas', 'confirmar');
+    const [row] = rowWithLabel(t('settings.row.confirmar_destrutivo'), 'confirmar');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gp.confirmarDestrutivo;
@@ -950,7 +816,7 @@ function renderGameplayTab(body: HTMLDivElement): void {
 
   // Edge-scroll
   {
-    const [row] = rowWithLabel('Edge-scroll', 'edge');
+    const [row] = rowWithLabel(t('settings.row.edge_scroll'), 'edge');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = gp.edgeScroll;
@@ -1026,7 +892,7 @@ function renderControlesSection(body: HTMLDivElement): void {
       row.className = 'settings-row';
 
       const lbl = document.createElement('label');
-      lbl.textContent = action.label;
+      lbl.textContent = t(action.labelKey);
       row.appendChild(lbl);
 
       const keys = keymap[action.id] ?? action.defaultKeys;
@@ -1094,7 +960,7 @@ function iniciarRebind(action: ActionDef, display: HTMLSpanElement, btn: HTMLBut
       window.removeEventListener('keydown', handler, true);
       void confirmar({
         title: t('input.conflito_titulo'),
-        message: t('input.conflito', { acao: conflictAction?.label ?? conflito }),
+        message: t('input.conflito', { acao: conflictAction ? t(conflictAction.labelKey) : conflito }),
         confirmLabel: t('input.trocar'),
         cancelLabel: t('confirm.cancelar'),
       }).then((ok) => {

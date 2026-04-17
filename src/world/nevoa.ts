@@ -4,6 +4,7 @@ import { nomeTipoPlaneta } from './planeta';
 import { criarPlanetaProceduralSprite } from './planeta-procedural';
 import { calcularBoundsViewport } from './viewport-bounds';
 import { getConfig } from '../core/config';
+import { t } from '../core/i18n/t';
 
 interface MemoriaPlanetaDados {
   dono: string;
@@ -251,10 +252,10 @@ export function restaurarMemoriaPlaneta(
 
 function formatarTempoPassado(ms: number): string {
   const seg = Math.floor(ms / 1000);
-  if (seg < 60) return `~${seg}s atrás`;
+  if (seg < 60) return t('tempo.segundos_atras', { n: seg });
   const min = Math.floor(seg / 60);
-  if (min < 60) return `~${min}m atrás`;
-  return `~${Math.floor(min / 60)}h atrás`;
+  if (min < 60) return t('tempo.minutos_atras', { n: min });
+  return t('tempo.horas_atras', { n: Math.floor(min / 60) });
 }
 
 export function atualizarVisibilidadeMemoria(planeta: Planeta, visivelAoJogador: boolean, esq: number, dir: number, cima: number, baixo: number, maxFantasmas: number): void {

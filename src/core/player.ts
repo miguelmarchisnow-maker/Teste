@@ -19,6 +19,7 @@ import {
   selecionarPlaneta,
 } from '../world/mundo';
 import { mostrarNotificacao } from '../ui/notificacao';
+import { t } from './i18n/t';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -148,11 +149,11 @@ export function cancelarComandoNaveSeAtivo(): boolean {
 export function getTextoComandoNave(): string {
   if (!comandoNave?.nave?.selecionado) return '';
   switch (comandoNave.tipo) {
-    case 'mover': return `Modo movimento: ${comandoNave.pontos.length}/5 pontos, clique no mapa e depois em Mover para iniciar`;
-    case 'origem': return 'Config origem: clique em um planeta seu';
-    case 'destino': return 'Config destino: clique em um planeta seu';
-    case 'target_colonizadora': return 'Modo colonização: clique num planeta alvo';
-    case 'move_colonizadora': return 'Modo voo livre: clique no mapa para definir destino';
+    case 'mover': return t('comando.mover', { n: comandoNave.pontos.length });
+    case 'origem': return t('comando.origem');
+    case 'destino': return t('comando.destino');
+    case 'target_colonizadora': return t('comando.target_colonizadora');
+    case 'move_colonizadora': return t('comando.move_colonizadora');
   }
 }
 
@@ -285,7 +286,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
             somClique();
           }
         } else {
-          mostrarNotificacao('Clique em um planeta ou estrela pra alvejar.', '#ffcc66');
+          mostrarNotificacao(t('notificacao.clique_alvo'), '#ffcc66');
         }
         clickInfo = null;
         return;

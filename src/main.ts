@@ -108,19 +108,19 @@ async function bootstrap(): Promise<void> {
       console.warn('[renderer] Canvas renderer failed, falling back to WebGL:', err);
       setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
       await app.init({ ...baseInit, preference: 'webgl' });
-      window.setTimeout(() => toast('Renderizador Canvas indisponível — usando WebGL', 'err'), 2000);
+      window.setTimeout(() => toast(t('toast.canvas_fallback'), 'err'), 2000);
     } else if (gfx.renderer === 'webgpu') {
       console.warn('[renderer] WebGPU failed, falling back to WebGL:', err);
       setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
       await app.init({ ...baseInit, preference: 'webgl' });
-      window.setTimeout(() => toast('WebGPU indisponível — usando WebGL', 'err'), 2000);
+      window.setTimeout(() => toast(t('toast.webgpu_fallback'), 'err'), 2000);
     } else if (effectiveRenderer === 'webgl' && gfx.webglVersion !== 'auto') {
       console.warn(`[renderer] WebGL ${gfx.webglVersion} forçado falhou, caindo pra auto:`, err);
       setConfigDuranteBoot({ graphics: { ...getConfig().graphics, webglVersion: 'auto' } });
       delete baseInit.context;
       delete baseInit.canvas;
       await app.init({ ...baseInit, preference: 'webgl' });
-      window.setTimeout(() => toast(`WebGL ${gfx.webglVersion} indisponível — usando automático`, 'err'), 2000);
+      window.setTimeout(() => toast(t('toast.webgl_fallback', { v: gfx.webglVersion }), 'err'), 2000);
     } else {
       throw err;
     }
@@ -224,7 +224,7 @@ async function bootstrap(): Promise<void> {
 
   onAction('quicksave', () => {
     salvarAgora();
-    toast('Salvo', 'info');
+    toast(t('toast.salvo'), 'info');
   });
 
   onAction('speed_pause', () => {
@@ -412,7 +412,7 @@ async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador): Promise<
   const app = _app;
 
   esconderMainMenu();
-  mostrarCarregando('Criando mundo');
+  mostrarCarregando(t('loading.criando'));
   await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
   setTipoJogador();
@@ -424,19 +424,19 @@ function mostrarModalSaveCorrompido(nome: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error('[save] load failed:', err);
   const action = prompt(
-    `Não foi possível carregar "${nome}".\n\nErro: ${msg}\n\nDigite APAGAR pra remover o save, ou EXPORTAR pra baixar o JSON cru.`,
+    t('save.corrompido_prompt', { nome, msg }),
     '',
   );
   if (action === 'APAGAR') {
     void getBackendAtivo().apagar(nome);
-    toast('Save apagado', 'info');
+    toast(t('toast.save_apagado'), 'info');
   } else if (action === 'EXPORTAR') {
     try {
       // Read raw string directly — carregar() swallows parse errors,
       // which defeats the purpose of exporting corrupt data.
       const rawStr = localStorage.getItem(`orbital_save:${nome}`);
       if (!rawStr) {
-        toast('Nada para exportar', 'err');
+        toast(t('toast.save_nada_exportar'), 'err');
         return;
       }
       const blob = new Blob([rawStr], { type: 'application/json' });
@@ -446,9 +446,9 @@ function mostrarModalSaveCorrompido(nome: string, err: unknown): void {
       a.download = `${nome}-corrupt.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      toast('Save exportado', 'info');
+      toast(t('toast.save_exportado'), 'info');
     } catch (e) {
-      toast('Falha ao exportar', 'err');
+      toast(t('toast.save_falha_exportar'), 'err');
     }
   }
 }
@@ -510,7 +510,7 @@ async function carregarMundo(nome: string): Promise<void> {
     _transitioning = false;
     await esconderCarregando();
     mostrarMainMenu();
-    toast(`Save "${nome}" não encontrado`, 'err');
+    toast(t('toast.save_nao_encontrado', { nome }), 'err');
     return;
   }
 

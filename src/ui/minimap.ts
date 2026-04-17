@@ -1,6 +1,7 @@
 import type { Application } from 'pixi.js';
 import type { Mundo, Camera } from '../types';
 import { registerMinimap, unregisterMinimap } from './hud-layout';
+import { t } from '../core/i18n/t';
 
 const CORES_DONO: Record<string, string> = {
   neutro: 'rgba(140,140,140,0.8)',
@@ -251,7 +252,7 @@ export function criarMinimap(app: Application, mundo: Mundo): HTMLDivElement {
 
   const btnIn = document.createElement('button');
   btnIn.className = 'minimap-zoom-btn';
-  btnIn.title = 'Zoom In  ( + )';
+  btnIn.title = t('minimap.zoom_in');
   btnIn.appendChild(makePlusIcon());
   btnIn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -261,7 +262,7 @@ export function criarMinimap(app: Application, mundo: Mundo): HTMLDivElement {
 
   const btnOut = document.createElement('button');
   btnOut.className = 'minimap-zoom-btn';
-  btnOut.title = 'Zoom Out  ( − )';
+  btnOut.title = t('minimap.zoom_out');
   btnOut.appendChild(makeMinusIcon());
   btnOut.addEventListener('click', (e) => {
     e.stopPropagation();

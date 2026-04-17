@@ -252,4 +252,141 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'colony_modal.bonus_raro': { pt: 'Raro', en: 'Rare' },
   'colony_modal.bonus_combustivel': { pt: 'Combustível', en: 'Fuel' },
   'colony_modal.subtitulo_sistema': { pt: 'Planeta habitável em sistema {n}', en: 'Habitable planet in system {n}' },
+
+  // Toast messages
+  'toast.canvas_fallback': { pt: 'Renderizador Canvas indisponível — usando WebGL', en: 'Canvas renderer unavailable — falling back to WebGL' },
+  'toast.webgpu_fallback': { pt: 'WebGPU indisponível — usando WebGL', en: 'WebGPU unavailable — falling back to WebGL' },
+  'toast.webgl_fallback': { pt: 'WebGL {v} indisponível — usando automático', en: 'WebGL {v} unavailable — using automatic' },
+  'toast.save_nao_encontrado': { pt: 'Save "{nome}" não encontrado', en: 'Save "{nome}" not found' },
+  'toast.save_apagado': { pt: 'Save apagado', en: 'Save deleted' },
+  'toast.save_exportado': { pt: 'Save exportado', en: 'Save exported' },
+  'toast.save_nada_exportar': { pt: 'Nada para exportar', en: 'Nothing to export' },
+  'toast.save_falha_exportar': { pt: 'Falha ao exportar', en: 'Export failed' },
+  'toast.fullscreen_bloqueado': { pt: 'Fullscreen bloqueado pelo navegador', en: 'Fullscreen blocked by the browser' },
+  'toast.save_experimental_on': { pt: 'Modo experimental ativado', en: 'Experimental mode enabled' },
+  'toast.save_padrao_on': { pt: 'Modo padrão ativado', en: 'Default mode enabled' },
+
+  // Save corrupted prompt
+  'save.corrompido_prompt': { pt: 'Não foi possível carregar "{nome}".\n\nErro: {msg}\n\nDigite APAGAR pra remover o save, ou EXPORTAR pra baixar o JSON cru.', en: 'Could not load "{nome}".\n\nError: {msg}\n\nType APAGAR to remove the save, or EXPORTAR to download the raw JSON.' },
+
+  // Notificações (naves)
+  'notificacao.cargueira_descarregou': { pt: 'Cargueira descarregou {n} recursos.', en: 'Freighter unloaded {n} resources.' },
+  'notificacao.survey_sem_alvo': { pt: 'Survey completo — sem alvo colonizável. Nave em órbita.', en: 'Survey complete — no colonizable target. Ship in orbit.' },
+  'notificacao.colonizadora_outpost': { pt: 'Colonizadora mantida em órbita como posto de observação.', en: 'Colonizer kept in orbit as observation outpost.' },
+  'notificacao.survey_cancelar_primeiro': { pt: 'Cancele o survey atual antes de redirecionar a colonizadora.', en: 'Cancel the current survey before redirecting the colonizer.' },
+  'notificacao.ja_existe_colonizadora': { pt: 'Já existe uma colonizadora a caminho deste sistema.', en: 'A colonizer is already heading to this system.' },
+  'notificacao.clique_alvo': { pt: 'Clique em um planeta ou estrela pra alvejar.', en: 'Click a planet or star to target.' },
+
+  // Confirmar ações
+  'confirmar.sucatear_nave': { pt: 'Sucatear nave "{tipo}"?', en: 'Scrap "{tipo}" ship?' },
+  'confirmar.sim': { pt: 'Sim', en: 'Yes' },
+
+  // Tempo (fog of war relative time)
+  'tempo.segundos_atras': { pt: '~{n}s atrás', en: '~{n}s ago' },
+  'tempo.minutos_atras': { pt: '~{n}m atrás', en: '~{n}m ago' },
+  'tempo.horas_atras': { pt: '~{n}h atrás', en: '~{n}h ago' },
+
+  // Ship command hints
+  'comando.mover': { pt: 'Modo movimento: {n}/5 pontos, clique no mapa e depois em Mover para iniciar', en: 'Movement mode: {n}/5 points, click on map then Move to start' },
+  'comando.origem': { pt: 'Config origem: clique em um planeta seu', en: 'Set origin: click one of your planets' },
+  'comando.destino': { pt: 'Config destino: clique em um planeta seu', en: 'Set destination: click one of your planets' },
+  'comando.target_colonizadora': { pt: 'Modo colonização: clique num planeta alvo', en: 'Colonization mode: click a target planet' },
+  'comando.move_colonizadora': { pt: 'Modo voo livre: clique no mapa para definir destino', en: 'Free flight mode: click map to set destination' },
+
+  // Pause menu
+  'pause.titulo': { pt: 'Menu', en: 'Menu' },
+  'pause.configuracoes': { pt: 'Configurações', en: 'Settings' },
+  'pause.voltar_menu': { pt: 'Voltar ao Menu', en: 'Back to Menu' },
+  'pause.cancelar': { pt: 'Cancelar', en: 'Cancel' },
+  'pause.progresso_salvo': { pt: 'Seu progresso será salvo automaticamente.', en: 'Your progress will be saved automatically.' },
+
+  // Input action labels (moved from ActionDef.label)
+  'input.action.zoom_in': { pt: 'Zoom in', en: 'Zoom in' },
+  'input.action.zoom_out': { pt: 'Zoom out', en: 'Zoom out' },
+  'input.action.pan_up': { pt: 'Câmera cima', en: 'Camera up' },
+  'input.action.pan_down': { pt: 'Câmera baixo', en: 'Camera down' },
+  'input.action.pan_left': { pt: 'Câmera esquerda', en: 'Camera left' },
+  'input.action.pan_right': { pt: 'Câmera direita', en: 'Camera right' },
+  'input.action.cancel_or_menu': { pt: 'Cancelar / Menu', en: 'Cancel / Menu' },
+  'input.action.quicksave': { pt: 'Salvar rápido', en: 'Quick save' },
+  'input.action.speed_pause': { pt: 'Pausar', en: 'Pause' },
+  'input.action.speed_1x': { pt: 'Velocidade 1x', en: 'Speed 1x' },
+  'input.action.speed_2x': { pt: 'Velocidade 2x', en: 'Speed 2x' },
+  'input.action.speed_4x': { pt: 'Velocidade 4x', en: 'Speed 4x' },
+  'input.action.toggle_debug_fast': { pt: 'Debug rápido', en: 'Debug fast' },
+  'input.action.toggle_debug_full': { pt: 'Debug completo', en: 'Debug full' },
+
+  // Settings — row labels
+  'settings.row.qualidade': { pt: 'Qualidade', en: 'Quality' },
+  'settings.row.fullscreen': { pt: 'Fullscreen', en: 'Fullscreen' },
+  'settings.row.scanlines': { pt: 'Scanlines CRT', en: 'CRT Scanlines' },
+  'settings.row.mostrar_fps': { pt: 'Mostrar FPS', en: 'Show FPS' },
+  'settings.row.limite_fps': { pt: 'Limite de FPS', en: 'FPS limit' },
+  'settings.row.renderer': { pt: 'Motor de renderização', en: 'Rendering engine' },
+  'settings.row.webgl_version': { pt: 'Versão do WebGL', en: 'WebGL version' },
+  'settings.row.gpu_pref': { pt: 'Preferência de GPU', en: 'GPU preference' },
+  'settings.row.mostrar_orbitas': { pt: 'Mostrar órbitas', en: 'Show orbits' },
+  'settings.row.densidade_estrelas': { pt: 'Densidade de estrelas', en: 'Star density' },
+  'settings.row.max_fantasmas': { pt: 'Max fantasmas', en: 'Max ghosts' },
+  'settings.row.shader_live': { pt: 'Shader ao vivo', en: 'Live shader' },
+  'settings.row.autosave': { pt: 'Intervalo de autosave', en: 'Autosave interval' },
+  'settings.row.save_experimental': { pt: 'Save experimental (IndexedDB)', en: 'Experimental save (IndexedDB)' },
+  'settings.row.confirmar_destrutivo': { pt: 'Confirmar ações destrutivas', en: 'Confirm destructive actions' },
+  'settings.row.edge_scroll': { pt: 'Edge-scroll', en: 'Edge-scroll' },
+
+  // Settings — audio categories
+  'settings.audio.master': { pt: 'Master', en: 'Master' },
+  'settings.audio.sfx': { pt: 'SFX Jogo', en: 'Game SFX' },
+  'settings.audio.ui': { pt: 'SFX UI', en: 'UI SFX' },
+  'settings.audio.aviso': { pt: 'Avisos', en: 'Alerts' },
+  'settings.audio.mute': { pt: 'MUTE', en: 'MUTE' },
+  'settings.audio.on': { pt: 'ON', en: 'ON' },
+
+  // Settings — option labels
+  'settings.opt.alto': { pt: 'Alto', en: 'High' },
+  'settings.opt.medio': { pt: 'Médio', en: 'Medium' },
+  'settings.opt.baixo': { pt: 'Baixo', en: 'Low' },
+  'settings.opt.minimo': { pt: 'Mínimo', en: 'Minimum' },
+  'settings.opt.personalizado': { pt: 'Personalizado', en: 'Custom' },
+  'settings.opt.sem_limite': { pt: 'Sem limite', en: 'Unlimited' },
+  'settings.opt.desligado': { pt: 'Desligado', en: 'Off' },
+  'settings.opt.ilimitado': { pt: 'Ilimitado', en: 'Unlimited' },
+  'settings.opt.automatico': { pt: 'Automático', en: 'Automatic' },
+  'settings.opt.webgl': { pt: 'WebGL', en: 'WebGL' },
+  'settings.opt.webgpu': { pt: 'WebGPU', en: 'WebGPU' },
+  'settings.opt.software': { pt: 'Software', en: 'Software' },
+  'settings.opt.webgl2_forcado': { pt: 'WebGL 2 forçado', en: 'WebGL 2 forced' },
+  'settings.opt.webgl1_forcado': { pt: 'WebGL 1 forçado', en: 'WebGL 1 forced' },
+  'settings.opt.alta_perf': { pt: 'Alta performance', en: 'High performance' },
+  'settings.opt.economia': { pt: 'Economia de energia', en: 'Power saving' },
+  'settings.opt.autosave_30s': { pt: '30 segundos', en: '30 seconds' },
+  'settings.opt.autosave_1m': { pt: '1 minuto', en: '1 minute' },
+  'settings.opt.autosave_2m': { pt: '2 minutos', en: '2 minutes' },
+  'settings.opt.autosave_5m': { pt: '5 minutos', en: '5 minutes' },
+
+  // Settings — sections
+  'settings.secao_audio_sfx': { pt: 'Áudio — SFX', en: 'Audio — SFX' },
+
+  // Tooltips (big multi-line strings)
+  'tooltips.qualidade': { pt: 'Qualidade\n\nPreset que ajusta múltiplas opções avançadas de\numa vez. Use \'Baixo\' ou \'Mínimo\' se o jogo estiver\ntravando.\n\nMostra \'(personalizado)\' quando você mexeu em\nopções avançadas depois de escolher um preset.', en: 'Quality\n\nPreset that adjusts multiple advanced options at\nonce. Use \'Low\' or \'Minimum\' if the game is\nstuttering.\n\nShows \'(custom)\' when you tweaked advanced\noptions after choosing a preset.' },
+  'tooltips.fullscreen': { pt: 'Fullscreen\n\nAlterna tela cheia. O navegador pode pedir\npermissão na primeira vez.', en: 'Fullscreen\n\nToggles full screen. The browser may ask for\npermission the first time.' },
+  'tooltips.scanlines': { pt: 'Scanlines CRT\n\nEfeito visual retrô com linhas horizontais\nsobrepostas. Custo de desempenho: desprezível.', en: 'CRT Scanlines\n\nRetro visual effect with overlapping horizontal\nlines. Performance cost: negligible.' },
+  'tooltips.fps': { pt: 'Mostrar FPS\n\nExibe o contador de quadros por segundo no canto\nda tela. Útil pra diagnosticar queda de desempenho.', en: 'Show FPS\n\nDisplays the frames-per-second counter in the\ncorner. Useful for diagnosing performance drops.' },
+  'tooltips.fpsCap': { pt: 'Limite de FPS\n\nLimita a taxa de quadros. Valores menores\neconomizam CPU/GPU e bateria em laptops.\n\n\'Sem limite\' deixa o jogo rodar tão rápido quanto\no navegador permitir.', en: 'FPS limit\n\nCaps the frame rate. Lower values save CPU/GPU\nand battery on laptops.\n\n\'Unlimited\' lets the game run as fast as the\nbrowser allows.' },
+  'tooltips.renderer': { pt: 'Motor de renderização\n\nBiblioteca gráfica que o jogo usa pra desenhar.\n\n• WebGL\n  Padrão estável. Funciona em todos os navegadores\n  modernos e é a escolha segura.\n\n• WebGPU\n  Sucessor do WebGL, pode ser 20–40% mais rápido em\n  hardware moderno. Exige navegador recente: Chrome\n  e Edge atuais suportam bem; Firefox e Safari ainda\n  têm suporte limitado.\n\n• Software (Canvas)\n  Renderização por software via Canvas 2D, sem\n  usar a GPU. Muito mais lento mas funciona em\n  qualquer dispositivo. Aplica qualidade Mínimo\n  automaticamente. Shaders não funcionam neste modo.\n\n• Fallback automático\n  Se o WebGPU falhar ao iniciar, o jogo volta sozinho\n  pro WebGL e avisa na tela.\n\nMudança exige recarregar o jogo.', en: 'Rendering engine\n\nGraphics library the game uses to draw.\n\n• WebGL\n  Stable default. Works on all modern browsers\n  and is the safe choice.\n\n• WebGPU\n  Successor to WebGL, can be 20–40% faster on\n  modern hardware. Requires recent browser: Chrome\n  and Edge have good support; Firefox and Safari\n  still have limited support.\n\n• Software (Canvas)\n  Software rendering via Canvas 2D, no GPU.\n  Much slower but works on any device. Applies\n  Minimum quality automatically. Shaders do not\n  work in this mode.\n\n• Automatic fallback\n  If WebGPU fails to start, the game falls back to\n  WebGL on its own and warns on screen.\n\nChanging requires reloading the game.' },
+  'tooltips.webglVersion': { pt: 'Versão do WebGL\n\nVersão da especificação usada pela pipeline gráfica.\n\n• Automático\n  O Pixi escolhe WebGL 2 se disponível, com fallback\n  pra WebGL 1. Recomendado pra 99% dos casos.\n\n• WebGL 2 forçado\n  Força a versão mais nova, mais rápida e com mais\n  features. Falha ao iniciar se sua GPU ou driver\n  não suportar.\n\n• WebGL 1 forçado\n  Força a versão antiga, compatível com GPUs muito\n  velhas e drivers bugados. Use só se o WebGL 2\n  estiver crashando ou renderizando com artefatos.\n\nSó aplica quando o motor é WebGL (ignorado em WebGPU).\nRequer recarregar o jogo.', en: 'WebGL version\n\nVersion of the spec used by the graphics pipeline.\n\n• Automatic\n  Pixi picks WebGL 2 if available, falling back to\n  WebGL 1. Recommended for 99% of cases.\n\n• WebGL 2 forced\n  Forces the newer, faster version with more\n  features. Fails to start if your GPU or driver\n  does not support it.\n\n• WebGL 1 forced\n  Forces the old version, compatible with very old\n  GPUs and buggy drivers. Use only if WebGL 2 is\n  crashing or rendering with artifacts.\n\nOnly applies when the engine is WebGL (ignored on WebGPU).\nRequires reloading the game.' },
+  'tooltips.gpuPref': { pt: 'Preferência de GPU\n\nDiz ao navegador qual GPU usar — importa em laptops\nque têm tanto uma GPU integrada (economia) quanto\numa discreta (performance).\n\n• Automático\n  O navegador decide. Geralmente integrada pra\n  economizar bateria. Recomendado.\n\n• Alta performance\n  Força a GPU discreta. Jogo roda mais rápido mas\n  consome muito mais bateria em laptops.\n\n• Economia de energia\n  Força a GPU integrada. Menor performance, mas\n  máxima autonomia em laptops.\n\nEm desktops com uma GPU só, não muda nada.\nRequer recarregar o jogo.', en: 'GPU preference\n\nTells the browser which GPU to use — relevant for\nlaptops that have both an integrated (power-saving)\nand a discrete (performance) GPU.\n\n• Automatic\n  The browser decides. Usually integrated to save\n  battery. Recommended.\n\n• High performance\n  Forces the discrete GPU. Game runs faster but\n  uses much more battery on laptops.\n\n• Power saving\n  Forces the integrated GPU. Lower performance but\n  maximum battery life on laptops.\n\nOn desktops with a single GPU, changes nothing.\nRequires reloading the game.' },
+  'tooltips.verInfo': { pt: 'Ver informações do renderer\n\nAbre um diálogo com detalhes técnicos da pipeline\ngráfica ativa: motor em uso, GPU, vendor, versão,\ncapacidades (tamanho máximo de textura, vertex\nattribs, extensões suportadas) e aviso se estiver\nrodando em software.\n\nÚtil pra debug e pra saber se vale a pena tentar\nWebGPU ou se há problema de aceleração.', en: 'View renderer info\n\nOpens a dialog with technical details of the\nactive graphics pipeline: engine in use, GPU,\nvendor, version, capabilities (max texture size,\nvertex attribs, supported extensions) and a\nwarning if running in software.\n\nUseful for debugging and to know whether trying\nWebGPU is worth it or if hardware acceleration is\nmisbehaving.' },
+  'tooltips.orbitas': { pt: 'Mostrar órbitas\n\nDesenha as linhas circulares que mostram o caminho\ndos planetas em volta da estrela. Desligar reduz\ncusto de rendering em sistemas com muitos planetas.', en: 'Show orbits\n\nDraws the circular lines showing each planet\'s\npath around its star. Turning off reduces render\ncost in systems with many planets.' },
+  'tooltips.starfield': { pt: 'Densidade de estrelas\n\nQuantas estrelas compõem o fundo espacial.\n\nValores baixos ganham performance em máquinas\nfracas. Requer recarregar o jogo pra aplicar\n(o starfield é gerado uma vez na criação do mundo).', en: 'Star density\n\nHow many stars make up the space background.\n\nLow values gain performance on weak machines.\nRequires reloading the game to apply (the\nstarfield is generated once at world creation).' },
+  'tooltips.fantasmas': { pt: 'Max fantasmas\n\nNúmero máximo de planetas \'lembrados\' que aparecem\ncomo sombra quando saem do seu campo de visão.\n\nLimitar reduz custo de rendering sem alterar o\ngameplay — o jogo ainda lembra de todos, só mostra\nos N mais recentes visualmente.', en: 'Max ghosts\n\nMaximum number of \'remembered\' planets that show\nup as shadows when out of your field of view.\n\nLimiting reduces render cost without affecting\ngameplay — the game still remembers all of them,\nit just shows the N most recent visually.' },
+  'tooltips.shaderLive': { pt: 'Shader ao vivo\n\nQuando ligado, planetas e estrelas têm animação de\nsuperfície renderizada por shader em tempo real —\nbonito mas caro.\n\nQuando desligado, a animação congela imediatamente.\nMesmo visual, desempenho muito maior.', en: 'Live shader\n\nWhen on, planets and stars have surface animation\nrendered by shader in real time — pretty but\nexpensive.\n\nWhen off, the animation freezes immediately. Same\nvisual, much higher performance.' },
+  'tooltips.autosave': { pt: 'Intervalo de autosave\n\nCom que frequência o jogo salva automaticamente.\n\'Desligado\' desativa o autosave — só salva manualmente.', en: 'Autosave interval\n\nHow often the game saves automatically.\n\'Off\' disables autosave — only manual saves.' },
+  'tooltips.saveMode': { pt: 'Save experimental (IndexedDB)\n\nQuando ligado, salva em tempo real via IndexedDB\nem vez do método padrão por localStorage.\n\nMais rápido e confiável para saves grandes.', en: 'Experimental save (IndexedDB)\n\nWhen on, saves in real time via IndexedDB instead\nof the default localStorage method.\n\nFaster and more reliable for large saves.' },
+  'tooltips.confirmar': { pt: 'Confirmar ações destrutivas\n\nMostra um diálogo de confirmação antes de ações\nirreversíveis como sucatear naves ou apagar saves.', en: 'Confirm destructive actions\n\nShows a confirmation dialog before irreversible\nactions like scrapping ships or deleting saves.' },
+  'tooltips.edge': { pt: 'Edge-scroll\n\nMove a câmera automaticamente quando o cursor do\nmouse fica perto das bordas da tela. Desliga se\no cursor estiver sobre um painel de interface.', en: 'Edge-scroll\n\nAutomatically moves the camera when the mouse\ncursor approaches the screen edges. Disables if\nthe cursor is over a UI panel.' },
+
+  // Minimap
+  'minimap.zoom_in': { pt: 'Zoom In  ( + )', en: 'Zoom In  ( + )' },
+  'minimap.zoom_out': { pt: 'Zoom Out  ( − )', en: 'Zoom Out  ( − )' },
 };
