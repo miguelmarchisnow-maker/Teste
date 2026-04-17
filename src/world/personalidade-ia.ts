@@ -55,43 +55,95 @@ export interface PersonalidadeIA {
   forca: number;
 }
 
-// Procedural name generation via syllable concatenation.
+// Procedural name generation — 100% syllable-based, zero fixed lists.
 //
-// Empire titles are picked from a pool that varies per archetype (a
-// warlord is "Império", a trader is "Federação", etc), and the proper
-// noun is built from random syllables for true variety.
+// Each name has TWO procedural parts: a "title" (1-2 syllables, soft
+// consonants, ends in vowel for openness) + a "proper noun" (1-3
+// syllables, hard consonants, more clusters for that alien feel).
+// They use DIFFERENT syllable banks so titles don't sound like nouns.
+//
+// Archetype affects only the syllable BIAS (warlords get harder
+// consonants, traders softer) — not a fixed name lookup.
 
-const TITULOS_POR_ARQUETIPO: Record<Arquetipo, string[]> = {
-  warlord:   ['Império', 'Domínio', 'Khanate', 'Horda', 'Legião'],
-  trader:    ['Federação', 'Coletivo', 'Sindicato', 'Mercado', 'Aliança'],
-  scientist: ['Conclave', 'Academia', 'Concílio', 'Ordem', 'Universidade'],
-  defender:  ['Reino', 'Bastião', 'Fortaleza', 'Custódia', 'Sentinela'],
-  explorer:  ['Frota', 'Caravana', 'Errantes', 'Nômades', 'Expedição'],
-};
+// ─── Syllable banks for TITLE part ──────────────────────────────────
+// Softer, flowing — feels like a collective/order/empire
+const TITLE_ONSETS = [
+  'k', 'kr', 'v', 'vr', 'z', 'm', 'n', 'r', 'l',
+  'b', 'd', 'g', 'p', 's', 'sh', 'th', 'fr', 'pr',
+];
+const TITLE_VOWELS = [
+  'a', 'e', 'i', 'o', 'u', 'ae', 'ei', 'ia', 'au', 'eo', 'ao', 'oi',
+];
+const TITLE_CODAS = ['', '', '', 'n', 'r', 's', 'm', 'l', 'th'];
 
-// Onset clusters (start of syllable) — mix of soft and hard consonants
-const ONSETS = [
-  'k', 'kr', 'v', 'vr', 'z', 'zh', 'th', 'x', 'q', 'qu', 'sh',
-  'kh', 'dr', 'tr', 'sk', 'st', 'br', 'cl', 'gn', 'm', 'n',
-  'r', 'l', 'b', 'd', 'g', 'p', 's', 'mr', 'sr',
+// ─── Syllable banks for PROPER NOUN part ────────────────────────────
+// Harder, more alien — clusters, exotic vowel pairs
+const NOUN_ONSETS = [
+  'k', 'kr', 'kh', 'vr', 'zh', 'th', 'x', 'q', 'qu', 'sh',
+  'sk', 'st', 'br', 'cl', 'gn', 'mr', 'sr', 'tr', 'dr', 'pl',
+  'tl', 'thr', 'shr', 'spr', 'kl', 'fr', 'gl',
+];
+const NOUN_VOWELS = [
+  'a', 'e', 'i', 'o', 'u', 'ae', 'ei', 'oa', 'ia', 'yu',
+  'ar', 'or', 'er', 'ix', 'ax', 'yx', 'ur', 'oth', 'ash',
+];
+const NOUN_CODAS = [
+  '', 'n', 'r', 's', 'x', 'l', 'th', 'sh', 'rk', 'st',
+  'm', 'k', 'nx', 'rth', 'sk', 'th', 'zh',
 ];
 
-// Nucleus (vowel patterns)
-const VOGAIS = ['a', 'e', 'i', 'o', 'u', 'ae', 'ei', 'oa', 'ia', 'yu', 'ar', 'or', 'er', 'ix', 'ax'];
+// ─── Per-archetype syllable bias ────────────────────────────────────
+// Multiplier on how many times each onset cluster gets duplicated in
+// the bank → biases toward harder/softer consonants without being a
+// hard rule. Warlords prefer harsh sounds, traders softer.
+const ARCHETYPE_HARDNESS: Record<Arquetipo, number> = {
+  warlord:   1.6,  // harder
+  defender:  1.3,
+  explorer:  1.0,
+  scientist: 0.9,
+  trader:    0.7,  // softer
+};
 
-// Coda (end of syllable)
-const CODAS = ['', '', '', 'n', 'r', 's', 'x', 'l', 'th', 'sh', 'rk', 'st', 'm', 'k'];
-
-function gerarSilaba(rng: () => number): string {
-  return pickRng(ONSETS, rng) + pickRng(VOGAIS, rng) + pickRng(CODAS, rng);
+function biasedOnsets(bank: string[], rng: () => number, hardness: number): string[] {
+  const HARD = ['kh', 'vr', 'zh', 'x', 'q', 'qu', 'sk', 'st', 'kr', 'mr', 'sr', 'thr', 'shr', 'spr', 'tl'];
+  const out: string[] = [];
+  for (const o of bank) {
+    const isHard = HARD.includes(o);
+    // Hardness > 1 weights harder onsets more; < 1 less
+    const weight = isHard ? hardness : (2 - hardness);
+    const copies = Math.max(1, Math.round(weight));
+    for (let i = 0; i < copies; i++) out.push(o);
+  }
+  // Shuffle so pickRng spreads choices
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
-function gerarNomeProprio(rng: () => number): string {
+function gerarSilaba(onsets: string[], vowels: string[], codas: string[], rng: () => number): string {
+  return pickRng(onsets, rng) + pickRng(vowels, rng) + pickRng(codas, rng);
+}
+
+function gerarTitulo(rng: () => number, hardness: number): string {
+  const onsets = biasedOnsets(TITLE_ONSETS, rng, hardness);
+  // Title: 2 syllables usually, occasionally 1 or 3
+  const numSilabas = rng() < 0.15 ? 1 : (rng() < 0.85 ? 2 : 3);
+  let nome = '';
+  for (let i = 0; i < numSilabas; i++) {
+    nome += gerarSilaba(onsets, TITLE_VOWELS, TITLE_CODAS, rng);
+  }
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+}
+
+function gerarNomeProprio(rng: () => number, hardness: number): string {
+  const onsets = biasedOnsets(NOUN_ONSETS, rng, hardness);
   // 1-3 syllables, biased toward 2
   const numSilabas = rng() < 0.15 ? 1 : (rng() < 0.7 ? 2 : 3);
   let nome = '';
   for (let i = 0; i < numSilabas; i++) {
-    nome += gerarSilaba(rng);
+    nome += gerarSilaba(onsets, NOUN_VOWELS, NOUN_CODAS, rng);
   }
   return nome.charAt(0).toUpperCase() + nome.slice(1);
 }
@@ -198,11 +250,14 @@ export function gerarPersonalidade(id: string, forca: number, coresUsadas: Set<n
   }
   coresUsadas.add(cor);
 
-  // Use a per-personality seed so the name is stable for a given id
-  const seed = id.split('').reduce((s, c) => s + c.charCodeAt(0), 0) + Math.floor(Math.random() * 0xFFFF);
+  // Per-personality seed for deterministic name within a session.
+  // Each generation pass mixes with Math.random so different worlds get
+  // different names even with same id.
+  const seed = id.split('').reduce((s, c) => s + c.charCodeAt(0), 0) + Math.floor(Math.random() * 0xFFFFFFFF);
   const rng = makeRng(seed);
-  const titulo = pickRng(TITULOS_POR_ARQUETIPO[arquetipo], rng);
-  const nomeProprio = gerarNomeProprio(rng);
+  const hardness = ARCHETYPE_HARDNESS[arquetipo];
+  const titulo = gerarTitulo(rng, hardness);
+  const nomeProprio = gerarNomeProprio(rng, hardness);
 
   return {
     id,

@@ -19,6 +19,33 @@ export interface MundoDTO {
   fontesVisao: FonteVisao[];
   /** Procedural music seed — same seed = same musical theme. */
   seedMusical?: number;
+  /** Saved AI personality genomes — restored verbatim on load so name/color/archetype persist. */
+  personalidadesIa?: PersonalidadeIaDTO[];
+}
+
+/**
+ * Snapshot of an AI personality. Mirrors PersonalidadeIA in shape but
+ * stays a plain JSON DTO (no class instances) so it serializes cleanly.
+ * On load, restored as-is — no regeneration needed.
+ */
+export interface PersonalidadeIaDTO {
+  id: string;
+  nome: string;
+  cor: number;
+  arquetipo: 'warlord' | 'trader' | 'scientist' | 'defender' | 'explorer';
+  pesos: {
+    agressao: number;
+    expansao: number;
+    economia: number;
+    ciencia: number;
+    defesa: number;
+    vinganca: number;
+  };
+  naveFavorita: 'fragata' | 'torreta' | 'batedora' | 'cargueira';
+  frotaMinAtaque: number;
+  paciencia: number;
+  frotaMax: number;
+  forca: number;
 }
 
 // Entities

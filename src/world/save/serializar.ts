@@ -12,6 +12,7 @@ import type {
 } from './dto';
 import { CURRENT_SCHEMA_VERSION } from './dto';
 import { getMemoria } from '../nevoa';
+import { getPersonalidades } from '../ia-decisao';
 
 export function serializarMundo(
   mundo: Mundo,
@@ -61,6 +62,18 @@ export function serializarMundo(
     naves,
     fontesVisao: mundo.fontesVisao.map((f) => ({ x: f.x, y: f.y, raio: f.raio })),
     seedMusical: mundo.seedMusical,
+    personalidadesIa: getPersonalidades().map((ia) => ({
+      id: ia.id,
+      nome: ia.nome,
+      cor: ia.cor,
+      arquetipo: ia.arquetipo,
+      pesos: { ...ia.pesos },
+      naveFavorita: ia.naveFavorita,
+      frotaMinAtaque: ia.frotaMinAtaque,
+      paciencia: ia.paciencia,
+      frotaMax: ia.frotaMax,
+      forca: ia.forca,
+    })),
   };
 }
 
