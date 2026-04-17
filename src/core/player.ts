@@ -20,7 +20,7 @@ import {
 } from '../world/mundo';
 import { mostrarNotificacao } from '../ui/notificacao';
 import { t } from './i18n/t';
-import { abrirPlanetaModal } from '../ui/planet-modal';
+import { abrirPlanetaDrawer } from '../ui/planet-drawer';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -343,7 +343,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         somClique();
         // Open the rich planet side panel — replaces the legacy
         // planet-panel as the primary surface for planet info.
-        void abrirPlanetaModal(clickInfo.planeta, mundo);
+        void abrirPlanetaDrawer(clickInfo.planeta, mundo);
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);

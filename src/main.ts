@@ -17,7 +17,7 @@ import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMini
 import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats, destruirDebugMenu, setGameSpeed, fecharDebugOverlays, toggleDebugFast, toggleDebugFull } from './ui/debug-menu';
 import { installRootVariables } from './ui/hud-layout';
 import { criarPlanetPanel, atualizarPlanetPanel, destruirPlanetPanel } from './ui/planet-panel';
-import { atualizarPlanetaModal, destruirPlanetaModal } from './ui/planet-modal';
+import { atualizarPlanetaDrawer, destruirPlanetaDrawer } from './ui/planet-drawer';
 import { criarBuildPanel, atualizarBuildPanel, destruirBuildPanel } from './ui/build-panel';
 import { criarShipPanel, atualizarShipPanel, destruirShipPanel } from './ui/ship-panel';
 import { criarColonizerPanel, atualizarColonizerPanel, destruirColonizerPanel } from './ui/colonizer-panel';
@@ -66,6 +66,10 @@ const PLANET_PANEL_HABILITADO = false;
 /** Credits bar (credits value + UTC clock + refresh). Non-functional —
  *  the "43892" was a decorative pretend-online counter. */
 const CREDITS_BAR_HABILITADO = false;
+
+/** Decorative globe icon inside the credits bar (only relevant if
+ *  CREDITS_BAR_HABILITADO is also true). */
+const GLOBE_HABILITADO = false;
 
 async function bootstrap(): Promise<void> {
   installRootVariables();
@@ -381,7 +385,7 @@ function startTicker(): void {
 
     atualizarMinimap(camera);
     atualizarPlanetPanel(mundo, app);
-    atualizarPlanetaModal();
+    atualizarPlanetaDrawer();
     atualizarResourceBar(mundo);
     atualizarBuildPanel(mundo);
     atualizarShipPanel(mundo);
@@ -421,7 +425,7 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
   if (!_hudInstalled) {
     _hudInstalled = true;
     criarEmpireBadge('Valorian Empire', 24);
-    if (CREDITS_BAR_HABILITADO) criarCreditsBar(43892);
+    if (CREDITS_BAR_HABILITADO) criarCreditsBar(43892, GLOBE_HABILITADO);
     criarResourceBar();
     // Temporarily disabled — sidebar and chat log weren't earning
     // their screen real estate. The code is preserved so they can be
@@ -741,7 +745,7 @@ async function voltarAoMenu(): Promise<void> {
     destruirResourceBar();
     destruirChatLog();
     destruirPlanetPanel();
-    destruirPlanetaModal();
+    destruirPlanetaDrawer();
     destruirBuildPanel();
     destruirShipPanel();
     destruirColonizerPanel();

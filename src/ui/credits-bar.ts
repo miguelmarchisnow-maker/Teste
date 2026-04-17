@@ -1,8 +1,5 @@
 import { registerCreditsBar, unregisterCreditsBar } from './hud-layout';
 
-/** Toggle to re-enable the decorative globe icon in the credits bar. */
-const GLOBE_HABILITADO = false;
-
 let _container: HTMLDivElement | null = null;
 let _clockEl: HTMLDivElement | null = null;
 let _clockInterval: number | null = null;
@@ -131,16 +128,17 @@ function updateClock(): void {
   _clockEl.textContent = `UTC ${h}:${m}:${s}`;
 }
 
-export function criarCreditsBar(initialCredits: number = 43892): HTMLDivElement {
+export function criarCreditsBar(initialCredits: number = 43892, habilitarGlobo = false): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
 
   const bar = document.createElement('div');
   bar.className = 'hud-panel credits-bar';
 
-  // Globe icon temporarily disabled — purely decorative and clashed
-  // with the cleaner HUD. Flip GLOBE_HABILITADO to bring it back.
-  if (GLOBE_HABILITADO) {
+  // Globe icon is purely decorative. Controlled by the caller
+  // (main.ts) via the habilitarGlobo parameter — flag lives alongside
+  // other HUD feature flags there for consistency.
+  if (habilitarGlobo) {
     const globe = document.createElement('div');
     globe.className = 'credits-globe';
     globe.appendChild(createGlobeSvg());

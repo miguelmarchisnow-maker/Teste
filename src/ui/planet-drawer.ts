@@ -1,16 +1,16 @@
 /**
- * Rich in-game modal showing the full view of a planet.
+ * Rich in-game side drawer showing the full view of a planet.
  *
  * Opens when the player clicks a planet. Aggregates everything that
- * was previously spread between the side planet-panel, tooltips, and
- * the separate lore modal: name, owner (with faction lore link),
+ * was previously spread between the legacy planet-panel, tooltips,
+ * and the separate lore modal: name, owner (with faction lore link),
  * resources, factories/infrastructure, ships, active research,
  * construction, production queue, plus the procedural lore summary.
  *
- * Built with real DOM (no ASCII decoration) and matches the HUD
- * aesthetic. Re-renders on demand when the caller invokes
- * atualizarPlanetaModal with the same planet — cheap enough to call
- * each frame while open.
+ * This is a non-blocking side drawer — there is no backdrop, the
+ * world canvas stays interactive behind it. Re-renders on demand when
+ * the caller invokes atualizarPlanetaDrawer with the same planet —
+ * cheap enough (throttled ~2 Hz) to call each frame while open.
  */
 
 import type { Mundo, Planeta } from '../types';
@@ -38,7 +38,7 @@ function injectStyles(): void {
     /* Side drawer — coexists with an interactive world, no backdrop.
        The entry/exit animation uses visibility + opacity + transform;
        display stays flex throughout so the CSS transition fires. */
-    .planeta-modal {
+    .planeta-drawer {
       position: fixed;
       top: 50%;
       left: auto;
@@ -68,7 +68,7 @@ function injectStyles(): void {
         transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
         visibility 0s linear 240ms;
     }
-    .planeta-modal.visible {
+    .planeta-drawer.visible {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
@@ -79,7 +79,7 @@ function injectStyles(): void {
         visibility 0s linear 0s;
     }
 
-    .planeta-modal-head {
+    .planeta-drawer-head {
       display: flex;
       align-items: flex-start;
       gap: calc(var(--hud-unit) * 1);
@@ -90,7 +90,7 @@ function injectStyles(): void {
         transparent;
     }
 
-    .planeta-modal-portrait {
+    .planeta-drawer-portrait {
       width: calc(var(--hud-unit) * 5);
       height: calc(var(--hud-unit) * 5);
       border: 1px solid var(--hud-line);
@@ -101,21 +101,21 @@ function injectStyles(): void {
       flex-shrink: 0;
       overflow: hidden;
     }
-    .planeta-modal-portrait .dot {
+    .planeta-drawer-portrait .dot {
       width: 60%;
       height: 60%;
       border-radius: 50%;
       border: 1px solid var(--hud-border);
     }
 
-    .planeta-modal-meta {
+    .planeta-drawer-meta {
       display: flex;
       flex-direction: column;
       gap: calc(var(--hud-unit) * 0.2);
       flex: 1;
       min-width: 0;
     }
-    .planeta-modal-name {
+    .planeta-drawer-name {
       font-family: var(--hud-font-display);
       font-size: calc(var(--hud-unit) * 1.25);
       letter-spacing: 0.12em;
@@ -124,14 +124,14 @@ function injectStyles(): void {
       color: var(--hud-text);
       margin: 0;
     }
-    .planeta-modal-tipo {
+    .planeta-drawer-tipo {
       font-family: var(--hud-font);
       font-size: calc(var(--hud-unit) * 0.72);
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
     }
-    .planeta-modal-owner {
+    .planeta-drawer-owner {
       display: inline-flex;
       align-items: center;
       gap: calc(var(--hud-unit) * 0.4);
@@ -141,15 +141,15 @@ function injectStyles(): void {
       cursor: pointer;
       width: fit-content;
     }
-    .planeta-modal-owner-dot {
+    .planeta-drawer-owner-dot {
       width: calc(var(--hud-unit) * 0.7);
       height: calc(var(--hud-unit) * 0.7);
       border-radius: 50%;
       border: 1px solid rgba(255,255,255,0.3);
     }
-    .planeta-modal-owner.clickable:hover .planeta-modal-owner-name { text-decoration: underline; }
+    .planeta-drawer-owner.clickable:hover .planeta-drawer-owner-name { text-decoration: underline; }
 
-    .planeta-modal-close {
+    .planeta-drawer-close {
       appearance: none;
       background: transparent;
       border: 1px solid var(--hud-border);
@@ -163,12 +163,12 @@ function injectStyles(): void {
       transition: background 120ms ease, color 120ms ease;
       flex-shrink: 0;
     }
-    .planeta-modal-close:hover {
+    .planeta-drawer-close:hover {
       background: rgba(255,255,255,0.08);
       color: var(--hud-text);
     }
 
-    .planeta-modal-body {
+    .planeta-drawer-body {
       padding: calc(var(--hud-unit) * 0.9) calc(var(--hud-unit) * 1.1) calc(var(--hud-unit) * 1);
       overflow-y: auto;
       display: flex;
@@ -265,7 +265,7 @@ function injectStyles(): void {
       margin: 0;
     }
 
-    .planeta-modal-actions {
+    .planeta-drawer-actions {
       display: flex;
       gap: calc(var(--hud-unit) * 0.4);
       flex-wrap: wrap;
@@ -273,7 +273,7 @@ function injectStyles(): void {
       border-top: 1px solid var(--hud-line);
       background: rgba(0,0,0,0.2);
     }
-    .planeta-modal-btn {
+    .planeta-drawer-btn {
       appearance: none;
       padding: calc(var(--hud-unit) * 0.45) calc(var(--hud-unit) * 0.85);
       background: transparent;
@@ -286,9 +286,9 @@ function injectStyles(): void {
       cursor: pointer;
       transition: background 120ms ease;
     }
-    .planeta-modal-btn:hover { background: rgba(255,255,255,0.08); }
-    .planeta-modal-btn.primary { background: rgba(140, 190, 255, 0.12); border-color: rgba(140, 190, 255, 0.4); }
-    .planeta-modal-btn.primary:hover { background: rgba(140, 190, 255, 0.22); }
+    .planeta-drawer-btn:hover { background: rgba(255,255,255,0.08); }
+    .planeta-drawer-btn.primary { background: rgba(140, 190, 255, 0.12); border-color: rgba(140, 190, 255, 0.4); }
+    .planeta-drawer-btn.primary:hover { background: rgba(140, 190, 255, 0.22); }
 
     .planeta-empty {
       color: var(--hud-text-dim);
@@ -297,7 +297,7 @@ function injectStyles(): void {
     }
 
     @media (max-width: 600px) {
-      .planeta-modal-body { grid-template-columns: 1fr; }
+      .planeta-drawer-body { grid-template-columns: 1fr; }
       .planeta-card.span-2 { grid-column: span 1; }
     }
   `;
@@ -523,10 +523,10 @@ function cardLore(p: Planeta, mundo: Mundo): HTMLDivElement {
 
 function buildHeader(p: Planeta): HTMLDivElement {
   const head = document.createElement('div');
-  head.className = 'planeta-modal-head';
+  head.className = 'planeta-drawer-head';
 
   const portrait = document.createElement('div');
-  portrait.className = 'planeta-modal-portrait';
+  portrait.className = 'planeta-drawer-portrait';
   const dot = document.createElement('div');
   dot.className = 'dot';
   dot.style.background = `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), ${tipoPlanetaCor(p.dados.tipoPlaneta)} 60%)`;
@@ -534,13 +534,13 @@ function buildHeader(p: Planeta): HTMLDivElement {
   head.appendChild(portrait);
 
   const meta = document.createElement('div');
-  meta.className = 'planeta-modal-meta';
+  meta.className = 'planeta-drawer-meta';
   const h = document.createElement('h2');
-  h.className = 'planeta-modal-name';
+  h.className = 'planeta-drawer-name';
   h.textContent = p.dados.nome;
   meta.appendChild(h);
   const tipo = document.createElement('div');
-  tipo.className = 'planeta-modal-tipo';
+  tipo.className = 'planeta-drawer-tipo';
   tipo.textContent = nomeTipoPlaneta(p.dados.tipoPlaneta);
   meta.appendChild(tipo);
 
@@ -548,13 +548,13 @@ function buildHeader(p: Planeta): HTMLDivElement {
   const dono = p.dados.dono;
   const ia = getPersonalidades().find((x) => x.id === dono);
   const clickable = dono !== 'jogador' && dono !== 'neutro' && !!ia;
-  owner.className = `planeta-modal-owner${clickable ? ' clickable' : ''}`;
+  owner.className = `planeta-drawer-owner${clickable ? ' clickable' : ''}`;
   const ownerDot = document.createElement('div');
-  ownerDot.className = 'planeta-modal-owner-dot';
+  ownerDot.className = 'planeta-drawer-owner-dot';
   ownerDot.style.background = ownerColor(dono);
   owner.appendChild(ownerDot);
   const ownerName = document.createElement('span');
-  ownerName.className = 'planeta-modal-owner-name';
+  ownerName.className = 'planeta-drawer-owner-name';
   ownerName.textContent = ownerLabel(dono);
   owner.appendChild(ownerName);
   if (clickable && ia && _currentMundo) {
@@ -575,7 +575,7 @@ function buildHeader(p: Planeta): HTMLDivElement {
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.className = 'planeta-modal-close';
+  closeBtn.className = 'planeta-drawer-close';
   closeBtn.setAttribute('aria-label', 'Fechar');
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', (ev) => {
@@ -597,11 +597,11 @@ function tipoPlanetaCor(tipo: string): string {
 
 function buildActions(p: Planeta, mundo: Mundo): HTMLDivElement {
   const actions = document.createElement('div');
-  actions.className = 'planeta-modal-actions';
+  actions.className = 'planeta-drawer-actions';
 
   const archiveBtn = document.createElement('button');
   archiveBtn.type = 'button';
-  archiveBtn.className = 'planeta-modal-btn';
+  archiveBtn.className = 'planeta-drawer-btn';
   archiveBtn.textContent = 'Ver arquivo planetário';
   archiveBtn.addEventListener('click', (ev) => {
     ev.preventDefault(); ev.stopPropagation();
@@ -623,7 +623,7 @@ function buildActions(p: Planeta, mundo: Mundo): HTMLDivElement {
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.className = 'planeta-modal-btn primary';
+  closeBtn.className = 'planeta-drawer-btn primary';
   closeBtn.textContent = 'Fechar';
   closeBtn.addEventListener('click', () => close());
   actions.appendChild(closeBtn);
@@ -647,7 +647,7 @@ function ensureModal(): void {
   if (_modal) return;
   injectStyles();
   const modal = document.createElement('div');
-  modal.className = 'planeta-modal';
+  modal.className = 'planeta-drawer';
   modal.setAttribute('data-ui', 'true');
   modal.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -662,7 +662,7 @@ function ensureModal(): void {
   window.addEventListener('keydown', _keydownHandler);
 }
 
-export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void> {
+export function abrirPlanetaDrawer(planeta: Planeta, mundo: Mundo): Promise<void> {
   ensureModal();
   if (!_modal) return Promise.resolve();
   // Same planet, already open — no-op.
@@ -684,7 +684,7 @@ export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void>
   removeAllChildren(_modal);
   _modal.appendChild(buildHeader(planeta));
   const body = document.createElement('div');
-  body.className = 'planeta-modal-body';
+  body.className = 'planeta-drawer-body';
   _bodyEl = body;
   _modal.appendChild(body);
   rebuildBody(planeta, mundo);
@@ -705,7 +705,7 @@ const REBUILD_INTERVALO_MS = 500;
  * render-loop frequency. Rebuilding at 60 Hz tore down and recreated
  * ~30 DOM elements per frame, creating GC pressure and layout thrash.
  */
-export function atualizarPlanetaModal(): void {
+export function atualizarPlanetaDrawer(): void {
   if (!_closeResolver || !_currentPlaneta || !_currentMundo || !_bodyEl) return;
   const now = performance.now();
   if (now - _lastRebuildMs < REBUILD_INTERVALO_MS) return;
@@ -713,7 +713,7 @@ export function atualizarPlanetaModal(): void {
   rebuildBody(_currentPlaneta, _currentMundo);
 }
 
-export function isPlanetaModalAberto(): boolean {
+export function isPlanetaDrawerAberto(): boolean {
   return _closeResolver !== null;
 }
 
@@ -726,7 +726,7 @@ function close(): void {
   if (r) r();
 }
 
-export function destruirPlanetaModal(): void {
+export function destruirPlanetaDrawer(): void {
   if (_keydownHandler) {
     window.removeEventListener('keydown', _keydownHandler);
     _keydownHandler = null;
