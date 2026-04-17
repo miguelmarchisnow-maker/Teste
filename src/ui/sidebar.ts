@@ -1,6 +1,5 @@
 import { registerSidebar, unregisterSidebar, onLayoutChange } from './hud-layout';
 import { abrirPauseMenu } from './pause-menu';
-import { abrirSettings } from './settings-panel';
 import { t } from '../core/i18n/t';
 import { onConfigChange } from '../core/config';
 
@@ -222,30 +221,19 @@ export function criarSidebar(): HTMLDivElement {
     sidebar.appendChild(createNavButton(item));
   }
 
-  // ── Configurações button (icon, opens settings overlay directly) ──
-  const btnConfig = document.createElement('button');
-  btnConfig.type = 'button';
-  btnConfig.className = 'sidebar-btn';
-  const iconImg = document.createElement('img');
-  iconImg.className = 'sidebar-icon-img';
-  iconImg.src = 'assets/icon-config.png';
-  iconImg.alt = '';
-  btnConfig.appendChild(iconImg);
-  const labelConfig = document.createElement('span');
-  labelConfig.className = 'sidebar-label';
-  labelConfig.textContent = t('hud.configuracoes');
-  btnConfig.appendChild(labelConfig);
-  btnConfig.addEventListener('click', (e) => {
-    e.preventDefault();
-    abrirSettings();
-  });
-  sidebar.appendChild(btnConfig);
-
-  // ── Menu button ──
+  // ── Menu button (icon + label) ──
   const btnMenuOpen = document.createElement('button');
   btnMenuOpen.type = 'button';
-  btnMenuOpen.className = 'sidebar-btn sidebar-btn-text';
-  btnMenuOpen.textContent = t('hud.menu');
+  btnMenuOpen.className = 'sidebar-btn';
+  const menuIcon = document.createElement('img');
+  menuIcon.className = 'sidebar-icon-img';
+  menuIcon.src = 'assets/icon-config.png';
+  menuIcon.alt = '';
+  btnMenuOpen.appendChild(menuIcon);
+  const menuLabel = document.createElement('span');
+  menuLabel.className = 'sidebar-label';
+  menuLabel.textContent = t('hud.menu');
+  btnMenuOpen.appendChild(menuLabel);
   btnMenuOpen.addEventListener('click', (e) => {
     e.preventDefault();
     abrirPauseMenu();
@@ -262,8 +250,7 @@ export function criarSidebar(): HTMLDivElement {
       const key = el.parentElement?.dataset.labelKey;
       if (key) el.textContent = t(key);
     });
-    labelConfig.textContent = t('hud.configuracoes');
-    btnMenuOpen.textContent = t('hud.menu');
+    menuLabel.textContent = t('hud.menu');
   };
   _unsubConfig = onConfigChange(() => _refreshTextos?.());
 
