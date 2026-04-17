@@ -2,7 +2,8 @@ import type { Mundo, Planeta, Nave } from '../types';
 import type { PersonalidadeIA } from './personalidade-ia';
 import { saoHostis } from './constantes';
 import { getStatsCombate, podeAtacar } from './combate';
-import { getRancor, tempoDesdeUltimoAtaque } from './ia-memoria';
+import { getRancor, tempoDesdeUltimoAtaque, registrarPlanetaVisto, jaViuPlaneta } from './ia-memoria';
+import { RAIO_VISAO_BASE, RAIO_VISAO_NAVE, RAIO_VISAO_BATEDORA } from './constantes';
 
 /**
  * Utility-based action scoring for AI decisions.
@@ -20,6 +21,7 @@ import { getRancor, tempoDesdeUltimoAtaque } from './ia-memoria';
 export type AcaoCandidata =
   | { tipo: 'produzir_nave'; planeta: Planeta; tipoNave: string; }
   | { tipo: 'enviar_frota'; origem: Planeta; alvo: Planeta; navesIds: string[]; }
+  | { tipo: 'recall_defesa'; planeta_ameacado: Planeta; navesIds: string[]; }
   | { tipo: 'pesquisar'; planeta: Planeta; categoria: string; tier: number; }
   | { tipo: 'subir_fabrica'; planeta: Planeta; }
   | { tipo: 'subir_infra'; planeta: Planeta; };
@@ -201,10 +203,51 @@ function scoreSubirInfra(ia: PersonalidadeIA, planeta: Planeta): number {
 
 // ─── Action generation ───────────────────────────────────────────────────
 
+/**
+ * Update the AI's seen-planet set based on its current ships and planets.
+ * Each planet ALWAYS sees its own location; ships extend visibility based
+ * on type. Once a planet is seen, it's remembered (no fog re-coverage).
+ */
+function atualizarReconIa(ia: PersonalidadeIA, mundo: Mundo): void {
+  const meusPlanetas = planetasDoDono(mundo, ia.id);
+  const minhasNaves = navesDoDono(mundo, ia.id);
+
+  // Sources: my planet centers (with base vision) + my ship positions
+  const fontes: Array<{ x: number; y: number; raio: number }> = [];
+  for (const p of meusPlanetas) {
+    fontes.push({ x: p.x, y: p.y, raio: RAIO_VISAO_BASE() + p.dados.tamanho * 0.2 });
+  }
+  for (const n of minhasNaves) {
+    let raio: number;
+    if (n.tipo === 'batedora') raio = RAIO_VISAO_BATEDORA();
+    else raio = RAIO_VISAO_NAVE();
+    fontes.push({ x: n.x, y: n.y, raio });
+  }
+
+  // For each planet in the world, check if any source can see it
+  for (const planeta of mundo.planetas) {
+    if (planeta.dados.dono === ia.id) {
+      registrarPlanetaVisto(ia.id, planeta.id);
+      continue;
+    }
+    for (const f of fontes) {
+      const dx = f.x - planeta.x;
+      const dy = f.y - planeta.y;
+      if (dx * dx + dy * dy <= f.raio * f.raio) {
+        registrarPlanetaVisto(ia.id, planeta.id);
+        break;
+      }
+    }
+  }
+}
+
 export function gerarAcoesCandidatas(ia: PersonalidadeIA, mundo: Mundo): AcaoComScore[] {
   const meusPlanetas = planetasDoDono(mundo, ia.id);
   if (meusPlanetas.length === 0) return [];
   const minhasNaves = navesDoDono(mundo, ia.id);
+
+  // Update recon — what the AI has seen so far
+  atualizarReconIa(ia, mundo);
 
   const acoes: AcaoComScore[] = [];
 
@@ -241,33 +284,98 @@ export function gerarAcoesCandidatas(ia: PersonalidadeIA, mundo: Mundo): AcaoCom
     }
   }
 
-  // Fleet dispatch candidates: from each owned planet with idle ships,
-  // to each reachable target (neutro for expansion + hostis for attack)
-  for (const origem of meusPlanetas) {
-    const navesNaqui = mundo.naves.filter(
-      (n) => n.dono === ia.id && n.estado === 'orbitando' && n.alvo === origem
-        && (n.tipo === 'fragata' || n.tipo === 'batedora'),
-    );
-    if (navesNaqui.length === 0) continue;
+  // Fleet dispatch candidates: COORDINATED across multiple planets.
+  //
+  // Instead of "each planet attacks alone with 5 ships", we evaluate
+  // each visible target globally and pick the best one per origin
+  // — but ALSO emit a "mass attack" candidate that pulls combat ships
+  // from ALL my planets within range. This makes AI feel coordinated:
+  // when a player planet is targeted, the AI sends 8-12 ships from
+  // multiple bases instead of 3 from one.
+  const todasMinhasOrbitando = mundo.naves.filter(
+    (n) => n.dono === ia.id && n.estado === 'orbitando'
+      && (n.tipo === 'fragata' || n.tipo === 'batedora'),
+  );
 
-    // Targets: neutros nearby + jogador planets + rival AI planets
-    for (const alvo of mundo.planetas) {
-      if (alvo === origem) continue;
-      if (alvo.dados.dono === ia.id) continue;
-      if (dist(origem, alvo) > 8000) continue;
-      const score = scoreEnviarFrota(ia, origem, alvo, navesNaqui, mundo);
-      if (score > 0) {
-        acoes.push({
-          acao: {
-            tipo: 'enviar_frota',
-            origem,
-            alvo,
-            navesIds: navesNaqui.slice(0, Math.min(navesNaqui.length, 5)).map((n) => n.id),
-          },
-          score,
-        });
-      }
+  // For each visible target, compute the best mass-attack score
+  for (const alvo of mundo.planetas) {
+    if (alvo.dados.dono === ia.id) continue;
+    if (!jaViuPlaneta(ia.id, alvo.id)) continue;
+
+    // Find all my planets within reach of this target + their orbiting ships
+    const planetasComFrota = meusPlanetas.filter(
+      (p) => dist(p, alvo) <= 8000 && todasMinhasOrbitando.some((n) => n.alvo === p),
+    );
+    if (planetasComFrota.length === 0) continue;
+
+    // Pool ships across all those planets (combat ships only)
+    const frotaPool = todasMinhasOrbitando.filter(
+      (n) => planetasComFrota.includes(n.alvo as Planeta),
+    );
+    if (frotaPool.length === 0) continue;
+
+    // Best origin = closest planet (so we keep an "origem" reference for
+    // distance calc + defense reserve check)
+    const origem = planetasComFrota
+      .map((p) => ({ p, d: dist(p, alvo) }))
+      .sort((a, b) => a.d - b.d)[0].p;
+
+    // Score the consolidated attack
+    const score = scoreEnviarFrota(ia, origem, alvo, frotaPool, mundo);
+    if (score > 0) {
+      // Cap at 8 ships per attack to prevent total committment
+      const maxNaves = Math.min(frotaPool.length, 8);
+      // Sort by distance to target — closest go first
+      const ordenadasPorDist = frotaPool
+        .map((n) => ({ n, d: dist(n, alvo) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, maxNaves)
+        .map((x) => x.n);
+      acoes.push({
+        acao: {
+          tipo: 'enviar_frota',
+          origem,
+          alvo,
+          navesIds: ordenadasPorDist.map((n) => n.id),
+        },
+        score,
+      });
     }
+  }
+
+  // Defensive recall: if any of MY planets is under threat, recall ships
+  // from elsewhere to defend. High utility — defending home matters more
+  // than expansion or attack.
+  for (const planetaAmeacado of meusPlanetas) {
+    const ameaca = ameacaNoPlaneta(mundo, planetaAmeacado, ia.id);
+    if (ameaca < 0.5) continue; // ignore low threats
+
+    // Find my combat ships that are at OTHER planets (not already defending here)
+    const candidatos = minhasNaves.filter(
+      (n) => n.estado === 'orbitando'
+        && n.alvo !== planetaAmeacado
+        && (n.tipo === 'fragata' || n.tipo === 'torreta' || n.tipo === 'batedora'),
+    );
+    if (candidatos.length === 0) continue;
+
+    // Pick closest 3
+    const ordenados = candidatos
+      .map((n) => ({ n, d: dist(n, planetaAmeacado) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 3)
+      .map((x) => x.n);
+    if (ordenados.length === 0) continue;
+
+    // Score: threat × defense weight × (1 / closest distance for urgency)
+    const score = 50 * ameaca * ia.pesos.defesa * ia.forca;
+    acoes.push({
+      acao: {
+        tipo: 'recall_defesa',
+        planeta_ameacado: planetaAmeacado,
+        navesIds: ordenados.map((n) => n.id),
+      },
+      score,
+    });
   }
 
   // Sort by score desc

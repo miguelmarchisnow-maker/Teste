@@ -58,8 +58,19 @@ interface BeamVisual {
   age: number;
 }
 
+interface ImpactParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: number;
+  age: number;
+}
+
 const BEAM_LIFETIME_MS = 150;
+const PARTICLE_LIFETIME_MS = 320;
 const _beams: BeamVisual[] = [];
+const _particles: ImpactParticle[] = [];
 let _beamGfx: Graphics | null = null;
 
 function ensureBeamGfx(mundo: Mundo): Graphics {
@@ -74,6 +85,7 @@ function ensureBeamGfx(mundo: Mundo): Graphics {
 /** Reset beam state (call when destroying a world). */
 export function resetCombateVisuals(): void {
   _beams.length = 0;
+  _particles.length = 0;
   if (_beamGfx) {
     try { _beamGfx.destroy(); } catch { /* noop */ }
   }
@@ -126,15 +138,55 @@ export function atualizarCombate(mundo: Mundo, deltaMs: number): void {
     // Trigger hit-flash on the target (briefly tints sprite white)
     disparouFlash(melhor);
 
-    // Spawn beam visual
+    // Lead target — predict where the alvo will be when beam arrives.
+    // Beam is "instant" but if the target is moving fast (viajando),
+    // predict ~80ms ahead to feel right.
+    const lastX = (melhor as any)._lastX as number | undefined;
+    const lastY = (melhor as any)._lastY as number | undefined;
+    let predictedX = melhor.x;
+    let predictedY = melhor.y;
+    if (lastX !== undefined && lastY !== undefined && melhor.estado === 'viajando') {
+      const vx = melhor.x - lastX;
+      const vy = melhor.y - lastY;
+      // Adjust prediction proportional to ship speed
+      predictedX = melhor.x + vx * 4;
+      predictedY = melhor.y + vy * 4;
+    }
+    (melhor as any)._lastX = melhor.x;
+    (melhor as any)._lastY = melhor.y;
+
+    // Spawn beam visual aimed at predicted position
     _beams.push({
       fromX: atacante.x,
       fromY: atacante.y,
-      toX: melhor.x,
-      toY: melhor.y,
+      toX: predictedX,
+      toY: predictedY,
       color: stats.corBeam,
       age: 0,
     });
+
+    // Spawn 4-6 impact particles spreading from the hit point
+    const numParticles = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < numParticles; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.04 + Math.random() * 0.06;
+      _particles.push({
+        x: melhor.x,
+        y: melhor.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: stats.corBeam,
+        age: 0,
+      });
+    }
+
+    // Tiny recoil on the attacker — push it back along firing direction
+    const dxFire = atacante.x - melhor.x;
+    const dyFire = atacante.y - melhor.y;
+    const dFire = Math.hypot(dxFire, dyFire) || 1;
+    const recoil = 0.4;
+    atacante.x += (dxFire / dFire) * recoil;
+    atacante.y += (dyFire / dFire) * recoil;
   }
 
   // Tick hit-flashes for every ship (cheap — only does work for ships with active flash)
@@ -160,6 +212,20 @@ export function atualizarCombate(mundo: Mundo, deltaMs: number): void {
       .stroke({ color: b.color, width, alpha });
     // Small glow at the impact point
     gfx.circle(b.toX, b.toY, 4 * t + 2).fill({ color: b.color, alpha: alpha * 0.5 });
+  }
+
+  // Age + render impact particles (drift outward, fade)
+  for (let i = _particles.length - 1; i >= 0; i--) {
+    const p = _particles[i];
+    p.age += deltaMs;
+    if (p.age >= PARTICLE_LIFETIME_MS) {
+      _particles.splice(i, 1);
+      continue;
+    }
+    p.x += p.vx * deltaMs;
+    p.y += p.vy * deltaMs;
+    const t = 1 - p.age / PARTICLE_LIFETIME_MS;
+    gfx.circle(p.x, p.y, 1.4 * t + 0.4).fill({ color: p.color, alpha: t * 0.85 });
   }
 
   // Remove ships with hp <= 0 (deferred — caller handles removal via removerNave)

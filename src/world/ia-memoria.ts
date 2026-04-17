@@ -15,6 +15,8 @@ interface MemoriaInimigo {
   forcaPercebida: Record<string, number>;
   /** Last time we attacked them (epoch ms). */
   ultimoAtaque: Record<string, number>;
+  /** Set of planet IDs we've seen at least once (recon memory). */
+  planetasVistos: Set<string>;
 }
 
 const _memorias = new Map<string, MemoriaInimigo>();
@@ -27,10 +29,19 @@ const RANCOR_POR_INVASAO = 4.0;          // someone at our planet adds this
 function getMem(donoIa: string): MemoriaInimigo {
   let m = _memorias.get(donoIa);
   if (!m) {
-    m = { rancor: {}, forcaPercebida: {}, ultimoAtaque: {} };
+    m = { rancor: {}, forcaPercebida: {}, ultimoAtaque: {}, planetasVistos: new Set() };
     _memorias.set(donoIa, m);
   }
   return m;
+}
+
+/** Mark a planet as seen — AI "remembers" it and can target it later. */
+export function registrarPlanetaVisto(donoIa: string, planetaId: string): void {
+  getMem(donoIa).planetasVistos.add(planetaId);
+}
+
+export function jaViuPlaneta(donoIa: string, planetaId: string): boolean {
+  return getMem(donoIa).planetasVistos.has(planetaId);
 }
 
 /** Record that a ship of ours was destroyed by `causador`. */

@@ -28,6 +28,7 @@ import { decairMemorias, registrarBaixa, resetMemoriasIa } from './ia-memoria';
 const ACTIONS_BUDGET = {
   produzir_nave: 1,
   enviar_frota: 1,
+  recall_defesa: 2,  // can recall from multiple planets in same tick
   pesquisar: 1,
   subir_fabrica: 1,
   subir_infra: 1,
@@ -187,21 +188,38 @@ function executarAcao(mundo: Mundo, ia: PersonalidadeIA, acao: any): boolean {
       const navesAReais = mundo.naves.filter((n) => navesIds.includes(n.id) && n.dono === ia.id);
       if (navesAReais.length === 0) return false;
 
-      // Defense reserve: don't strip ALL ships from origin — leave at least N
-      const planetaOrigem = navesAReais[0].alvo as Planeta | undefined;
-      if (planetaOrigem && _personalidades.some((p) => p.id === ia.id)) {
-        const reserva = calcularReservaDefesa(ia);
-        const navesNoMesmoLocal = todasMinhas.filter((n) => n.alvo === planetaOrigem);
-        const podeMandar = Math.max(0, navesNoMesmoLocal.length - reserva);
-        const naAtual = Math.min(navesAReais.length, podeMandar);
-        if (naAtual === 0) return false;
-        for (let i = 0; i < naAtual; i++) {
-          enviarNaveParaAlvo(mundo, navesAReais[i], acao.alvo);
+      // Group by origin planet, apply defense reserve per origin.
+      // This handles the multi-planet coordinated attack case correctly.
+      const reserva = calcularReservaDefesa(ia);
+      const porOrigem = new Map<Planeta, Nave[]>();
+      for (const n of navesAReais) {
+        const o = n.alvo as Planeta | undefined;
+        if (!o) continue;
+        if (!porOrigem.has(o)) porOrigem.set(o, []);
+        porOrigem.get(o)!.push(n);
+      }
+      let totalEnviado = 0;
+      for (const [origem, navesDali] of porOrigem) {
+        const navesNoLocal = todasMinhas.filter((x) => x.alvo === origem).length;
+        const podeMandar = Math.max(0, navesNoLocal - reserva);
+        const enviar = Math.min(navesDali.length, podeMandar);
+        for (let i = 0; i < enviar; i++) {
+          enviarNaveParaAlvo(mundo, navesDali[i], acao.alvo);
+          totalEnviado++;
         }
-      } else {
-        for (const nave of navesAReais) {
-          enviarNaveParaAlvo(mundo, nave, acao.alvo);
-        }
+      }
+      return totalEnviado > 0;
+    }
+    case 'recall_defesa': {
+      // Recall ships from elsewhere to defend the threatened planet.
+      // Skips defense reserve check — emergency response can strip
+      // origin planets bare.
+      const navesIds: string[] = acao.navesIds;
+      const navesAReais = mundo.naves.filter((n) => navesIds.includes(n.id) && n.dono === ia.id);
+      if (navesAReais.length === 0) return false;
+      const alvo: Planeta = acao.planeta_ameacado;
+      for (const nave of navesAReais) {
+        enviarNaveParaAlvo(mundo, nave, alvo);
       }
       return true;
     }
