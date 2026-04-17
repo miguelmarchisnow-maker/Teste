@@ -33,6 +33,10 @@ export interface OrbitalConfig {
     confirmarDestrutivo: boolean;
     edgeScroll: boolean;
   };
+
+  input: {
+    bindings: Record<string, string[]>;
+  };
 }
 
 export const DEFAULTS: OrbitalConfig = {
@@ -65,6 +69,10 @@ export const DEFAULTS: OrbitalConfig = {
   gameplay: {
     confirmarDestrutivo: true,
     edgeScroll: false,
+  },
+
+  input: {
+    bindings: {},
   },
 };
 
