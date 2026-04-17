@@ -8,6 +8,7 @@ import { confirmar } from './confirm-dialog';
 import { ACTIONS, CATEGORIAS_ORDEM, ACTION_BY_ID, type ActionDef } from '../core/input/actions';
 import { getActiveKeymap, detectarConflito } from '../core/input/keymap';
 import { setDispatcherHabilitado } from '../core/input/dispatcher';
+import { trocarIdioma, getIdioma } from '../core/i18n/idioma';
 
 type Tab = 'audio' | 'graphics' | 'gameplay';
 
@@ -956,6 +957,32 @@ function renderGameplayTab(body: HTMLDivElement): void {
       setConfig({ gameplay: { ...getConfig().gameplay, edgeScroll: cb.checked } });
     });
     row.appendChild(cb);
+    body.appendChild(row);
+  }
+
+  // Idioma
+  {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Idioma';
+    row.appendChild(lbl);
+    const select = document.createElement('select');
+    const opts: Array<['pt' | 'en', string]> = [
+      ['pt', 'Português'],
+      ['en', 'English'],
+    ];
+    for (const [val, label] of opts) {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = label;
+      if (val === getIdioma()) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => {
+      trocarIdioma(select.value as 'pt' | 'en');
+    });
+    row.appendChild(select);
     body.appendChild(row);
   }
 
