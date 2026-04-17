@@ -37,6 +37,8 @@ export interface OrbitalConfig {
   input: {
     bindings: Record<string, string[]>;
   };
+
+  language: 'pt' | 'en';
 }
 
 export const DEFAULTS: OrbitalConfig = {
@@ -74,6 +76,8 @@ export const DEFAULTS: OrbitalConfig = {
   input: {
     bindings: {},
   },
+
+  language: 'pt',
 };
 
 const STORAGE_KEY = 'orbital_config';
