@@ -36,53 +36,42 @@ function injectStyles(): void {
   _styleInjected = true;
   const style = document.createElement('style');
   style.textContent = `
-    /* Backdrop kept but invisible — world stays interactive beneath
-       the side panel. Clicks on the world still reach the canvas. */
-    .planeta-modal-backdrop {
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 940;
-      display: none;
-    }
-    .planeta-modal-backdrop.visible { display: block; }
+    /* Panel lives off-screen until .visible is toggled. No backdrop —
+       clicks outside the panel reach the world canvas beneath. */
+    .planeta-modal-backdrop { display: none !important; }
 
     .planeta-modal {
-      position: fixed;
-      top: 50%;
-      right: var(--hud-margin);
+      position: fixed !important;
+      top: 50% !important;
+      left: auto !important;
+      right: calc(var(--hud-margin, 18px)) !important;
+      bottom: auto !important;
       width: clamp(320px, 28vw, 420px);
       max-height: 86vh;
+      margin: 0;
       box-sizing: border-box;
-      background: var(--hud-bg);
-      border: 1px solid var(--hud-border);
-      border-radius: var(--hud-radius);
-      box-shadow: var(--hud-shadow);
-      backdrop-filter: blur(10px);
-      color: var(--hud-text);
-      font-family: var(--hud-font-body);
+      background: var(--hud-bg, rgba(10, 14, 22, 0.92));
+      border: 1px solid var(--hud-border, rgba(120, 170, 255, 0.3));
+      border-radius: var(--hud-radius, 6px);
+      box-shadow: var(--hud-shadow, 0 4px 24px rgba(0, 0, 0, 0.5));
+      color: var(--hud-text, #e8eefc);
+      font-family: var(--hud-font-body, system-ui, sans-serif);
       z-index: 941;
-      display: flex;
+
+      display: none;
       flex-direction: column;
       overflow: hidden;
 
       opacity: 0;
-      transform: translate(calc(var(--hud-unit) * 1.4), -50%);
-      visibility: hidden;
-      pointer-events: none;
+      transform: translate(calc(var(--hud-unit, 16px) * 1.4), -50%);
       transition:
         opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 240ms;
+        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
     }
     .planeta-modal.visible {
+      display: flex;
       opacity: 1;
       transform: translate(0, -50%);
-      visibility: visible;
-      pointer-events: auto;
-      transition:
-        opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 0s;
     }
 
     .planeta-modal-head {
