@@ -642,6 +642,99 @@ describe('healer: memoria-planeta', () => {
   });
 });
 
+describe('healer ordering contract', () => {
+  it('orphan dono with inimigoN prefix gets personality regenerated BEFORE dono-orfao reverts to neutro', () => {
+    // No personalities exist yet. Planet has dono 'inimigo9' (orphan).
+    // healPersonalidadeOrfa must run first, regenerate inimigo9, so that
+    // healPlanetaDonoOrfao sees it as valid and keeps the planet owned.
+    resetIasV2();
+    const p = mockPlaneta('p-0', 'inimigo9');
+    const diag = reconciliarMundo(mockMundo([p]), emptyDto());
+    expect(diag.find((d) => d.categoria === 'personalidade-orfa-do-dono')).toBeDefined();
+    expect(diag.find((d) => d.categoria === 'dono-orfao')).toBeUndefined();
+    expect(p.dados.dono).toBe('inimigo9');
+  });
+
+  it('uses dto.dificuldade (not runtime) when regenerating orphan personalities', () => {
+    resetIasV2();
+    const p = mockPlaneta('p-0', 'inimigo7');
+    const dto = emptyDto();
+    dto.dificuldade = 'brutal';
+    reconciliarMundo(mockMundo([p]), dto);
+    const ia = getPersonalidades().find((x) => x.id === 'inimigo7');
+    expect(ia).toBeDefined();
+    // brutal preset: forca 2.0 — moderate tolerance since jitter can shift slightly
+    expect(ia!.forca).toBeGreaterThanOrEqual(1.9);
+  });
+
+  it('does NOT wipe AI memories when orphan personality is added mid-reconcile', async () => {
+    const iaMem = await import('../../ia-memoria');
+    const existente = gerarPersonalidade('inimigo1', 1.0);
+    setPersonalidadesParaMundoCarregado([existente], 4000);
+    iaMem.restaurarMemoriasIa([
+      { donoIa: 'inimigo1', rancor: { jogador: 9 }, forcaPercebida: {}, ultimoAtaque: {}, planetasVistos: [] },
+    ]);
+    // Orphan dono triggers healer — must NOT reset memórias
+    const p = mockPlaneta('p-0', 'inimigo2');
+    reconciliarMundo(mockMundo([p]), emptyDto());
+    const restored = iaMem.getMemoriasIaSerializadas();
+    const entry = restored.find((m) => m.donoIa === 'inimigo1');
+    expect(entry?.rancor.jogador).toBe(9);
+  });
+});
+
+describe('lore-edge: unknown archetype guard', () => {
+  it('gerarPlanetaLore tolerates unknown donoArquetipo without crashing', async () => {
+    const { gerarPlanetaLore } = await import('../../lore/planeta-lore');
+    expect(() => gerarPlanetaLore({
+      planetaId: 'pla-0', galaxySeed: 1, tipo: 'comum',
+      dono: 'inimigo1', nomePlaneta: 'X', tamanho: 200,
+      donoNome: 'X',
+      donoArquetipo: 'ghost-archetype' as any,
+    })).not.toThrow();
+  });
+});
+
+describe('migration — pathological schemaVersion', () => {
+  it('treats schemaVersion: 0 as v1 instead of throwing', async () => {
+    const { migrarDtoComRelatorio } = await import('../migrations');
+    const result = migrarDtoComRelatorio({
+      schemaVersion: 0, nome: 'x',
+      criadoEm: 0, salvoEm: 0, tempoJogadoMs: 0,
+      tamanho: 1000, tipoJogador: { nome: '', desc: '', cor: 0, bonus: {} },
+      sistemas: [], sois: [], planetas: [], naves: [], fontesVisao: [],
+    });
+    expect(result.versaoOriginal).toBe(1);
+    expect(result.dto.schemaVersion).toBe(2);
+  });
+
+  it('handles negative schemaVersion gracefully', async () => {
+    const { migrarDtoComRelatorio } = await import('../migrations');
+    const result = migrarDtoComRelatorio({
+      schemaVersion: -5, nome: 'x',
+      criadoEm: 0, salvoEm: 0, tempoJogadoMs: 0,
+      tamanho: 1000, tipoJogador: { nome: '', desc: '', cor: 0, bonus: {} },
+      sistemas: [], sois: [], planetas: [], naves: [], fontesVisao: [],
+    });
+    expect(result.versaoOriginal).toBe(1);
+  });
+});
+
+describe('lastSeenInimigos healer', () => {
+  it('drops entries with NaN coordinates or negative tempoMs', () => {
+    const dto = emptyDto();
+    dto.lastSeenInimigos = [
+      { naveId: 'n1', dono: 'inimigo1', x: 10, y: 20, tempoMs: 100 },
+      { naveId: 'n2', dono: 'inimigo1', x: NaN, y: 20, tempoMs: 100 },
+      { naveId: 'n3', dono: 'inimigo1', x: 10, y: 20, tempoMs: -5 },
+    ];
+    const diag = reconciliarMundo(mockMundo(), dto);
+    expect(diag.find((d) => d.categoria === 'historico-lastseen-cap')).toBeDefined();
+    expect(dto.lastSeenInimigos).toHaveLength(1);
+    expect(dto.lastSeenInimigos![0].naveId).toBe('n1');
+  });
+});
+
 describe('healer: personalidade-cor-duplicada', () => {
   it('regenerates a fresh color for the collision', () => {
     const a = gerarPersonalidade('inimigo1', 1.0);

@@ -8,7 +8,9 @@
 
 import type { EventoHistoricoDTO, EventoTipo } from './save/dto';
 
-const CAP_EVENTOS = 200;
+/** Max entries kept in the circular event log. Exported so the
+ *  reconciler uses the same cap without drift. */
+export const CAP_EVENTOS = 200;
 let _eventos: EventoHistoricoDTO[] = [];
 
 export function registrarEvento(

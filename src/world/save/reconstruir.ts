@@ -14,7 +14,8 @@ import { restaurarBattles, resetBattles } from '../battle-log';
 import { restaurarFirstContact, resetFirstContact } from '../first-contact';
 import { restaurarLastSeen, resetLastSeen } from '../last-seen';
 import { restaurarNomesUsados, resetNomesUsados } from '../proc-names';
-import { setIaTickState } from '../ia-decisao';
+// setIaTickState is intentionally NOT imported here — restoring tick
+// state is the main.ts load orchestrator's job (after AI re-init).
 import { buildDistanceMatrix } from '../distance-matrix';
 
 export interface ReconstruirFactories {
@@ -164,7 +165,10 @@ export async function reconstruirMundo(
 
   await onFase('Restaurando memórias das facções');
   restaurarEstadoGlobalDoSave(dto);
-  if (dto.iaTickState) setIaTickState(dto.iaTickState);
+  // Note: iaTickState is intentionally NOT restored here — the caller
+  // (main.ts) calls restaurarOuReinicializarIas next, which invokes
+  // setPersonalidadesParaMundoCarregado → resetIasV2(), zeroing the tick
+  // accumulator. setIaTickState must be called AFTER that handshake.
 
   // Rebuild the planet-to-planet distance cache so post-load AI decisions
   // don't eat a cold Math.hypot storm on their first tick.

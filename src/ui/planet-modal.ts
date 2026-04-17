@@ -28,6 +28,8 @@ let _styleInjected = false;
 let _closeResolver: (() => void) | null = null;
 let _currentPlaneta: Planeta | null = null;
 let _currentMundo: Mundo | null = null;
+let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+let _lastRebuildMs = 0;
 
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -664,9 +666,10 @@ function ensureModal(): void {
   _modal = modal;
   document.body.appendChild(modal);
 
-  window.addEventListener('keydown', (e) => {
+  _keydownHandler = (e: KeyboardEvent) => {
     if (_closeResolver && e.key === 'Escape') { e.preventDefault(); close(); }
-  });
+  };
+  window.addEventListener('keydown', _keydownHandler);
 }
 
 export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void> {
@@ -676,6 +679,7 @@ export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void>
 
   _currentPlaneta = planeta;
   _currentMundo = mundo;
+  _lastRebuildMs = performance.now();
 
   removeAllChildren(_modal);
   _modal.appendChild(buildHeader(planeta));
@@ -695,9 +699,21 @@ export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void>
   return Promise.resolve();
 }
 
-/** Re-render the currently-shown planet's cards without re-opening. */
+const REBUILD_INTERVALO_MS = 500;
+
+/**
+ * Re-render the currently-shown planet's cards without re-opening.
+ *
+ * Throttled to ~2 Hz — the modal shows human-readable stats (resource
+ * counts, timers, progress bars), none of which need to update at
+ * render-loop frequency. Rebuilding at 60 Hz tore down and recreated
+ * ~30 DOM elements per frame, creating GC pressure and layout thrash.
+ */
 export function atualizarPlanetaModal(): void {
   if (!_closeResolver || !_currentPlaneta || !_currentMundo || !_bodyEl) return;
+  const now = performance.now();
+  if (now - _lastRebuildMs < REBUILD_INTERVALO_MS) return;
+  _lastRebuildMs = now;
   rebuildBody(_currentPlaneta, _currentMundo);
 }
 
@@ -716,12 +732,17 @@ function close(): void {
 }
 
 export function destruirPlanetaModal(): void {
+  if (_keydownHandler) {
+    window.removeEventListener('keydown', _keydownHandler);
+    _keydownHandler = null;
+  }
   _modal?.remove();
   _backdrop?.remove();
   _modal = null;
   _backdrop = null;
   _bodyEl = null;
   _styleInjected = false;
+  _lastRebuildMs = 0;
   if (_closeResolver) {
     const r = _closeResolver;
     _closeResolver = null;

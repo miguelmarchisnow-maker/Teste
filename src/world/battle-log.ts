@@ -5,7 +5,8 @@
 
 import type { BattleDTO } from './save/dto';
 
-const CAP_BATTLES = 50;
+/** Max battle summaries kept. Exported so reconciler can reuse. */
+export const CAP_BATTLES = 50;
 let _battles: BattleDTO[] = [];
 
 export function registrarBattle(b: BattleDTO): void {

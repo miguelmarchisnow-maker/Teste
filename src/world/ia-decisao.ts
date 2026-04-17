@@ -55,9 +55,24 @@ export function getPersonalidades(): readonly PersonalidadeIA[] {
  * Used by the load path to install personalities for AI factions present
  * in a loaded save. Caller passes the regenerated personalities (with ids
  * matching the saved dono fields) and the desired tick rate.
+ *
+ * Invokes resetIasV2() which wipes module-scoped state (memórias, recon
+ * cache, tick accumulator). Appropriate for the initial load handshake,
+ * but NOT for the reconciler phase — see setPersonalidadesPreservandoEstado.
  */
 export function setPersonalidadesParaMundoCarregado(ias: PersonalidadeIA[], tickMs: number): void {
   resetIasV2();
+  _personalidades = ias;
+  _tickMs = tickMs;
+}
+
+/**
+ * Like setPersonalidadesParaMundoCarregado but keeps AI memories, recon
+ * cache, and tick accumulator intact. Used by the reconciler when a new
+ * orphan personality must be added to the list — the other AIs' state
+ * should survive the swap untouched.
+ */
+export function setPersonalidadesPreservandoEstado(ias: PersonalidadeIA[], tickMs: number): void {
   _personalidades = ias;
   _tickMs = tickMs;
 }

@@ -17,6 +17,7 @@ let _backdrop: HTMLDivElement | null = null;
 let _modal: HTMLDivElement | null = null;
 let _styleInjected = false;
 let _closeResolver: (() => void) | null = null;
+let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -266,12 +267,13 @@ function ensureModal(): void {
   _modal = modal;
   document.body.appendChild(modal);
 
-  window.addEventListener('keydown', (e) => {
+  _keydownHandler = (e: KeyboardEvent) => {
     if (_closeResolver && e.key === 'Escape') {
       e.preventDefault();
       close();
     }
-  });
+  };
+  window.addEventListener('keydown', _keydownHandler);
 }
 
 function removeAllChildren(el: HTMLElement): void {
@@ -518,6 +520,10 @@ function close(): void {
 }
 
 export function destruirLoreModal(): void {
+  if (_keydownHandler) {
+    window.removeEventListener('keydown', _keydownHandler);
+    _keydownHandler = null;
+  }
   _modal?.remove();
   _backdrop?.remove();
   _modal = null;

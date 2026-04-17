@@ -11,7 +11,7 @@ import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatche
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
 import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
 import { criarChatLog, destruirChatLog } from './ui/chat-log';
-import { criarResourceBar, destruirResourceBar } from './ui/resource-bar';
+import { criarResourceBar, destruirResourceBar, atualizarResourceBar } from './ui/resource-bar';
 import { criarCreditsBar, destruirCreditsBar } from './ui/credits-bar';
 import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMinimapZoomOut, destruirMinimap } from './ui/minimap';
 import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats, destruirDebugMenu, setGameSpeed, fecharDebugOverlays, toggleDebugFast, toggleDebugFull } from './ui/debug-menu';
@@ -53,14 +53,14 @@ let _cinematicTime = 0;
 
 const _panState = { up: false, down: false, left: false, right: false };
 
-/**
- * Flag gating the "legacy" HUD elements (sidebar nav and chat log).
- * Both were non-functional decoration — disabling reclaims significant
- * screen area. Flip to true to re-enable without code changes.
- */
-const HUD_LEGACY_ENABLED = false;
+// ─── Feature flags ──────────────────────────────────────────────────
+// All flags use the HABILITADO suffix for consistency with credits-bar.
+// Flip to true to re-enable the corresponding UI element.
 
-/** Flip to re-enable the side planet-panel instead of the modal. */
+/** Legacy sidebar nav + chat log (non-functional decoration). */
+const HUD_LEGACY_HABILITADO = false;
+
+/** Old side planet-panel. Superseded by planet-modal on planet click. */
 const PLANET_PANEL_HABILITADO = false;
 
 async function bootstrap(): Promise<void> {
@@ -378,6 +378,7 @@ function startTicker(): void {
     atualizarMinimap(camera);
     atualizarPlanetPanel(mundo, app);
     atualizarPlanetaModal();
+    atualizarResourceBar(mundo);
     atualizarBuildPanel(mundo);
     atualizarShipPanel(mundo);
     atualizarColonizerPanel(mundo);
@@ -420,8 +421,8 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
     criarResourceBar();
     // Temporarily disabled — sidebar and chat log weren't earning
     // their screen real estate. The code is preserved so they can be
-    // re-enabled by flipping HUD_LEGACY_ENABLED below.
-    if (HUD_LEGACY_ENABLED) {
+    // re-enabled by flipping HUD_LEGACY_HABILITADO below.
+    if (HUD_LEGACY_HABILITADO) {
       criarChatLog();
       criarSidebar();
     }
@@ -590,6 +591,16 @@ async function carregarMundo(nome: string): Promise<void> {
     });
     await setLoadingFase('Reativando civilizações');
     restaurarOuReinicializarIas(mundo, dto);
+
+    // IA re-init above invokes resetIasV2 under the hood, which also
+    // wiped AI memory and tick state restored during reconstruirMundo.
+    // Re-apply them AFTER the personality handshake so they survive.
+    const [{ restaurarMemoriasIa }, { setIaTickState }] = await Promise.all([
+      import('./world/ia-memoria'),
+      import('./world/ia-decisao'),
+    ]);
+    if (dto.iaMemoria) restaurarMemoriasIa(dto.iaMemoria);
+    if (dto.iaTickState) setIaTickState(dto.iaTickState);
 
     // Diagnose and heal any drift between the loaded save and current code
     // before gameplay starts (missing fields, orphan refs, invalid values).

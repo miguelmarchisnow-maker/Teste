@@ -8,7 +8,8 @@
 import type { Mundo } from '../types';
 import type { StatsAmostraDTO } from './save/dto';
 
-const CAP_SAMPLES = 100;
+/** Max periodic stat samples kept. Exported so reconciler can reuse. */
+export const CAP_SAMPLES = 100;
 const SAMPLE_INTERVAL_MS = 60_000;
 
 let _samples: StatsAmostraDTO[] = [];

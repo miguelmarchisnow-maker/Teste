@@ -157,16 +157,11 @@ function pickRng<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)];
 }
 
-function makeRng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+// Shared seeded RNG — consolidates with src/world/lore/seeded-rng.ts.
+// Name generation for personalities is intentionally seeded with a mix
+// of id chars + Math.random() so different worlds produce different
+// names for the same id, while staying reproducible within a session.
+import { rngFromSeed as makeRng } from './lore/seeded-rng';
 
 const PALETA_INIMIGO: number[] = [
   0xff5555, // hot red

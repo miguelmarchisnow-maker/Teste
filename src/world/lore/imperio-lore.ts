@@ -420,10 +420,13 @@ function secaoGovernoIdeologia(
 
 function secaoCultura(arq: Arquetipo, pesosExtras: string[], rituaisExtras: string[], rng: () => number): SecaoLore {
   const paragrafos: string[] = [];
-  // Pick 2 of 3 cultura narrativa beats; combine them into flowing prose
+  // Pick 2 of 3 cultura narrativa beats; combine them into flowing prose.
+  // Guard against a future shrinking of the pool by falling back to the
+  // first beat if fewer than two entries are returned.
   const beats = pickManyRng(CULTURA_NARRATIVA[arq], 2, rng);
-  paragrafos.push(beats[0]);
-  paragrafos.push(beats[1]);
+  if (beats[0]) paragrafos.push(beats[0]);
+  if (beats[1]) paragrafos.push(beats[1]);
+  else if (beats[0]) paragrafos.push(beats[0]);
   if (pesosExtras.length > 0) paragrafos.push(pesosExtras[0]);
   if (rituaisExtras.length > 0) {
     paragrafos.push(`Entre os rituais que atravessam gerações: ${rituaisExtras.join('; ')}.`);

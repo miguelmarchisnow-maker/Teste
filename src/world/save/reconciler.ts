@@ -27,7 +27,7 @@ import { gerarPersonalidade, PRESETS_DIFICULDADE } from '../personalidade-ia';
 import { getDificuldadeAtual } from '../mundo';
 import {
   getPersonalidades,
-  setPersonalidadesParaMundoCarregado,
+  setPersonalidadesPreservandoEstado,
 } from '../ia-decisao';
 import { STATS_COMBATE, getStatsCombate } from '../combate';
 import { CATEGORIAS_PESQUISA, TIER_MAX } from '../constantes';
@@ -36,6 +36,9 @@ import {
   restaurarMemoriasIa,
   getMemoriasIaSerializadas,
 } from '../ia-memoria';
+import { CAP_EVENTOS } from '../eventos';
+import { CAP_SAMPLES } from '../stats';
+import { CAP_BATTLES } from '../battle-log';
 
 // ─── Public API ──────────────────────────────────────────────────────
 
@@ -321,7 +324,7 @@ const healPersonalidadeCampos: Healer = {
 
 const healPersonalidadeOrfa: Healer = {
   nome: 'personalidade-orfa-do-dono',
-  diagnosticar(mundo, _dto) {
+  diagnosticar(mundo, dto) {
     const out: Diagnostico[] = [];
     const ias = getPersonalidades();
     const existentes = new Set(ias.map((i) => i.id));
@@ -332,7 +335,11 @@ const healPersonalidadeOrfa: Healer = {
     const faltando = [...donosAtivos].filter((d) => !existentes.has(d));
     if (faltando.length === 0) return out;
 
-    const dificuldade = getDificuldadeAtual();
+    // Use the save's original difficulty so regenerated orphan personalities
+    // match the save's forca/frota/tick settings, not whatever the UI
+    // happens to have selected now. Fall back to runtime difficulty for
+    // saves predating the v2 dificuldade field.
+    const dificuldade = dto.dificuldade ?? getDificuldadeAtual();
     const cfg = PRESETS_DIFICULDADE[dificuldade];
     const coresUsadas = new Set(ias.map((i) => i.cor));
     const novas: PersonalidadeIA[] = [];
@@ -346,7 +353,9 @@ const healPersonalidadeOrfa: Healer = {
         entidade: id,
       });
     }
-    if (novas.length > 0) setPersonalidadesParaMundoCarregado([...ias, ...novas], cfg.tickMs);
+    // Preserve existing AI memories/tick state — we're adding personalities
+    // mid-reconcile, not resetting the module.
+    if (novas.length > 0) setPersonalidadesPreservandoEstado([...ias, ...novas], cfg.tickMs);
     return out;
   },
 };
@@ -986,9 +995,28 @@ const healHistoricoCaps: Healer = {
         arr.splice(0, arr.length - cap);
       }
     };
-    check(dto.eventosHistorico, 200, 'eventos');
-    check(dto.statsAmostragem, 100, 'stats');
-    check(dto.battleHistory, 50, 'battles');
+    check(dto.eventosHistorico, CAP_EVENTOS, 'eventos');
+    check(dto.statsAmostragem, CAP_SAMPLES, 'stats');
+    check(dto.battleHistory, CAP_BATTLES, 'battles');
+    // lastSeenInimigos: drop malformed entries + cap
+    if (Array.isArray(dto.lastSeenInimigos)) {
+      const antes = dto.lastSeenInimigos.length;
+      dto.lastSeenInimigos = dto.lastSeenInimigos.filter((e) =>
+        e && typeof e.naveId === 'string' && typeof e.dono === 'string'
+        && isValidNumber(e.x) && isValidNumber(e.y) && isValidNumber(e.tempoMs) && e.tempoMs >= 0,
+      );
+      const CAP_LAST_SEEN = 200;
+      if (dto.lastSeenInimigos.length > CAP_LAST_SEEN) {
+        dto.lastSeenInimigos.splice(0, dto.lastSeenInimigos.length - CAP_LAST_SEEN);
+      }
+      if (dto.lastSeenInimigos.length !== antes) {
+        out.push({
+          severidade: 'info',
+          categoria: 'historico-lastseen-cap',
+          detalhe: `lastSeenInimigos: removeu ${antes - dto.lastSeenInimigos.length} entrada(s) inválida(s) ou antiga(s)`,
+        });
+      }
+    }
     // procNamesUsados: dedupe
     if (Array.isArray(dto.procNamesUsados)) {
       const set = new Set(dto.procNamesUsados.filter((n) => typeof n === 'string'));

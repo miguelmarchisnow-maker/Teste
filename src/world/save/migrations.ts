@@ -59,7 +59,11 @@ export function migrarDtoComRelatorio(raw: any): MigrationResult {
     throw new Error('Save inválido: payload não é um objeto.');
   }
   let current = raw;
-  const versaoOriginal = typeof current.schemaVersion === 'number' ? current.schemaVersion : 1;
+  const rawVersao = typeof current.schemaVersion === 'number' ? current.schemaVersion : 1;
+  // Clamp pathological values (0, negative, NaN via typeof check above).
+  // A corrupted save with schemaVersion: 0 would otherwise hit
+  // migrations[-1] and throw a cryptic error.
+  const versaoOriginal = Math.max(1, Math.floor(rawVersao));
   if (versaoOriginal > CURRENT_VERSION) {
     throw new Error(
       `Save é de versão ${versaoOriginal}, mais nova que a atual (${CURRENT_VERSION}). Atualize o jogo.`,

@@ -1,4 +1,7 @@
+import type { Mundo } from '../types';
 import { registerResourceBar, unregisterResourceBar } from './hud-layout';
+import { obterProducaoNaturalCiclo } from '../world/mundo';
+import { CICLO_RECURSO_MS } from '../world/constantes';
 
 interface Resource {
   id: string;
@@ -75,16 +78,21 @@ function populationIcon(): SVGSVGElement {
   return s;
 }
 
+// Live HUD slots mapped to actual game state. The placeholder values
+// here are overwritten on the first tick of atualizarResourceBar().
 const RESOURCES: Resource[] = [
-  { id: 'ore', value: '12.4K', rate: '+320/s', icon: oreIcon },
-  { id: 'alloy', value: '8.7K', rate: '+210/s', icon: alloyIcon },
-  { id: 'fuel', value: '5.3K', rate: '+115/s', icon: fuelIcon },
-  { id: 'energy', value: '2.1K', rate: '+95/s', icon: energyIcon },
-  { id: 'population', value: '1.2K', icon: populationIcon },
+  { id: 'comum',       value: '0', rate: '+0/s', icon: oreIcon },
+  { id: 'raro',        value: '0', rate: '+0/s', icon: alloyIcon },
+  { id: 'combustivel', value: '0', rate: '+0/s', icon: fuelIcon },
+  { id: 'planetas',    value: '0', icon: energyIcon },
+  { id: 'naves',       value: '0', icon: populationIcon },
 ];
 
 let _container: HTMLDivElement | null = null;
 let _styleInjected = false;
+/** Cached element refs keyed by resource id — avoids a querySelector storm
+ *  inside the render loop. Populated in criarResourceBar. */
+const _elementosPorId = new Map<string, { value: HTMLDivElement; rate: HTMLDivElement | null }>();
 
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -185,12 +193,15 @@ export function criarResourceBar(): HTMLDivElement {
     value.textContent = res.value;
     text.appendChild(value);
 
+    let rateEl: HTMLDivElement | null = null;
     if (res.rate) {
-      const rate = document.createElement('div');
-      rate.className = 'resource-rate';
-      rate.textContent = res.rate;
-      text.appendChild(rate);
+      rateEl = document.createElement('div');
+      rateEl.className = 'resource-rate';
+      rateEl.textContent = res.rate;
+      text.appendChild(rateEl);
     }
+
+    _elementosPorId.set(res.id, { value, rate: rateEl });
 
     item.appendChild(text);
     bar.appendChild(item);
@@ -204,13 +215,58 @@ export function criarResourceBar(): HTMLDivElement {
 }
 
 export function atualizarRecurso(id: string, value: string, rate?: string): void {
+  const refs = _elementosPorId.get(id);
+  if (!refs) return;
+  if (refs.value.textContent !== value) refs.value.textContent = value;
+  if (refs.rate && rate !== undefined && refs.rate.textContent !== rate) {
+    refs.rate.textContent = rate;
+  }
+}
+
+function fmtCompact(n: number): string {
+  if (n >= 10000) return `${(n / 1000).toFixed(1)}K`;
+  return String(Math.floor(n));
+}
+
+function fmtRate(n: number): string {
+  return n >= 10 ? fmtCompact(n) : n.toFixed(1);
+}
+
+/**
+ * Sum the player's total resources + production rates across owned
+ * planets, and push the numbers into the five HUD slots. Called from
+ * the main ticker each frame. Cheap — O(planets) with trivial math.
+ */
+export function atualizarResourceBar(mundo: Mundo): void {
   if (!_container) return;
-  const item = _container.querySelector<HTMLDivElement>(`[data-resource-id="${id}"]`);
-  if (!item) return;
-  const valEl = item.querySelector<HTMLDivElement>('.resource-value');
-  const rateEl = item.querySelector<HTMLDivElement>('.resource-rate');
-  if (valEl) valEl.textContent = value;
-  if (rateEl && rate !== undefined) rateEl.textContent = rate;
+  let comum = 0, raro = 0, combustivel = 0;
+  let prodComum = 0, prodRaro = 0, prodCombustivel = 0;
+  let planetas = 0;
+  const cicloSegundos = CICLO_RECURSO_MS / 1000;
+
+  for (const p of mundo.planetas) {
+    if (p.dados.dono !== 'jogador') continue;
+    planetas++;
+    comum += p.dados.recursos.comum;
+    raro += p.dados.recursos.raro;
+    combustivel += p.dados.recursos.combustivel;
+    const base = obterProducaoNaturalCiclo(p);
+    const mult = p.dados.producao || 1;
+    prodComum += (base.comum * mult) / cicloSegundos;
+    prodRaro += (base.raro * mult) / cicloSegundos;
+    prodCombustivel += (base.combustivel * mult) / cicloSegundos;
+  }
+
+  let naves = 0;
+  for (const n of mundo.naves) {
+    if (n.dono === 'jogador') naves++;
+  }
+
+  atualizarRecurso('comum', fmtCompact(comum), `+${fmtRate(prodComum)}/s`);
+  atualizarRecurso('raro', fmtCompact(raro), `+${fmtRate(prodRaro)}/s`);
+  atualizarRecurso('combustivel', fmtCompact(combustivel), `+${fmtRate(prodCombustivel)}/s`);
+  atualizarRecurso('planetas', String(planetas));
+  atualizarRecurso('naves', String(naves));
 }
 
 export function destruirResourceBar(): void {
@@ -219,4 +275,5 @@ export function destruirResourceBar(): void {
     _container.remove();
     _container = null;
   }
+  _elementosPorId.clear();
 }
