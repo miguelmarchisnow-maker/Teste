@@ -188,6 +188,8 @@ export interface Mundo {
   orbitasContainer: Container;
   memoriaPlanetasContainer: Container;
   fontesVisao: FonteVisao[];
+  /** Deterministic seed for procedural music — same seed = same musical theme. */
+  seedMusical: number;
 }
 
 // === Tipo de Jogador ===

@@ -100,6 +100,7 @@ function mockMundo(): Mundo {
     fontesVisao: [],
     tipoJogador: { nome: 'Test', desc: '', cor: 0xffffff, bonus: {} },
     ultimoTickMs: 0,
+    seedMusical: 12345, // deterministic for tests
   } as unknown as Mundo;
 }
 

@@ -17,6 +17,8 @@ export interface MundoDTO {
   planetas: PlanetaDTO[];
   naves: NaveDTO[];
   fontesVisao: FonteVisao[];
+  /** Procedural music seed — same seed = same musical theme. */
+  seedMusical?: number;
 }
 
 // Entities

@@ -3,25 +3,22 @@ import { getMixer, getCategoriaNode } from './mixer';
 /**
  * Procedural ambient music for Orbital Wydra.
  *
- * Generates a slow, evolving space drone using only Web Audio synthesis
- * (no external assets). The texture is built from:
+ * Each WORLD has its own musical theme — generated from a deterministic
+ * seed. Same seed → same musical character (root note, scale, voice
+ * mix, tempos). Different seeds → different feel.
  *
- *  - 1 sub-bass sine drone (root note)
- *  - 2 mid-range sawtooth oscillators detuned for chorus, low-pass filtered
- *  - 1 high "shimmer" triangle with slow tremolo
- *  - 3 LFOs that modulate detune, filter cutoff, and shimmer volume so
- *    nothing repeats exactly
- *
- * Routes through the 'musica' GainNode in the mixer, so master volume
- * and the user's music slider in Settings both affect it.
+ * Variations driven by seed:
+ *  - Root frequency (A1..D2 range)
+ *  - Scale (pentatonic minor / dorian / phrygian / lydian)
+ *  - Voice intensities (which oscillators are louder)
+ *  - LFO speeds for cutoff, detune, tremolo
+ *  - Detune amounts
  *
  * Public API:
- *   - iniciarMusicaAmbiente()  — start (idempotent; lazy-creates oscillators)
- *   - pararMusicaAmbiente()    — stop and tear down
- *   - musicaAtiva()            — boolean state
- *
- * Browser autoplay policy: must be called after a user gesture. We hook
- * into the first interaction in main.ts.
+ *   - iniciarMusicaAmbiente(seed?)  — start with optional world seed
+ *   - pararMusicaAmbiente()         — stop and tear down
+ *   - musicaAtiva()                 — boolean state
+ *   - gerarSeedMusical()            — random uint32 for new worlds
  */
 
 interface VoiceGroup {
@@ -33,9 +30,31 @@ interface VoiceGroup {
 
 let _voices: VoiceGroup | null = null;
 
-// Pentatonic minor scale rooted at A2 (110Hz). Sounds spacious + slightly sad.
-const ROOT_HZ = 110;
-const SCALE_RATIOS = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5]; // A C D E G
+// ─── Seeded RNG (mulberry32) ─────────────────────────────────────────────
+function makeRng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function gerarSeedMusical(): number {
+  return Math.floor(Math.random() * 0xFFFFFFFF);
+}
+
+// Different scales — each with different mood
+const SCALES: Record<string, number[]> = {
+  pentaMinor:  [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5],          // A C D E G — melancólico
+  dorian:      [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 5 / 3],   // dorian — esperançoso
+  phrygian:    [1, 16 / 15, 6 / 5, 4 / 3, 3 / 2, 8 / 5], // phrygian — sombrio
+  lydian:      [1, 9 / 8, 5 / 4, 45 / 32, 3 / 2, 27 / 16], // lydian — mágico
+};
+
+const SCALE_NAMES = Object.keys(SCALES);
 
 function semitones(base: number, n: number): number {
   return base * Math.pow(2, n / 12);
@@ -45,99 +64,113 @@ export function musicaAtiva(): boolean {
   return _voices !== null;
 }
 
-export function iniciarMusicaAmbiente(): void {
+export function iniciarMusicaAmbiente(seed?: number): void {
   if (_voices) return;
   const mixer = getMixer();
   if (!mixer) return;
   const target = getCategoriaNode('musica');
   if (!target) return;
 
+  // Per-world seed → deterministic music character
+  const rng = makeRng(seed ?? gerarSeedMusical());
+
+  // Choose musical parameters from seed
+  const ROOT_HZ = 90 + rng() * 60;                // 90..150 Hz
+  const scaleName = SCALE_NAMES[Math.floor(rng() * SCALE_NAMES.length)];
+  const SCALE_RATIOS = SCALES[scaleName];
+  // Voice intensities — randomly emphasize different layers
+  const subBassGain = 0.08 + rng() * 0.10;
+  const sawGain = 0.04 + rng() * 0.06;
+  const shimmerPeak = 0.015 + rng() * 0.025;
+  // LFO speeds (periods in seconds)
+  const cutoffPeriod = 16 + rng() * 14;            // 16..30s
+  const cutoffSweep = 280 + rng() * 250;            // 280..530 Hz
+  const filterBase = 480 + rng() * 320;             // 480..800 Hz
+  const tremoloPeriod = 6 + rng() * 8;              // 6..14s
+  const detuneAmt = 4 + rng() * 8;                  // 4..12 cents
+  const detunePeriodMin = 10 + rng() * 8;
+  // Pick scale degree pair for the saw chorus
+  const degA = Math.floor(rng() * SCALE_RATIOS.length);
+  const degB = Math.floor(rng() * SCALE_RATIOS.length);
+  // Shimmer pitch — random scale degree, 2 octaves up
+  const shimmerDeg = Math.floor(rng() * SCALE_RATIOS.length);
+
   const ctx = mixer.ctx;
   const now = ctx.currentTime;
   const out = ctx.createGain();
   out.gain.value = 0;
   out.connect(target);
-  // Fade in over 4s so it doesn't pop
   out.gain.linearRampToValueAtTime(1.0, now + 4);
 
   const nodes: AudioNode[] = [];
 
-  // ─── Voice 1: Sub-bass sine drone (root) ───────────────────────────────
+  // Voice 1: Sub-bass
   {
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.value = ROOT_HZ / 2; // A1 ≈ 55Hz
+    osc.frequency.value = ROOT_HZ / 2;
     const gain = ctx.createGain();
-    gain.gain.value = 0.12;
+    gain.gain.value = subBassGain;
     osc.connect(gain).connect(out);
     osc.start(now);
     nodes.push(osc, gain);
   }
 
-  // ─── Voice 2 & 3: Mid sawtooth chorus ──────────────────────────────────
-  // Two saws detuned by ±7 cents form a slow phasing chorus.
-  // Routed through a low-pass filter that opens/closes via LFO.
+  // Voice 2 & 3: Mid saw chorus through filter
   {
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 600;
+    filter.frequency.value = filterBase;
     filter.Q.value = 4;
     filter.connect(out);
 
-    // LFO modulating cutoff — period ~22s
     const lfoCutoff = ctx.createOscillator();
     lfoCutoff.type = 'sine';
-    lfoCutoff.frequency.value = 1 / 22;
+    lfoCutoff.frequency.value = 1 / cutoffPeriod;
     const lfoCutoffGain = ctx.createGain();
-    lfoCutoffGain.gain.value = 380; // sweep ±380Hz around the base freq
+    lfoCutoffGain.gain.value = cutoffSweep;
     lfoCutoff.connect(lfoCutoffGain).connect(filter.frequency);
     lfoCutoff.start(now);
     nodes.push(lfoCutoff, lfoCutoffGain);
 
-    // Two detuned saws at the root + a fifth
-    const freqs = [ROOT_HZ * SCALE_RATIOS[0], ROOT_HZ * SCALE_RATIOS[3]];
-    for (const f of freqs) {
+    const freqs = [ROOT_HZ * SCALE_RATIOS[degA], ROOT_HZ * SCALE_RATIOS[degB]];
+    for (let i = 0; i < freqs.length; i++) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
-      osc.frequency.value = f;
-      const detune = ctx.createGain(); // misuse Gain as static offset isn't possible; modulate via LFO
+      osc.frequency.value = freqs[i];
       const g = ctx.createGain();
-      g.gain.value = 0.06;
+      g.gain.value = sawGain;
       osc.connect(g).connect(filter);
-      // Slow detune drift LFO
+
       const lfoDetune = ctx.createOscillator();
       lfoDetune.type = 'sine';
-      lfoDetune.frequency.value = 1 / (13 + Math.random() * 7);
+      lfoDetune.frequency.value = 1 / (detunePeriodMin + i * 3 + rng() * 5);
       const lfoDetuneGain = ctx.createGain();
-      lfoDetuneGain.gain.value = 6 + Math.random() * 4; // ±6-10 cents
+      lfoDetuneGain.gain.value = detuneAmt;
       lfoDetune.connect(lfoDetuneGain).connect(osc.detune);
       lfoDetune.start(now);
       osc.start(now);
-      nodes.push(osc, g, lfoDetune, lfoDetuneGain, detune);
+      nodes.push(osc, g, lfoDetune, lfoDetuneGain);
     }
     nodes.push(filter);
   }
 
-  // ─── Voice 4: High shimmer triangle ────────────────────────────────────
-  // Gentle high note with tremolo — adds a sense of "wonder".
+  // Voice 4: High shimmer
   {
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
-    // Octave + a third above root
-    osc.frequency.value = semitones(ROOT_HZ * 4, 4);
+    osc.frequency.value = semitones(ROOT_HZ * 4 * SCALE_RATIOS[shimmerDeg], 0);
     const gain = ctx.createGain();
-    gain.gain.value = 0.0; // tremolo brings it in/out
+    gain.gain.value = 0;
     osc.connect(gain).connect(out);
 
-    // Tremolo LFO — period ~9s
     const tremolo = ctx.createOscillator();
     tremolo.type = 'sine';
-    tremolo.frequency.value = 1 / 9;
+    tremolo.frequency.value = 1 / tremoloPeriod;
     const tremoloGain = ctx.createGain();
-    tremoloGain.gain.value = 0.025; // peak gain when LFO at +1
-    // Need a constant offset of equal magnitude so the gain swings 0 → 0.05
+    tremoloGain.gain.value = shimmerPeak;
     const tremoloOffset = ctx.createConstantSource();
-    tremoloOffset.offset.value = 0.025;
+    tremoloOffset.offset.value = shimmerPeak;
     tremoloOffset.connect(gain.gain);
     tremolo.connect(tremoloGain).connect(gain.gain);
     tremolo.start(now);
@@ -145,6 +178,8 @@ export function iniciarMusicaAmbiente(): void {
     osc.start(now);
     nodes.push(osc, gain, tremolo, tremoloGain, tremoloOffset);
   }
+
+  console.log(`[música] seed=${seed ?? '?'}, scale=${scaleName}, root=${ROOT_HZ.toFixed(1)}Hz`);
 
   _voices = { ctx, out, nodes, startTime: now };
 }

@@ -9,8 +9,10 @@ import { criarSistemaSolar } from './sistema';
 import { calcularBoundsViewport } from './viewport-bounds';
 import { resetarNomesPlanetas } from './nomes';
 import { atualizarNaves, atualizarSelecaoNave, carregarSpritesheetNaves } from './naves';
-import { spawnInimigosNoMundo, atualizarIaInimigos, resetIaInimigos } from './ia-inimigo';
+import { inicializarIas, atualizarIasV2, resetIasV2 } from './ia-decisao';
+import type { Dificuldade } from './personalidade-ia';
 import { atualizarCombate, resetCombateVisuals } from './combate-resolucao';
+import { gerarSeedMusical } from '../audio/musica-ambiente';
 import { atualizarPesquisaPlaneta } from './pesquisa';
 import { atualizarCampoDeVisao } from './visao';
 import { atualizarFilasPlaneta, desenharConstrucoesPlaneta } from './construcao';
@@ -33,6 +35,16 @@ const COR_ANEL_PLANETA = 0xd9ecff;
 
 // === Estado do jogo ===
 let estadoJogo: 'jogando' | 'vitoria' | 'derrota' = 'jogando';
+let _dificuldadeAtual: Dificuldade = 'normal';
+
+/** Set difficulty BEFORE calling criarMundo. */
+export function setDificuldadeProximoMundo(d: Dificuldade): void {
+  _dificuldadeAtual = d;
+}
+
+export function getDificuldadeAtual(): Dificuldade {
+  return _dificuldadeAtual;
+}
 
 export function getEstadoJogo(): 'jogando' | 'vitoria' | 'derrota' {
   return estadoJogo;
@@ -197,6 +209,7 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
     ultimoTickMs: performance.now(),
     visaoContainer, orbitasContainer, memoriaPlanetasContainer,
     fontesVisao: [] as import('../types').FonteVisao[],
+    seedMusical: gerarSeedMusical(),
   } as Mundo;
 
   for (const planeta of planetas) {
@@ -219,9 +232,9 @@ export async function criarMundo(app: Application, tipoJogador: TipoJogador): Pr
   }
 
   estadoJogo = 'jogando';
-  resetIaInimigos();
+  resetIasV2();
   resetCombateVisuals();
-  spawnInimigosNoMundo(mundo);
+  inicializarIas(mundo, _dificuldadeAtual);
   return mundo;
 }
 
@@ -261,7 +274,7 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   }
 
   atualizarNaves(mundo, deltaMs);
-  atualizarIaInimigos(mundo, deltaMs);
+  atualizarIasV2(mundo, deltaMs);
   atualizarCombate(mundo, deltaMs);
   profileAcumular('logica', t);
 

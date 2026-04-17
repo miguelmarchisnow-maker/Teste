@@ -3,9 +3,10 @@ import { getTipos } from './selecao';
 import type { TipoJogador } from '../types';
 import { getBackendAtivo } from '../world/save';
 import { t } from '../core/i18n/t';
+import type { Dificuldade } from '../world/personalidade-ia';
 
 interface OpenOpts {
-  onConfirm: (nome: string, tipoJogador: TipoJogador) => void;
+  onConfirm: (nome: string, tipoJogador: TipoJogador, dificuldade: Dificuldade) => void;
   onCancel: () => void;
 }
 
@@ -153,6 +154,41 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
   input.placeholder = t('novo_mundo.placeholder');
   card.appendChild(input);
 
+  // ── Difficulty selector ──
+  const labelDif = document.createElement('div');
+  labelDif.className = 'nwm-label';
+  labelDif.textContent = t('novo_mundo.dificuldade_label');
+  labelDif.style.marginTop = 'calc(var(--hud-unit) * 0.4)';
+  card.appendChild(labelDif);
+
+  const selectDif = document.createElement('select');
+  selectDif.className = 'nwm-input';
+  const dificuldades: Array<[Dificuldade, string]> = [
+    ['pacifico', t('dificuldade.pacifico')],
+    ['facil',    t('dificuldade.facil')],
+    ['normal',   t('dificuldade.normal')],
+    ['dificil',  t('dificuldade.dificil')],
+    ['brutal',   t('dificuldade.brutal')],
+  ];
+  for (const [val, label] of dificuldades) {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    if (val === 'normal') opt.selected = true;
+    selectDif.appendChild(opt);
+  }
+  card.appendChild(selectDif);
+
+  const difHint = document.createElement('div');
+  difHint.className = 'nwm-hint';
+  difHint.style.cssText = 'font-size: calc(var(--hud-unit) * 0.7); color: var(--hud-text-dim); margin-top: calc(var(--hud-unit) * 0.2);';
+  difHint.textContent = t('dificuldade.hint_normal');
+  card.appendChild(difHint);
+
+  selectDif.addEventListener('change', () => {
+    difHint.textContent = t(`dificuldade.hint_${selectDif.value}`);
+  });
+
   const erro = document.createElement('div');
   erro.className = 'nwm-error';
   card.appendChild(erro);
@@ -192,7 +228,8 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
     marcarInteracaoUi();
     fechar();
     const tipoJogador = getTipos()[0];
-    opts.onConfirm(nome, tipoJogador);
+    const dificuldade = selectDif.value as Dificuldade;
+    opts.onConfirm(nome, tipoJogador, dificuldade);
   }
 
   btnOk.addEventListener('click', (e) => { e.preventDefault(); confirmar(); });

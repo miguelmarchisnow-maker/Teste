@@ -116,6 +116,7 @@ export async function reconstruirMundo(
     orbitasContainer: mv.orbitasContainer,
     memoriaPlanetasContainer: mv.memoriaPlanetasContainer,
     fontesVisao: dto.fontesVisao.map((f: FonteVisao) => ({ ...f })),
+    seedMusical: dto.seedMusical ?? Math.floor(Math.random() * 0xFFFFFFFF),
   } as Mundo;
 
   // 7. Rebuild fog-of-war memory visuals and restore captured snapshots.

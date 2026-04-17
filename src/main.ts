@@ -1,6 +1,7 @@
 import { Application } from 'pixi.js';
 import type { Mundo, TipoJogador } from './types';
-import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo } from './world/mundo';
+import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo, setDificuldadeProximoMundo } from './world/mundo';
+import type { Dificuldade } from './world/personalidade-ia';
 import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu } from './world/mundo-menu';
 import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo } from './core/player';
 import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatcher';
@@ -260,7 +261,7 @@ async function bootstrap(): Promise<void> {
   criarMainMenu({
     onNewGame: () => {
       abrirNewWorldModal({
-        onConfirm: (nome, tipoJogador) => { void iniciarJogoNovo(nome, tipoJogador); },
+        onConfirm: (nome, tipoJogador, dificuldade) => { void iniciarJogoNovo(nome, tipoJogador, dificuldade); },
         onCancel: () => {},
       });
     },
@@ -404,11 +405,11 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
   _gameStarted = true;
   iniciarAutosave({ mundo, nome, criadoEm, tempoJogadoMs });
   salvarAgora();
-  iniciarMusicaAmbiente();
+  iniciarMusicaAmbiente(mundo.seedMusical);
   await esconderCarregando();
 }
 
-async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador): Promise<void> {
+async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador, dificuldade: Dificuldade = 'normal'): Promise<void> {
   if (!_app || _gameStarted || _transitioning) return;
   _transitioning = true;
   const app = _app;
@@ -418,6 +419,7 @@ async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador): Promise<
   await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
   setTipoJogador();
+  setDificuldadeProximoMundo(dificuldade);
   const mundo = await criarMundo(app, tipoJogador) as unknown as Mundo;
   await entrarNoJogo(mundo, nome, Date.now(), 0);
 }

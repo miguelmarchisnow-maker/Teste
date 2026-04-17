@@ -30,6 +30,19 @@ export const DICT: Record<string, { pt: string; en: string }> = {
 
   // New world
   'novo_mundo.titulo': { pt: 'Novo Mundo', en: 'New World' },
+  'novo_mundo.dificuldade_label': { pt: 'Dificuldade', en: 'Difficulty' },
+
+  'dificuldade.pacifico': { pt: 'Pacífico', en: 'Peaceful' },
+  'dificuldade.facil': { pt: 'Fácil', en: 'Easy' },
+  'dificuldade.normal': { pt: 'Normal', en: 'Normal' },
+  'dificuldade.dificil': { pt: 'Difícil', en: 'Hard' },
+  'dificuldade.brutal': { pt: 'Brutal', en: 'Brutal' },
+
+  'dificuldade.hint_pacifico': { pt: 'Sem inimigos. Sandbox puro.', en: 'No enemies. Pure sandbox.' },
+  'dificuldade.hint_facil': { pt: '1 inimigo fraco e paciente.', en: '1 weak, patient enemy.' },
+  'dificuldade.hint_normal': { pt: '2 inimigos balanceados.', en: '2 balanced enemies.' },
+  'dificuldade.hint_dificil': { pt: '3 inimigos fortes e agressivos.', en: '3 strong, aggressive enemies.' },
+  'dificuldade.hint_brutal': { pt: '4 inimigos brutais. Boa sorte.', en: '4 brutal enemies. Good luck.' },
   'novo_mundo.nome_label': { pt: 'Nome do mundo', en: 'World name' },
   'novo_mundo.placeholder': { pt: 'Ex: Valoria Prime', en: 'e.g. Valoria Prime' },
   'novo_mundo.criar': { pt: 'Criar', en: 'Create' },
