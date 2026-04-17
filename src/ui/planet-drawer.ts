@@ -400,7 +400,7 @@ function cardInfraestrutura(p: Planeta): HTMLDivElement {
   return card;
 }
 
-function cardProducao(p: Planeta): HTMLDivElement {
+function _cardProducao(p: Planeta): HTMLDivElement {
   const card = document.createElement('div');
   card.className = 'planeta-card';
   const t = document.createElement('h3');
@@ -447,7 +447,7 @@ function progressItem(label: string, remainingMs: number, totalMs: number): HTML
   return item;
 }
 
-function cardAtividade(p: Planeta): HTMLDivElement {
+function _cardAtividade(p: Planeta): HTMLDivElement {
   const card = document.createElement('div');
   card.className = 'planeta-card span-2';
   const t = document.createElement('h3');
@@ -492,7 +492,7 @@ function cardAtividade(p: Planeta): HTMLDivElement {
   return card;
 }
 
-function cardLore(p: Planeta, mundo: Mundo): HTMLDivElement {
+function _cardLore(p: Planeta, mundo: Mundo): HTMLDivElement {
   const card = document.createElement('div');
   card.className = 'planeta-card span-2';
   const t = document.createElement('h3');
@@ -637,14 +637,14 @@ function buildActions(p: Planeta, mundo: Mundo): HTMLDivElement {
   return actions;
 }
 
-function rebuildBody(p: Planeta, mundo: Mundo): void {
+function rebuildBody(p: Planeta, _mundo: Mundo): void {
   if (!_bodyEl) return;
   removeAllChildren(_bodyEl);
-  _bodyEl.appendChild(cardInfraestrutura(p));
+  // Minimal drawer — only the essentials. Deeper info (production
+  // rates, active construction, lore, etc.) is reachable via the
+  // "Ver arquivo planetário" button in the footer.
   _bodyEl.appendChild(cardRecursos(p));
-  _bodyEl.appendChild(cardProducao(p));
-  _bodyEl.appendChild(cardAtividade(p));
-  _bodyEl.appendChild(cardLore(p, mundo));
+  _bodyEl.appendChild(cardInfraestrutura(p));
 }
 
 // ─── Public API ─────────────────────────────────────────────────────
