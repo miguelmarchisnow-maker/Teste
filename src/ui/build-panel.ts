@@ -322,10 +322,13 @@ function injectStyles(): void {
       --bp-card: calc(var(--hud-unit) * 4.4);
       --bp-gap: calc(var(--hud-unit) * 0.45);
 
+      /* Docked flush to the right edge beneath the planet drawer so
+         both surfaces feel like one column of planet-related UI. */
       position: fixed;
       z-index: 100;
       bottom: var(--hud-margin);
-      left: 50%;
+      right: var(--hud-margin);
+      left: auto;
       width: max-content;
       max-width: calc(100vw - var(--hud-margin) * 2);
       padding: 0;
@@ -334,24 +337,24 @@ function injectStyles(): void {
       font-family: var(--hud-font);
       overflow: visible;
 
-      transform: translate(-50%, calc(var(--hud-unit) * 1.6));
+      transform: translate(calc(100% + var(--hud-margin) * 2), 0);
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
       transition:
-        opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 240ms;
+        opacity 220ms ease-out,
+        transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 320ms;
     }
 
     .build-panel.visible {
-      transform: translate(-50%, 0);
+      transform: translate(0, 0);
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
       transition:
-        opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        opacity 220ms ease-out,
+        transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
         visibility 0s linear 0s;
     }
 

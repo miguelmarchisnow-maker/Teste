@@ -44,8 +44,9 @@ function injectStyles(): void {
       left: auto;
       right: var(--hud-margin);
       bottom: auto;
-      width: clamp(320px, 28vw, 420px);
-      max-height: 86vh;
+      /* Wider so multi-column stats + resources get room to breathe. */
+      width: clamp(360px, 32vw, 500px);
+      max-height: 88vh;
       margin: 0;
       box-sizing: border-box;
       background: var(--hud-bg);
@@ -59,14 +60,15 @@ function injectStyles(): void {
       flex-direction: column;
       overflow: hidden;
 
+      /* Entry/exit state — fully off the right edge. */
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
-      transform: translate(calc(var(--hud-unit) * 1.4), -50%);
+      transform: translate(calc(100% + var(--hud-margin) * 2), -50%);
       transition:
-        opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 240ms;
+        opacity 220ms ease-out,
+        transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 320ms;
     }
     .planeta-drawer.visible {
       opacity: 1;
@@ -74,8 +76,8 @@ function injectStyles(): void {
       pointer-events: auto;
       transform: translate(0, -50%);
       transition:
-        opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        opacity 220ms ease-out,
+        transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
         visibility 0s linear 0s;
     }
 
@@ -117,8 +119,8 @@ function injectStyles(): void {
     }
     .planeta-drawer-name {
       font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 1.25);
-      letter-spacing: 0.12em;
+      font-size: calc(var(--hud-unit) * 1.35);
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       line-height: 1.1;
       color: var(--hud-text);
@@ -126,8 +128,8 @@ function injectStyles(): void {
     }
     .planeta-drawer-tipo {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.72);
-      letter-spacing: 0.1em;
+      font-size: calc(var(--hud-unit) * 0.9);
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
     }
@@ -136,7 +138,7 @@ function injectStyles(): void {
       align-items: center;
       gap: calc(var(--hud-unit) * 0.4);
       margin-top: calc(var(--hud-unit) * 0.4);
-      font-size: calc(var(--hud-unit) * 0.82);
+      font-size: calc(var(--hud-unit) * 1);
       color: var(--hud-text);
       cursor: pointer;
       width: fit-content;
@@ -188,11 +190,11 @@ function injectStyles(): void {
     .planeta-card.span-2 { grid-column: span 2; }
     .planeta-card-title {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.68);
-      letter-spacing: 0.14em;
+      font-size: calc(var(--hud-unit) * 0.85);
+      letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
-      margin: 0 0 calc(var(--hud-unit) * 0.2);
+      margin: 0 0 calc(var(--hud-unit) * 0.25);
     }
 
     .planeta-stats-row {
@@ -200,7 +202,7 @@ function injectStyles(): void {
       justify-content: space-between;
       align-items: baseline;
       gap: calc(var(--hud-unit) * 0.5);
-      font-size: calc(var(--hud-unit) * 0.85);
+      font-size: calc(var(--hud-unit) * 1);
     }
     .planeta-stats-label { color: var(--hud-text-dim); }
     .planeta-stats-value { color: var(--hud-text); font-variant-numeric: tabular-nums; }
@@ -217,18 +219,19 @@ function injectStyles(): void {
       border-radius: calc(var(--hud-radius) * 0.5);
       background: rgba(0,0,0,0.15);
     }
-    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 1); }
+    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 1.3); }
     .planeta-resource-label {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.62);
+      font-size: calc(var(--hud-unit) * 0.8);
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
     }
     .planeta-resource-value {
-      font-size: calc(var(--hud-unit) * 0.95);
+      font-size: calc(var(--hud-unit) * 1.25);
       color: var(--hud-text);
       font-variant-numeric: tabular-nums;
+      font-weight: 600;
     }
 
     .planeta-progress-item {
@@ -242,7 +245,7 @@ function injectStyles(): void {
     .planeta-progress-line {
       display: flex;
       justify-content: space-between;
-      font-size: calc(var(--hud-unit) * 0.78);
+      font-size: calc(var(--hud-unit) * 0.95);
     }
     .planeta-progress-bar {
       width: 100%;
@@ -258,7 +261,7 @@ function injectStyles(): void {
     }
 
     .planeta-lore-summary {
-      font-size: calc(var(--hud-unit) * 0.82);
+      font-size: calc(var(--hud-unit) * 0.95);
       line-height: 1.5;
       color: var(--hud-text-dim);
       font-style: italic;
@@ -275,10 +278,11 @@ function injectStyles(): void {
     }
     .planeta-drawer-btn {
       appearance: none;
-      padding: calc(var(--hud-unit) * 0.45) calc(var(--hud-unit) * 0.85);
+      padding: calc(var(--hud-unit) * 0.55) calc(var(--hud-unit) * 1);
       background: transparent;
       border: 1px solid var(--hud-border);
       color: var(--hud-text);
+      font-size: calc(var(--hud-unit) * 0.9);
       font-family: var(--hud-font);
       font-size: calc(var(--hud-unit) * 0.75);
       letter-spacing: 0.1em;
@@ -293,7 +297,7 @@ function injectStyles(): void {
     .planeta-empty {
       color: var(--hud-text-dim);
       font-style: italic;
-      font-size: calc(var(--hud-unit) * 0.8);
+      font-size: calc(var(--hud-unit) * 0.95);
     }
 
     @media (max-width: 600px) {
