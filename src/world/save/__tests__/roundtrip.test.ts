@@ -341,6 +341,11 @@ describe('reconstruirMundo — roundtrip', () => {
     dto2.salvoEm = 0;
     dto1.criadoEm = 0;
     dto2.criadoEm = 0;
+    // seedMusical intentionally differs — reconstruirMundo rolls a fresh
+    // soundtrack seed on every load, so the round-trip DTO diverges
+    // here by design. Normalize for the equality check.
+    dto1.seedMusical = 0;
+    dto2.seedMusical = 0;
     expect(dto2).toEqual(dto1);
   });
 

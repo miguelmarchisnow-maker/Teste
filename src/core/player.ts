@@ -338,13 +338,16 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         }
       } else if (clickInfo?.planeta) {
         cancelarComandoNave();
-        selecionarPlaneta(mundo, clickInfo.planeta);
+        // Capture the planet ref up-front — clickInfo is nulled at the
+        // end of this handler before the dynamic import resolves.
+        const planetaClicado = clickInfo.planeta;
+        selecionarPlaneta(mundo, planetaClicado);
         somClique();
         // Open the rich planet modal — replaces the side panel as the
         // primary surface for planet info. Lazy-imported to avoid
         // circular dep on this core module.
         void import('../ui/planet-modal').then((m) => {
-          void m.abrirPlanetaModal(clickInfo!.planeta!, mundo);
+          void m.abrirPlanetaModal(planetaClicado, mundo);
         });
       } else {
         cancelarComandoNave();

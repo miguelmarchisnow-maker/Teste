@@ -138,7 +138,11 @@ export async function reconstruirMundo(
     orbitasContainer: mv.orbitasContainer,
     memoriaPlanetasContainer: mv.memoriaPlanetasContainer,
     fontesVisao: dto.fontesVisao.map((f: FonteVisao) => ({ ...f })),
-    seedMusical: dto.seedMusical ?? Math.floor(Math.random() * 0xFFFFFFFF),
+    // Fresh soundtrack on every load — the saved seedMusical is
+    // deliberately ignored so the player hears new procedural music
+    // each time they return to a world. The new seed is written back
+    // on the next save, so subsequent loads roll again from there.
+    seedMusical: Math.floor(Math.random() * 0xFFFFFFFF),
     galaxySeed: dto.galaxySeed ?? Math.floor(Math.random() * 0xFFFFFFFF),
   } as Mundo;
 
