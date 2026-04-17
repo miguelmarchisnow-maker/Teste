@@ -3,6 +3,7 @@ import { toast } from './toast';
 import { marcarInteracaoUi } from './interacao-ui';
 import { getConfig } from '../core/config';
 import { abrirSettings } from './settings-panel';
+import { t } from '../core/i18n/t';
 
 let _container: HTMLDivElement | null = null;
 let _styleInjected = false;
@@ -144,26 +145,26 @@ export function abrirPauseMenu(): void {
   // Title
   const title = document.createElement('div');
   title.className = 'pm-title';
-  title.textContent = 'Menu';
+  title.textContent = t('pause.titulo');
   card.appendChild(title);
 
   // Resume
-  const btnResume = criarBotao('Continuar', () => fecharPauseMenu());
+  const btnResume = criarBotao(t('pause.continuar'), () => fecharPauseMenu());
   card.appendChild(btnResume);
 
   // Save
-  const btnSave = criarBotao('Salvar', () => {
+  const btnSave = criarBotao(t('pause.salvar'), () => {
     salvarAgora();
     const erro = getUltimoErro();
     if (erro) {
-      toast(`Erro ao salvar: ${erro.message}`, 'err');
+      toast(t('hud.erro_salvar', { msg: erro.message }), 'err');
     } else {
-      toast('Salvo', 'info');
+      toast(t('toast.salvo'), 'info');
     }
   });
   card.appendChild(btnSave);
 
-  const btnConfig = criarBotao('Configurações', () => {
+  const btnConfig = criarBotao(t('pause.configuracoes'), () => {
     fecharPauseMenu();
     abrirSettings();
   });
@@ -195,7 +196,7 @@ export function abrirPauseMenu(): void {
       window.dispatchEvent(new CustomEvent('orbital:voltar-ao-menu'));
     }
   }
-  const btnMenu = criarBotao('Voltar ao Menu', () => {
+  const btnMenu = criarBotao(t('pause.voltar_menu'), () => {
     if (!getConfig().gameplay.confirmarDestrutivo) {
       executarVoltarAoMenu();
       return;
@@ -206,18 +207,18 @@ export function abrirPauseMenu(): void {
 
     const msg = document.createElement('div');
     msg.className = 'pm-confirm-msg';
-    msg.textContent = 'Seu progresso será salvo automaticamente.';
+    msg.textContent = t('pause.progresso_salvo');
 
     const row = document.createElement('div');
     row.className = 'pm-confirm-row';
 
-    const btnCancel = criarBotao('Cancelar', () => {
+    const btnCancel = criarBotao(t('pause.cancelar'), () => {
       msg.remove();
       row.remove();
       btnMenu.style.display = '';
       _confirmVisible = false;
     });
-    const btnConfirm = criarBotao('Sair', () => {
+    const btnConfirm = criarBotao(t('pause.sair'), () => {
       executarVoltarAoMenu();
     }, 'danger');
 

@@ -7,6 +7,7 @@ import { somConquista } from '../audio/som';
 import { revelarSistemaCompleto } from './visao';
 import { confirmarAcao } from '../ui/confirmar-acao';
 import { carregarSpritesheet, getSpritesheetTexture, onSpritesheetReady } from './spritesheets';
+import { t } from '../core/i18n/t';
 
 // ─── Spritesheet loading ────────────────────────────────────────────────────
 
@@ -430,7 +431,7 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
         }
         if (nave.tipo === 'cargueira' && alvo._tipoAlvo === 'planeta' && alvo.dados.dono === 'jogador' && totalRecursos(nave.carga) > 0) {
           descarregarRecursosPlaneta(alvo, nave.carga);
-          mostrarNotificacao(`Cargueira descarregou ${totalRecursos(nave.carga)} recursos.`, '#60ccff');
+          mostrarNotificacao(t('notificacao.cargueira_descarregou', { n: totalRecursos(nave.carga) }), '#60ccff');
           nave.carga = criarCargaVazia();
           nave.origem = alvo;
         }
@@ -574,7 +575,7 @@ function finalizarSurvey(mundo: Mundo, nave: Nave): void {
   }
   // Otherwise leave the colonizer parked in orbit as a permanent outpost.
   nave.estado = 'orbitando';
-  mostrarNotificacao('Survey completo — sem alvo colonizável. Nave em órbita.', '#ffcc66');
+  mostrarNotificacao(t('notificacao.survey_sem_alvo'), '#ffcc66');
 }
 
 /**
@@ -598,7 +599,7 @@ export function recolherColonizadoraParaOrigem(mundo: Mundo, nave: Nave): boolea
 
 /** Scrap a colonizadora on demand (e.g. when the player gives up on a stuck outpost). */
 export function sucatearNave(mundo: Mundo, nave: Nave): void {
-  confirmarAcao(`Sucatear nave "${nave.tipo}"?`, () => {
+  confirmarAcao(t('confirmar.sucatear_nave', { tipo: nave.tipo }), () => {
     removerNave(mundo, nave);
   });
 }
@@ -617,7 +618,7 @@ export function confirmarColonizacao(mundo: Mundo, nave: Nave, nomeOverride?: st
 /** Called by the colony-modal UI when the player chooses to keep the outpost. */
 export function manterComoOutpost(nave: Nave): void {
   nave.estado = 'orbitando';
-  mostrarNotificacao('Colonizadora mantida em órbita como posto de observação.', '#8ce0ff');
+  mostrarNotificacao(t('notificacao.colonizadora_outpost'), '#8ce0ff');
 }
 
 export function encontrarNaveNoPonto(mundoX: number, mundoY: number, mundo: Mundo): Nave | null {
@@ -687,7 +688,7 @@ export function enviarNaveParaAlvo(mundo: Mundo, nave: Nave, alvo: Planeta | Sol
     nave.tipo === 'colonizadora'
     && (nave.estado === 'fazendo_survey' || nave.estado === 'aguardando_decisao')
   ) {
-    mostrarNotificacao('Cancele o survey atual antes de redirecionar a colonizadora.', '#ffcc66');
+    mostrarNotificacao(t('notificacao.survey_cancelar_primeiro'), '#ffcc66');
     return false;
   }
   // Cap: only one colonizadora in flight toward a given system at a time.
@@ -699,7 +700,7 @@ export function enviarNaveParaAlvo(mundo: Mundo, nave: Nave, alvo: Planeta | Sol
       }
     }
     if (targetSistema >= 0 && haColonizadoraRumoAoSistema(mundo, targetSistema, nave)) {
-      mostrarNotificacao('Já existe uma colonizadora a caminho deste sistema.', '#ffcc66');
+      mostrarNotificacao(t('notificacao.ja_existe_colonizadora'), '#ffcc66');
       return false;
     }
   }

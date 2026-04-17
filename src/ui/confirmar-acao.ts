@@ -1,5 +1,6 @@
 import { getConfig } from '../core/config';
 import { confirmar } from './confirm-dialog';
+import { t } from '../core/i18n/t';
 
 /**
  * Executa `onConfirm` se o usuário confirmar via modal custom (ou direto
@@ -11,10 +12,10 @@ export function confirmarAcao(msg: string, onConfirm: () => void): void {
     return;
   }
   void confirmar({
-    title: 'Confirmar',
+    title: t('confirm.confirmar'),
     message: msg,
-    confirmLabel: 'Sim',
-    cancelLabel: 'Cancelar',
+    confirmLabel: t('confirmar.sim'),
+    cancelLabel: t('confirm.cancelar'),
     danger: true,
   }).then((ok) => {
     if (ok) onConfirm();
