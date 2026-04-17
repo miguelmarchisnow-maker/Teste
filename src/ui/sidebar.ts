@@ -1,5 +1,6 @@
 import { registerSidebar, unregisterSidebar, onLayoutChange } from './hud-layout';
 import { abrirPauseMenu } from './pause-menu';
+import { abrirSettings } from './settings-panel';
 import { t } from '../core/i18n/t';
 import { onConfigChange } from '../core/config';
 
@@ -159,6 +160,19 @@ function injectStyles(): void {
       font-family: "Silkscreen", "VT323", monospace;
       text-transform: uppercase;
     }
+
+    .sidebar-icon-img {
+      width: var(--sb-icon);
+      height: var(--sb-icon);
+      display: block;
+      object-fit: contain;
+      /* Standalone PNG icons aren't pixel-art — keep smooth scaling. */
+      image-rendering: auto;
+      filter: brightness(0) invert(1);
+      opacity: 0.75;
+      transition: opacity 120ms ease;
+    }
+    .sidebar-btn:hover .sidebar-icon-img { opacity: 1; }
   `;
   document.head.appendChild(style);
 }
@@ -208,6 +222,25 @@ export function criarSidebar(): HTMLDivElement {
     sidebar.appendChild(createNavButton(item));
   }
 
+  // ── Configurações button (icon, opens settings overlay directly) ──
+  const btnConfig = document.createElement('button');
+  btnConfig.type = 'button';
+  btnConfig.className = 'sidebar-btn';
+  const iconImg = document.createElement('img');
+  iconImg.className = 'sidebar-icon-img';
+  iconImg.src = 'assets/icon-config.png';
+  iconImg.alt = '';
+  btnConfig.appendChild(iconImg);
+  const labelConfig = document.createElement('span');
+  labelConfig.className = 'sidebar-label';
+  labelConfig.textContent = t('hud.configuracoes');
+  btnConfig.appendChild(labelConfig);
+  btnConfig.addEventListener('click', (e) => {
+    e.preventDefault();
+    abrirSettings();
+  });
+  sidebar.appendChild(btnConfig);
+
   // ── Menu button ──
   const btnMenuOpen = document.createElement('button');
   btnMenuOpen.type = 'button';
@@ -229,6 +262,7 @@ export function criarSidebar(): HTMLDivElement {
       const key = el.parentElement?.dataset.labelKey;
       if (key) el.textContent = t(key);
     });
+    labelConfig.textContent = t('hud.configuracoes');
     btnMenuOpen.textContent = t('hud.menu');
   };
   _unsubConfig = onConfigChange(() => _refreshTextos?.());
