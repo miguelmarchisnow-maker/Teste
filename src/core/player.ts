@@ -20,6 +20,7 @@ import {
 } from '../world/mundo';
 import { mostrarNotificacao } from '../ui/notificacao';
 import { t } from './i18n/t';
+import { abrirPlanetaModal } from '../ui/planet-modal';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -338,17 +339,11 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         }
       } else if (clickInfo?.planeta) {
         cancelarComandoNave();
-        // Capture the planet ref up-front — clickInfo is nulled at the
-        // end of this handler before the dynamic import resolves.
-        const planetaClicado = clickInfo.planeta;
-        selecionarPlaneta(mundo, planetaClicado);
+        selecionarPlaneta(mundo, clickInfo.planeta);
         somClique();
-        // Open the rich planet modal — replaces the side panel as the
-        // primary surface for planet info. Lazy-imported to avoid
-        // circular dep on this core module.
-        void import('../ui/planet-modal').then((m) => {
-          void m.abrirPlanetaModal(planetaClicado, mundo);
-        });
+        // Open the rich planet side panel — replaces the legacy
+        // planet-panel as the primary surface for planet info.
+        void abrirPlanetaModal(clickInfo.planeta, mundo);
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);

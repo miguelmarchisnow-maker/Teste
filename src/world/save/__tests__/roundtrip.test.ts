@@ -341,11 +341,20 @@ describe('reconstruirMundo — roundtrip', () => {
     dto2.salvoEm = 0;
     dto1.criadoEm = 0;
     dto2.criadoEm = 0;
-    // seedMusical intentionally differs — reconstruirMundo rolls a fresh
-    // soundtrack seed on every load, so the round-trip DTO diverges
-    // here by design. Normalize for the equality check.
+
+    // galaxySeed is a deterministic field — it MUST be preserved across
+    // a round-trip. Assert it explicitly before zeroing so a future
+    // regression (say, accidentally re-rolling it on load) surfaces here.
+    expect(dto2.galaxySeed).toBe(dto1.galaxySeed);
+
+    // seedMusical intentionally diverges — reconstruirMundo rolls a new
+    // soundtrack seed on every load. Assert that the new value is
+    // different from the original (so the "fresh music" contract is
+    // actually exercised), then normalize for the equality check.
+    expect(dto2.seedMusical).not.toBe(dto1.seedMusical);
     dto1.seedMusical = 0;
     dto2.seedMusical = 0;
+
     expect(dto2).toEqual(dto1);
   });
 

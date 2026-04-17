@@ -21,7 +21,6 @@ import { gerarPlanetaLore } from '../world/lore/planeta-lore';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
 import { abrirImperioLore, abrirPlanetaLore } from './lore-modal';
 
-let _backdrop: HTMLDivElement | null = null;
 let _modal: HTMLDivElement | null = null;
 let _bodyEl: HTMLDivElement | null = null;
 let _styleInjected = false;
@@ -36,42 +35,48 @@ function injectStyles(): void {
   _styleInjected = true;
   const style = document.createElement('style');
   style.textContent = `
-    /* Panel lives off-screen until .visible is toggled. No backdrop —
-       clicks outside the panel reach the world canvas beneath. */
-    .planeta-modal-backdrop { display: none !important; }
-
+    /* Side drawer — coexists with an interactive world, no backdrop.
+       The entry/exit animation uses visibility + opacity + transform;
+       display stays flex throughout so the CSS transition fires. */
     .planeta-modal {
-      position: fixed !important;
-      top: 50% !important;
-      left: auto !important;
-      right: calc(var(--hud-margin, 18px)) !important;
-      bottom: auto !important;
+      position: fixed;
+      top: 50%;
+      left: auto;
+      right: var(--hud-margin);
+      bottom: auto;
       width: clamp(320px, 28vw, 420px);
       max-height: 86vh;
       margin: 0;
       box-sizing: border-box;
-      background: var(--hud-bg, rgba(10, 14, 22, 0.92));
-      border: 1px solid var(--hud-border, rgba(120, 170, 255, 0.3));
-      border-radius: var(--hud-radius, 6px);
-      box-shadow: var(--hud-shadow, 0 4px 24px rgba(0, 0, 0, 0.5));
-      color: var(--hud-text, #e8eefc);
-      font-family: var(--hud-font-body, system-ui, sans-serif);
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      border-radius: var(--hud-radius);
+      box-shadow: var(--hud-shadow);
+      color: var(--hud-text);
+      font-family: var(--hud-font-body);
       z-index: 941;
-
-      display: none;
+      display: flex;
       flex-direction: column;
       overflow: hidden;
 
       opacity: 0;
-      transform: translate(calc(var(--hud-unit, 16px) * 1.4), -50%);
+      visibility: hidden;
+      pointer-events: none;
+      transform: translate(calc(var(--hud-unit) * 1.4), -50%);
       transition:
         opacity 180ms ease-out,
-        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
+        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 240ms;
     }
     .planeta-modal.visible {
-      display: flex;
       opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
       transform: translate(0, -50%);
+      transition:
+        opacity 180ms ease-out,
+        transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        visibility 0s linear 0s;
     }
 
     .planeta-modal-head {
@@ -641,14 +646,6 @@ function rebuildBody(p: Planeta, mundo: Mundo): void {
 function ensureModal(): void {
   if (_modal) return;
   injectStyles();
-  // The backdrop element still exists so the visible-class toggle keeps
-  // working, but it is pointer-events: none — the world beneath stays
-  // interactive while the side panel is open.
-  const backdrop = document.createElement('div');
-  backdrop.className = 'planeta-modal-backdrop';
-  _backdrop = backdrop;
-  document.body.appendChild(backdrop);
-
   const modal = document.createElement('div');
   modal.className = 'planeta-modal';
   modal.setAttribute('data-ui', 'true');
@@ -667,8 +664,18 @@ function ensureModal(): void {
 
 export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void> {
   ensureModal();
-  if (!_modal || !_backdrop) return Promise.resolve();
+  if (!_modal) return Promise.resolve();
+  // Same planet, already open — no-op.
   if (_closeResolver && _currentPlaneta === planeta) return Promise.resolve();
+
+  // Switching planets while a previous open Promise is still live —
+  // resolve the old one so its awaiter learns the modal moved on,
+  // then create a fresh Promise for the new planet.
+  if (_closeResolver && _currentPlaneta !== planeta) {
+    const prev = _closeResolver;
+    _closeResolver = null;
+    prev();
+  }
 
   _currentPlaneta = planeta;
   _currentMundo = mundo;
@@ -683,13 +690,9 @@ export function abrirPlanetaModal(planeta: Planeta, mundo: Mundo): Promise<void>
   rebuildBody(planeta, mundo);
   _modal.appendChild(buildActions(planeta, mundo));
 
-  _backdrop.classList.add('visible');
   _modal.classList.add('visible');
 
-  if (!_closeResolver) {
-    return new Promise<void>((resolve) => { _closeResolver = resolve; });
-  }
-  return Promise.resolve();
+  return new Promise<void>((resolve) => { _closeResolver = resolve; });
 }
 
 const REBUILD_INTERVALO_MS = 500;
@@ -715,7 +718,6 @@ export function isPlanetaModalAberto(): boolean {
 }
 
 function close(): void {
-  _backdrop?.classList.remove('visible');
   _modal?.classList.remove('visible');
   _currentPlaneta = null;
   _currentMundo = null;
@@ -730,9 +732,7 @@ export function destruirPlanetaModal(): void {
     _keydownHandler = null;
   }
   _modal?.remove();
-  _backdrop?.remove();
   _modal = null;
-  _backdrop = null;
   _bodyEl = null;
   _styleInjected = false;
   _lastRebuildMs = 0;
