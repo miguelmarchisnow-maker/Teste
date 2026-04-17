@@ -316,39 +316,110 @@ float starCircle(vec2 uv, float amount, float cSize) {
 }
 
 vec4 starPlanet(vec2 uv, vec2 uvRaw) {
-    // Simplified — only the plasma body is rendered. The previous
-    // version composited body + blobs + flares, with the blobs/flares
-    // extending OUTSIDE the body into empty quad area, which read as
-    // shader artifacts / "bugs" at normal zoom. Keeping just the body
-    // gives a clean pixel-art sun that doesn't protrude beyond its
-    // own disc.
+    // Godot uses 3 separate sprites. We merge them:
+    // Body: 100x100 at (0,0) → center 50% of our quad
+    // Blobs/Flares: 200x200 at (-50,-50) → full quad
+    //
+    // Time multiplier from Godot: round(size)*2/time_speed
+    // With size~4.5, time_speed=0.05 → mult=160
+    // Body shader time = t * mult * 0.005 → t * 0.8, then shader does *time_speed → t*0.04
+    // Blobs shader time = t * mult * 0.01 → t * 1.6, then *time_speed → t*0.08
+    // Flares shader time = t * mult * 0.015 → t * 2.4, then *time_speed → t*0.12
+
+    float mult = floor(uSize + 0.5) * 2.0 / max(uTimeSpeed, 0.001);
+    float bodyTime = uTime * mult * 0.005;
+    float blobTime = uTime * mult * 0.01;
+    float flareTime = uTime * mult * 0.015;
 
     bool dith = dither(uvRaw, uv);
-    vec2 bodyPix = floor(uv * uPixels) / uPixels;
+
+    // === Body: remap center 50% of quad to 0..1 ===
+    vec2 bodyUV = (uv - 0.25) * 2.0;
+    vec2 bodyPix = floor(bodyUV * uPixels) / uPixels;
     float bodyD = distance(bodyPix, vec2(0.5));
     float bodyA = step(bodyD, 0.49999);
-
-    if (bodyA <= 0.0) {
-        return vec4(0.0);
-    }
 
     vec2 bodyRot = rotate2d(bodyPix, uRotation);
     vec2 bodySph = spherify(bodyRot);
 
-    // Reset time to avoid precision loss in sin() over long sessions.
-    float t = mod(uTime, 360.0);
-    float cn1 = Cells(bodySph - vec2(t * uTimeSpeed * 2.0, 0.0), 10.0);
-    float cn2 = Cells(bodySph - vec2(t * uTimeSpeed, 0.0), 20.0);
-    float n = clamp(cn1 * cn2 * 2.0, 0.0, 1.0);
+    // Star.gdshader: Cells noise plasma
+    float cn1 = Cells(bodySph - vec2(bodyTime * uTimeSpeed * 2.0, 0.0), 10.0);
+    float cn2 = Cells(bodySph - vec2(bodyTime * uTimeSpeed, 0.0), 20.0);
+    float n = cn1 * cn2 * 2.0;
+    n = clamp(n, 0.0, 1.0);
     if (dith) n *= 1.3;
 
     int idx = int(floor(n * 3.0));
-    vec4 col = uColors0;
-    if (idx == 1) col = uColors1;
-    if (idx == 2) col = uColors2;
-    if (idx >= 3) col = uColors3;
+    vec4 bodyCol = uColors0;
+    if (idx == 1) bodyCol = uColors1;
+    if (idx == 2) bodyCol = uColors2;
+    if (idx >= 3) bodyCol = uColors3;
 
-    return vec4(col.rgb, 1.0);
+    // === Blobs & Flares: use full quad UV (0..1) ===
+    vec2 fullPix = floor(uv * uPixels) / uPixels;
+    vec2 fullRot = rotate2d(fullPix, uRotation);
+    float fullD = distance(fullPix, vec2(0.5));
+    float fullAngle = atan(fullRot.x - 0.5, fullRot.y - 0.5);
+
+    // StarBlobs.gdshader: circle pattern in polar coords
+    float blobC = 0.0;
+    for (int i = 0; i < 15; i++) {
+        float r = rand(vec2(float(i)));
+        vec2 cUV = vec2(fullD, fullAngle);
+        blobC += starCircle(cUV * uSize - blobTime * uTimeSpeed - (1.0 / max(fullD, 0.001)) * 0.1 + r, 2.0, 1.0);
+    }
+    blobC *= 0.37 - fullD;
+    float blobA = step(0.07, blobC - fullD);
+
+    // StarFlares.gdshader: fbm + circle pattern for eruptions
+    float fAngle = fullAngle * 0.4;
+    vec2 fUV = vec2(fullD, fAngle);
+
+    float fn = fbm(fUV * uSize - flareTime * uTimeSpeed);
+    float fc = starCircle(fUV * 1.0 - flareTime * uTimeSpeed + fn, 2.0, 1.0);
+    fc *= 1.5;
+    float fn2 = fbm(fUV * uSize - flareTime + vec2(100.0, 100.0));
+    fc -= fn2 * 0.1;
+
+    float flareAlpha = 0.0;
+    // Dithered soft edge + hard edge (storm_width=0.3, storm_dither_width=0.07)
+    if (1.0 - fullD > fc) {
+        if (fc > 0.3 - 0.07 + fullD && dith) {
+            flareAlpha = 1.0;
+        }
+        if (fc > 0.3 + fullD) {
+            flareAlpha = 1.0;
+        }
+    }
+    flareAlpha *= step(fn2 * 0.25, fullD);
+
+    // === Composite back-to-front ===
+    vec4 result = vec4(0.0);
+
+    // Flares behind (only outside body)
+    if (flareAlpha > 0.0 && bodyA < 1.0) {
+        int fIdx = int(floor(fn2 + fc));
+        vec4 flareCol = (fIdx > 0) ? uColors1 : uColors0;
+        result = vec4(flareCol.rgb, flareAlpha);
+    }
+
+    // Blobs (glow spots, visible on and near surface)
+    if (blobA > 0.0) {
+        if (bodyA > 0.0) {
+            // On body: brighten
+            bodyCol.rgb = mix(bodyCol.rgb, uColors0.rgb, 0.6);
+        } else {
+            // Outside body: show as glow
+            result = vec4(uColors0.rgb, blobA);
+        }
+    }
+
+    // Body on top
+    if (bodyA > 0.0) {
+        result = vec4(bodyCol.rgb, 1.0);
+    }
+
+    return result;
 }
 
 void main() {

@@ -228,9 +228,7 @@ fn starPlanet(uv_in: vec2<f32>, uvRaw: vec2<f32>) -> vec4<f32> {
     let ruv = rotate2d(uv_in, planetUniforms.uRotation);
     let suv = spherify(ruv);
 
-    // Wrap time so sin() inside the hash doesn't lose precision during
-    // long play sessions — the pattern is periodic anyway.
-    let bodyTime = (planetUniforms.uTime % 360.0) * 0.5;
+    let bodyTime = planetUniforms.uTime * 0.5;
     var n = Cells(suv - vec2<f32>(bodyTime * planetUniforms.uTimeSpeed * 2.0, 0.0), 10.0);
     n *= Cells(suv - vec2<f32>(bodyTime * planetUniforms.uTimeSpeed, 0.0), 20.0);
     n = clamp(n * 2.0, 0.0, 1.0);

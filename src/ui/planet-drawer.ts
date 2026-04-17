@@ -15,7 +15,7 @@
 
 import type { Mundo, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
-import { nomeTipoPlaneta, getTierMax, obterProducaoNaturalCiclo, calcularTempoRestantePlaneta, getPesquisaAtual } from '../world/mundo';
+import { nomeTipoPlaneta, getTierMax } from '../world/mundo';
 import { getPersonalidades } from '../world/ia-decisao';
 import { gerarPlanetaLore } from '../world/lore/planeta-lore';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
@@ -39,15 +39,13 @@ function injectStyles(): void {
        The entry/exit animation uses visibility + opacity + transform;
        display stays flex throughout so the CSS transition fires. */
     .planeta-drawer {
-      /* Anchored top-right, capped height so the build-panel at the
-         bottom-center has clear space below the drawer on narrow
-         viewports. */
+      /* Compact side panel — just the essentials. */
       position: fixed;
       top: calc(var(--hud-margin) + var(--hud-unit) * 5.5);
       left: auto;
       right: var(--hud-margin);
       bottom: auto;
-      width: clamp(360px, 32vw, 500px);
+      width: clamp(240px, 20vw, 300px);
       max-height: calc(100vh - var(--hud-unit) * 14);
       margin: 0;
       box-sizing: border-box;
@@ -85,18 +83,15 @@ function injectStyles(): void {
 
     .planeta-drawer-head {
       display: flex;
-      align-items: flex-start;
-      gap: calc(var(--hud-unit) * 1);
-      padding: calc(var(--hud-unit) * 1.1) calc(var(--hud-unit) * 1.3);
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.6);
+      padding: calc(var(--hud-unit) * 0.7) calc(var(--hud-unit) * 0.9);
       border-bottom: 1px solid var(--hud-line);
-      background:
-        radial-gradient(ellipse at top left, rgba(120, 170, 255, 0.08), transparent 60%),
-        transparent;
     }
 
     .planeta-drawer-portrait {
-      width: calc(var(--hud-unit) * 5);
-      height: calc(var(--hud-unit) * 5);
+      width: calc(var(--hud-unit) * 2.6);
+      height: calc(var(--hud-unit) * 2.6);
       border: 1px solid var(--hud-line);
       border-radius: 50%;
       background: radial-gradient(circle, rgba(255,255,255,0.04), rgba(0,0,0,0.2));
@@ -121,16 +116,19 @@ function injectStyles(): void {
     }
     .planeta-drawer-name {
       font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 1.35);
-      letter-spacing: 0.1em;
+      font-size: calc(var(--hud-unit) * 0.95);
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       line-height: 1.1;
       color: var(--hud-text);
       margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .planeta-drawer-tipo {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.9);
+      font-size: calc(var(--hud-unit) * 0.65);
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
@@ -138,9 +136,9 @@ function injectStyles(): void {
     .planeta-drawer-owner {
       display: inline-flex;
       align-items: center;
-      gap: calc(var(--hud-unit) * 0.4);
-      margin-top: calc(var(--hud-unit) * 0.4);
-      font-size: calc(var(--hud-unit) * 1);
+      gap: calc(var(--hud-unit) * 0.3);
+      margin-top: calc(var(--hud-unit) * 0.2);
+      font-size: calc(var(--hud-unit) * 0.7);
       color: var(--hud-text);
       cursor: pointer;
       width: fit-content;
@@ -159,9 +157,9 @@ function injectStyles(): void {
       border: 1px solid var(--hud-border);
       color: var(--hud-text-dim);
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.9);
-      width: calc(var(--hud-unit) * 1.8);
-      height: calc(var(--hud-unit) * 1.8);
+      font-size: calc(var(--hud-unit) * 0.8);
+      width: calc(var(--hud-unit) * 1.3);
+      height: calc(var(--hud-unit) * 1.3);
       cursor: pointer;
       border-radius: 50%;
       transition: background 120ms ease, color 120ms ease;
@@ -173,38 +171,37 @@ function injectStyles(): void {
     }
 
     .planeta-drawer-body {
-      padding: calc(var(--hud-unit) * 0.9) calc(var(--hud-unit) * 1.1) calc(var(--hud-unit) * 1);
+      padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.7);
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: calc(var(--hud-unit) * 0.75);
+      gap: calc(var(--hud-unit) * 0.5);
     }
 
     .planeta-card {
       border: 1px solid var(--hud-line);
       border-radius: calc(var(--hud-radius) * 0.7);
-      padding: calc(var(--hud-unit) * 0.7) calc(var(--hud-unit) * 0.85);
+      padding: calc(var(--hud-unit) * 0.5) calc(var(--hud-unit) * 0.6);
       background: rgba(255,255,255,0.02);
       display: flex;
       flex-direction: column;
-      gap: calc(var(--hud-unit) * 0.4);
+      gap: calc(var(--hud-unit) * 0.25);
     }
-    .planeta-card.span-2 { grid-column: span 2; }
     .planeta-card-title {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.85);
+      font-size: calc(var(--hud-unit) * 0.65);
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
-      margin: 0 0 calc(var(--hud-unit) * 0.25);
+      margin: 0 0 calc(var(--hud-unit) * 0.15);
     }
 
     .planeta-stats-row {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      gap: calc(var(--hud-unit) * 0.5);
-      font-size: calc(var(--hud-unit) * 1);
+      gap: calc(var(--hud-unit) * 0.4);
+      font-size: calc(var(--hud-unit) * 0.75);
     }
     .planeta-stats-label { color: var(--hud-text-dim); }
     .planeta-stats-value { color: var(--hud-text); font-variant-numeric: tabular-nums; }
@@ -212,25 +209,25 @@ function injectStyles(): void {
     .planeta-resources-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: calc(var(--hud-unit) * 0.5);
+      gap: calc(var(--hud-unit) * 0.3);
     }
     .planeta-resource {
       text-align: center;
-      padding: calc(var(--hud-unit) * 0.4);
+      padding: calc(var(--hud-unit) * 0.25) calc(var(--hud-unit) * 0.15);
       border: 1px solid var(--hud-line);
       border-radius: calc(var(--hud-radius) * 0.5);
       background: rgba(0,0,0,0.15);
     }
-    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 1.3); }
+    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 0.85); }
     .planeta-resource-label {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.8);
-      letter-spacing: 0.1em;
+      font-size: calc(var(--hud-unit) * 0.55);
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
     }
     .planeta-resource-value {
-      font-size: calc(var(--hud-unit) * 1.25);
+      font-size: calc(var(--hud-unit) * 0.9);
       color: var(--hud-text);
       font-variant-numeric: tabular-nums;
       font-weight: 600;
@@ -272,19 +269,19 @@ function injectStyles(): void {
 
     .planeta-drawer-actions {
       display: flex;
-      gap: calc(var(--hud-unit) * 0.4);
+      gap: calc(var(--hud-unit) * 0.3);
       flex-wrap: wrap;
-      padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 1.3) calc(var(--hud-unit) * 0.9);
+      padding: calc(var(--hud-unit) * 0.45) calc(var(--hud-unit) * 0.8);
       border-top: 1px solid var(--hud-line);
       background: rgba(0,0,0,0.2);
     }
     .planeta-drawer-btn {
       appearance: none;
-      padding: calc(var(--hud-unit) * 0.55) calc(var(--hud-unit) * 1);
+      padding: calc(var(--hud-unit) * 0.35) calc(var(--hud-unit) * 0.6);
       background: transparent;
       border: 1px solid var(--hud-border);
       color: var(--hud-text);
-      font-size: calc(var(--hud-unit) * 0.9);
+      font-size: calc(var(--hud-unit) * 0.7);
       font-family: var(--hud-font);
       font-size: calc(var(--hud-unit) * 0.75);
       letter-spacing: 0.1em;
@@ -312,16 +309,6 @@ function injectStyles(): void {
 
 function removeAllChildren(el: HTMLElement): void {
   while (el.firstChild) el.removeChild(el.firstChild);
-}
-
-function formatMs(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(s / 60);
-  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function fmtRate(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 function ownerLabel(dono: string): string {
@@ -400,130 +387,9 @@ function cardInfraestrutura(p: Planeta): HTMLDivElement {
   return card;
 }
 
-function _cardProducao(p: Planeta): HTMLDivElement {
-  const card = document.createElement('div');
-  card.className = 'planeta-card';
-  const t = document.createElement('h3');
-  t.className = 'planeta-card-title';
-  t.textContent = 'Produção do ciclo';
-  card.appendChild(t);
-
-  const base = obterProducaoNaturalCiclo(p);
-  const mult = p.dados.producao || 1;
-
-  const rows: Array<[string, string]> = [
-    ['Comum', `+${fmtRate(base.comum * mult)}`],
-    ['Raro', `+${fmtRate(base.raro * mult)}`],
-    ['Combustível', `+${fmtRate(base.combustivel * mult)}`],
-    ['Próximo ciclo em', formatMs(calcularTempoRestantePlaneta(p))],
-  ];
-  for (const [label, value] of rows) {
-    const row = document.createElement('div');
-    row.className = 'planeta-stats-row';
-    const l = document.createElement('span'); l.className = 'planeta-stats-label'; l.textContent = label;
-    const v = document.createElement('span'); v.className = 'planeta-stats-value'; v.textContent = value;
-    row.append(l, v);
-    card.appendChild(row);
-  }
-  return card;
-}
-
-function progressItem(label: string, remainingMs: number, totalMs: number): HTMLDivElement {
-  const item = document.createElement('div');
-  item.className = 'planeta-progress-item';
-  const line = document.createElement('div');
-  line.className = 'planeta-progress-line';
-  const l = document.createElement('span'); l.textContent = label;
-  const t = document.createElement('span'); t.textContent = formatMs(remainingMs);
-  line.append(l, t);
-  const bar = document.createElement('div');
-  bar.className = 'planeta-progress-bar';
-  const fill = document.createElement('div');
-  fill.className = 'planeta-progress-bar-fill';
-  const pct = totalMs > 0 ? Math.max(0, Math.min(100, 100 * (1 - remainingMs / totalMs))) : 0;
-  fill.style.width = `${pct}%`;
-  bar.appendChild(fill);
-  item.append(line, bar);
-  return item;
-}
-
-function _cardAtividade(p: Planeta): HTMLDivElement {
-  const card = document.createElement('div');
-  card.className = 'planeta-card span-2';
-  const t = document.createElement('h3');
-  t.className = 'planeta-card-title';
-  t.textContent = 'Atividade atual';
-  card.appendChild(t);
-
-  let any = false;
-  const constr = p.dados.construcaoAtual;
-  if (constr) {
-    any = true;
-    const label = `${constr.tipo === 'fabrica' ? 'Upgrade fábrica' : 'Upgrade infra'} → tier ${constr.tierDestino}`;
-    card.appendChild(progressItem(label, constr.tempoRestanteMs, constr.tempoTotalMs));
-  }
-  const naveProducao = p.dados.producaoNave;
-  if (naveProducao) {
-    any = true;
-    card.appendChild(progressItem(`Construindo ${naveProducao.tipoNave} (t${naveProducao.tier})`, naveProducao.tempoRestanteMs, naveProducao.tempoTotalMs));
-  }
-  const pesquisa = getPesquisaAtual(p);
-  if (pesquisa) {
-    any = true;
-    card.appendChild(progressItem(`Pesquisando ${pesquisa.categoria} (t${pesquisa.tier})`, pesquisa.tempoRestanteMs, pesquisa.tempoTotalMs));
-  }
-  if (p.dados.filaProducao.length > 0) {
-    any = true;
-    const line = document.createElement('div');
-    line.className = 'planeta-stats-row';
-    const l = document.createElement('span'); l.className = 'planeta-stats-label';
-    l.textContent = p.dados.repetirFilaProducao ? 'Fila (loop)' : 'Fila';
-    const v = document.createElement('span'); v.className = 'planeta-stats-value';
-    v.textContent = String(p.dados.filaProducao.length);
-    line.append(l, v);
-    card.appendChild(line);
-  }
-  if (!any) {
-    const empty = document.createElement('div');
-    empty.className = 'planeta-empty';
-    empty.textContent = 'Sem atividade em andamento.';
-    card.appendChild(empty);
-  }
-  return card;
-}
-
-function _cardLore(p: Planeta, mundo: Mundo): HTMLDivElement {
-  const card = document.createElement('div');
-  card.className = 'planeta-card span-2';
-  const t = document.createElement('h3');
-  t.className = 'planeta-card-title';
-  t.textContent = 'Sobre o planeta';
-  card.appendChild(t);
-
-  const ia = getPersonalidades().find((x) => x.id === p.dados.dono);
-  const lore = gerarPlanetaLore({
-    planetaId: p.id,
-    galaxySeed: mundo.galaxySeed,
-    tipo: p.dados.tipoPlaneta,
-    dono: p.dados.dono,
-    nomePlaneta: p.dados.nome,
-    donoNome: ia?.nome,
-    donoArquetipo: ia?.arquetipo,
-    tamanho: p.dados.tamanho,
-  });
-
-  const slogan = document.createElement('p');
-  slogan.className = 'planeta-lore-summary';
-  slogan.textContent = lore.slogan;
-  card.appendChild(slogan);
-
-  const biomas = document.createElement('p');
-  biomas.className = 'planeta-lore-summary';
-  biomas.textContent = lore.biomas;
-  card.appendChild(biomas);
-
-  return card;
-}
+// Deeper cards (production rates, active activity, lore preview) were
+// removed to keep the drawer compact. Their info is still reachable via
+// the "Ver arquivo planetário" button which opens the full lore modal.
 
 // ─── Main builders ──────────────────────────────────────────────────
 
