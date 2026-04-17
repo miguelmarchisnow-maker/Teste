@@ -45,7 +45,7 @@ function injectStyles(): void {
       left: auto;
       right: var(--hud-margin);
       bottom: auto;
-      width: clamp(240px, 20vw, 300px);
+      width: clamp(280px, 24vw, 360px);
       max-height: calc(100vh - var(--hud-unit) * 14);
       margin: 0;
       box-sizing: border-box;
@@ -116,7 +116,7 @@ function injectStyles(): void {
     }
     .planeta-drawer-name {
       font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 0.95);
+      font-size: calc(var(--hud-unit) * 1.1);
       letter-spacing: 0.08em;
       text-transform: uppercase;
       line-height: 1.1;
@@ -128,7 +128,7 @@ function injectStyles(): void {
     }
     .planeta-drawer-tipo {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.65);
+      font-size: calc(var(--hud-unit) * 0.8);
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
@@ -137,8 +137,8 @@ function injectStyles(): void {
       display: inline-flex;
       align-items: center;
       gap: calc(var(--hud-unit) * 0.3);
-      margin-top: calc(var(--hud-unit) * 0.2);
-      font-size: calc(var(--hud-unit) * 0.7);
+      margin-top: calc(var(--hud-unit) * 0.3);
+      font-size: calc(var(--hud-unit) * 0.85);
       color: var(--hud-text);
       cursor: pointer;
       width: fit-content;
@@ -189,11 +189,11 @@ function injectStyles(): void {
     }
     .planeta-card-title {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.65);
+      font-size: calc(var(--hud-unit) * 0.8);
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
-      margin: 0 0 calc(var(--hud-unit) * 0.15);
+      margin: 0 0 calc(var(--hud-unit) * 0.2);
     }
 
     .planeta-stats-row {
@@ -201,7 +201,7 @@ function injectStyles(): void {
       justify-content: space-between;
       align-items: baseline;
       gap: calc(var(--hud-unit) * 0.4);
-      font-size: calc(var(--hud-unit) * 0.75);
+      font-size: calc(var(--hud-unit) * 0.9);
     }
     .planeta-stats-label { color: var(--hud-text-dim); }
     .planeta-stats-value { color: var(--hud-text); font-variant-numeric: tabular-nums; }
@@ -218,16 +218,16 @@ function injectStyles(): void {
       border-radius: calc(var(--hud-radius) * 0.5);
       background: rgba(0,0,0,0.15);
     }
-    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 0.85); }
+    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 1); }
     .planeta-resource-label {
       font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.55);
+      font-size: calc(var(--hud-unit) * 0.7);
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
     }
     .planeta-resource-value {
-      font-size: calc(var(--hud-unit) * 0.9);
+      font-size: calc(var(--hud-unit) * 1.1);
       color: var(--hud-text);
       font-variant-numeric: tabular-nums;
       font-weight: 600;
@@ -277,11 +277,11 @@ function injectStyles(): void {
     }
     .planeta-drawer-btn {
       appearance: none;
-      padding: calc(var(--hud-unit) * 0.35) calc(var(--hud-unit) * 0.6);
+      padding: calc(var(--hud-unit) * 0.45) calc(var(--hud-unit) * 0.75);
       background: transparent;
       border: 1px solid var(--hud-border);
       color: var(--hud-text);
-      font-size: calc(var(--hud-unit) * 0.7);
+      font-size: calc(var(--hud-unit) * 0.8);
       font-family: var(--hud-font);
       font-size: calc(var(--hud-unit) * 0.75);
       letter-spacing: 0.1em;
@@ -492,13 +492,8 @@ function buildActions(p: Planeta, mundo: Mundo): HTMLDivElement {
     void abrirPlanetaLore(lore, p.dados.nome);
   });
   actions.appendChild(archiveBtn);
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'planeta-drawer-btn primary';
-  closeBtn.textContent = 'Fechar';
-  closeBtn.addEventListener('click', () => close());
-  actions.appendChild(closeBtn);
+  // "Fechar" button intentionally omitted — the × icon in the header
+  // already closes the drawer, no need for a redundant second button.
 
   return actions;
 }
