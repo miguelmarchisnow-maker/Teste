@@ -63,6 +63,10 @@ const HUD_LEGACY_HABILITADO = false;
 /** Old side planet-panel. Superseded by planet-modal on planet click. */
 const PLANET_PANEL_HABILITADO = false;
 
+/** Credits bar (credits value + UTC clock + refresh). Non-functional —
+ *  the "43892" was a decorative pretend-online counter. */
+const CREDITS_BAR_HABILITADO = false;
+
 async function bootstrap(): Promise<void> {
   installRootVariables();
 
@@ -417,7 +421,7 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
   if (!_hudInstalled) {
     _hudInstalled = true;
     criarEmpireBadge('Valorian Empire', 24);
-    criarCreditsBar(43892);
+    if (CREDITS_BAR_HABILITADO) criarCreditsBar(43892);
     criarResourceBar();
     // Temporarily disabled — sidebar and chat log weren't earning
     // their screen real estate. The code is preserved so they can be
