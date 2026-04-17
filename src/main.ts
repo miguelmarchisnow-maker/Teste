@@ -217,6 +217,31 @@ async function bootstrap(): Promise<void> {
     app.renderer.resize(window.innerWidth, window.innerHeight);
   });
 
+  // WebGL context loss recovery. Without calling preventDefault() the
+  // browser is allowed to never restore the context. With it, the
+  // browser will try to recreate the context, and we offer the user a
+  // reload since the custom planet shaders need rebuilding to work
+  // again (state they held in GPU memory is gone).
+  const canvas = app.canvas as HTMLCanvasElement;
+  canvas.addEventListener('webglcontextlost', (e: Event) => {
+    e.preventDefault();
+    console.warn('[renderer] WebGL context lost — requesting restore');
+    void abrirSaveModal({
+      title: 'CONTEXTO GRÁFICO PERDIDO',
+      severity: 'erro',
+      summary: 'O navegador perdeu o contexto WebGL. Recarregue pra recuperar a renderização dos planetas.',
+      actions: [
+        { label: 'Recarregar agora', value: 'reload', variant: 'primary' },
+        { label: 'Depois', value: 'cancel', variant: 'neutral' },
+      ],
+    }).then((choice) => {
+      if (choice === 'reload') window.location.reload();
+    });
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    console.info('[renderer] WebGL context restored');
+  });
+
   _app = app;
   (window as any)._app = app;
   setAppReferenceForBake(app);

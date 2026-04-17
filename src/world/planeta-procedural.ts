@@ -106,10 +106,13 @@ function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         cloudCurve: 1.3,
         lightBorder1: jitter(0.287, 0.05),
         lightBorder2: jitter(0.476, 0.05),
-        octaves: 6,
+        // Lowered from 6 octaves — the extra detail was noise at normal
+        // camera zoom and fought the pixel-art aesthetic.
+        octaves: 4,
         size: jitter(4.6, 1.5),
         timeSpeed: 0.1,
-        ditherSize: jitter(3.5, 1.0),
+        // Bigger dither cells = bigger pixels = less fine-grained noise.
+        ditherSize: jitter(5.0, 1.0),
         tiles: 1.0,
         cloudAlpha: 0.45 + Math.random() * 0.2, // 0.45=nuvens moderadas, 0.65=poucas nuvens
       };
@@ -126,10 +129,10 @@ function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         cloudCurve: 1.3,
         lightBorder1: jitter(0.615, 0.06),
         lightBorder2: jitter(0.729, 0.06),
-        octaves: 4,
+        octaves: 3,
         size: jitter(8.0, 2.0),
         timeSpeed: 0.4,
-        ditherSize: 2.0,
+        ditherSize: 3.5,
         tiles: 1.0,
         cloudAlpha: 0.0,
       };
@@ -147,10 +150,10 @@ function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         cloudCurve: 1.3,
         lightBorder1: jitter(0.44, 0.06),
         lightBorder2: jitter(0.75, 0.06),
-        octaves: 5,
+        octaves: 4,
         size: jitter(9.0, 2.0),
         timeSpeed: jitter(0.35, 0.15),
-        ditherSize: 2.0,
+        ditherSize: 3.5,
         tiles: 1.0,
         cloudAlpha: 0.0,
       };
@@ -405,10 +408,10 @@ export function criarEstrelaProcedural(
     cloudCurve: 1.3,
     lightBorder1: 0.5,
     lightBorder2: 0.7,
-    octaves: 4,
+    octaves: 3,
     size: jitter(4.5, 1.0),
     timeSpeed: 0.1,
-    ditherSize: 2.0,
+    ditherSize: 3.0,
     tiles: 1.0,
     cloudAlpha: 0.0,
   };
