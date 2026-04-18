@@ -99,8 +99,8 @@ function injectStyles(): void {
     }
 
     .planeta-drawer-portrait {
-      width: calc(var(--hud-unit) * 2.6);
-      height: calc(var(--hud-unit) * 2.6);
+      width: calc(var(--hud-unit) * 4.5);
+      height: calc(var(--hud-unit) * 4.5);
       border: 1px solid var(--hud-line);
       border-radius: 50%;
       background: radial-gradient(circle, rgba(255,255,255,0.04), rgba(0,0,0,0.2));
@@ -108,12 +108,6 @@ function injectStyles(): void {
       place-items: center;
       flex-shrink: 0;
       overflow: hidden;
-    }
-    .planeta-drawer-portrait .dot {
-      width: 60%;
-      height: 60%;
-      border-radius: 50%;
-      border: 1px solid var(--hud-border);
     }
 
     .planeta-drawer-meta {
@@ -498,7 +492,9 @@ const PORTRAIT_REFRESH_MS = 500;
  * a preview, not the main view.
  */
 function refreshPortrait(planeta: Planeta, portraitEl: HTMLElement): void {
-  const canvas = renderPlanetaParaCanvas(planeta, 96);
+  // 160px at source resolution keeps the bigger portrait sharp on
+  // retina displays without making the GPU work too hard.
+  const canvas = renderPlanetaParaCanvas(planeta, 160);
   if (!canvas) return;
   canvas.style.width = '100%';
   canvas.style.height = '100%';
