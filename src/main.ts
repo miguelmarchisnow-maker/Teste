@@ -142,30 +142,71 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  try {
-    await app.init({ ...baseInit, preference: effectiveRenderer });
-  } catch (err) {
-    if (gfx.renderer === 'software') {
-      console.warn('[renderer] Canvas renderer failed, falling back to WebGL:', err);
-      setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
-      await app.init({ ...baseInit, preference: 'webgl' });
-      window.setTimeout(() => toast(t('toast.canvas_fallback'), 'err'), 2000);
-    } else if (gfx.renderer === 'webgpu') {
-      console.warn('[renderer] WebGPU failed, falling back to WebGL:', err);
-      setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: 'webgl' } });
-      await app.init({ ...baseInit, preference: 'webgl' });
-      window.setTimeout(() => toast(t('toast.webgpu_fallback'), 'err'), 2000);
-    } else if (effectiveRenderer === 'webgl' && gfx.webglVersion !== 'auto') {
-      console.warn(`[renderer] WebGL ${gfx.webglVersion} forçado falhou, caindo pra auto:`, err);
-      setConfigDuranteBoot({ graphics: { ...getConfig().graphics, webglVersion: 'auto' } });
-      delete baseInit.context;
-      delete baseInit.canvas;
-      await app.init({ ...baseInit, preference: 'webgl' });
-      window.setTimeout(() => toast(t('toast.webgl_fallback', { v: gfx.webglVersion }), 'err'), 2000);
-    } else {
-      throw err;
+  // Fallback chain: try the user's choice, then step through the
+  // remaining options. Order is intentional — WebGL is the most-
+  // polished 2D path, WebGPU is newer but widely supported on 2025
+  // browsers, Canvas2D is the last-resort software fallback.
+  const fallbackOrder: Array<'webgl' | 'webgpu' | 'canvas'> = ['webgl', 'webgpu', 'canvas'];
+  const primary = effectiveRenderer as 'webgl' | 'webgpu' | 'canvas';
+  const chain: Array<'webgl' | 'webgpu' | 'canvas'> = [
+    primary,
+    ...fallbackOrder.filter((r) => r !== primary),
+  ];
+
+  let initOk = false;
+  let lastErr: unknown = null;
+  for (let i = 0; i < chain.length; i++) {
+    const attempt = chain[i];
+    try {
+      const attemptInit: any = { ...baseInit, preference: attempt };
+      // Forced WebGL-version context only applies when we're really
+      // initializing WebGL — drop it for the other attempts.
+      if (attempt !== 'webgl') {
+        delete attemptInit.context;
+        delete attemptInit.canvas;
+      }
+      await app.init(attemptInit);
+      initOk = true;
+      // If we had to fall back, sync the config so the settings
+      // panel reflects what actually got picked. Also toast the user.
+      if (attempt !== primary) {
+        const cfgRenderer = attempt === 'canvas' ? 'software' : attempt;
+        setConfigDuranteBoot({ graphics: { ...getConfig().graphics, renderer: cfgRenderer as any } });
+        const labels: Record<string, string> = { webgl: 'WebGL', webgpu: 'WebGPU', canvas: 'Canvas2D' };
+        const from = labels[primary] ?? primary;
+        const to = labels[attempt] ?? attempt;
+        window.setTimeout(
+          () => toast(`${from} indisponível — usando ${to}`, 'err'),
+          2000,
+        );
+        console.warn(`[renderer] ${from} failed, fell back to ${to}`);
+      } else if (attempt === 'webgl' && effectiveRenderer === 'webgl' && gfx.webglVersion !== 'auto') {
+        // Honored the user's choice — nothing to report.
+      }
+      break;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[renderer] ${attempt} init failed:`, err);
+      // Special case: forced WebGL version failed, retry WebGL with
+      // auto version before falling off to the next backend.
+      if (attempt === 'webgl' && gfx.webglVersion !== 'auto' && baseInit.context) {
+        setConfigDuranteBoot({ graphics: { ...getConfig().graphics, webglVersion: 'auto' } });
+        delete baseInit.context;
+        delete baseInit.canvas;
+        try {
+          await app.init({ ...baseInit, preference: 'webgl' });
+          initOk = true;
+          window.setTimeout(() => toast(t('toast.webgl_fallback', { v: gfx.webglVersion }), 'err'), 2000);
+          break;
+        } catch (err2) {
+          lastErr = err2;
+          console.warn('[renderer] WebGL auto also failed:', err2);
+        }
+      }
+      // Continue to next backend in the chain.
     }
   }
+  if (!initOk) throw lastErr ?? new Error('No renderer backend succeeded');
 
   // ── Vsync + FPS cap wiring ──────────────────────────────────────
   // vsync=true  → rAF-driven ticker. fpsCap via ticker.maxFPS.
