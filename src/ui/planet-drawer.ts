@@ -20,7 +20,7 @@ import { getPersonalidades } from '../world/ia-decisao';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
 import { abrirImperioLore } from './lore-modal';
 import { oreIcon, alloyIcon, fuelIcon } from './resource-bar';
-import { renderPlanetaParaCanvas } from '../world/planeta-procedural';
+import { renderPlanetaParaCanvas, liberarPortraitPlaneta } from '../world/planeta-procedural';
 
 let _modal: HTMLDivElement | null = null;
 let _bodyEl: HTMLDivElement | null = null;
@@ -598,6 +598,9 @@ function close(): void {
   _currentMundo = null;
   _portraitCanvas = null;
   _lastPortraitRefreshMs = 0;
+  // Release the Pixi resources cached for the portrait shader render.
+  // Keeping them around while the drawer is closed is pure dead weight.
+  liberarPortraitPlaneta();
   const r = _closeResolver;
   _closeResolver = null;
   if (r) r();

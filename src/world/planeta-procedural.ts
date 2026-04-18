@@ -332,10 +332,33 @@ function bakePlaneta(planeta: any): void {
 
 /**
  * Render a small snapshot of the planet's live shader (current uTime,
- * rotation, uniforms) to an HTMLCanvasElement for embedding in DOM
- * surfaces like the drawer's portrait. Cheap enough to call at ~2 Hz;
- * returns null if the renderer or shader isn't ready.
+ * rotation, uniforms) into the caller-provided destination canvas.
+ *
+ * Reuses a single set of Pixi resources (clone Mesh + wrapper + an
+ * internal extract canvas) across calls — only rebuilt when the
+ * target mesh or size changes. Earlier version created+destroyed a
+ * RenderTexture every call, which accumulated GPU memory at ~2 Hz
+ * and tanked FPS after a minute of an open drawer. Returns true on
+ * success so callers can fall back to a placeholder on failure.
  */
+let _portraitCache: {
+  sourceMesh: Mesh<Geometry, Shader>;
+  tamanho: number;
+  clone: Mesh<Geometry, Shader>;
+  wrapper: Container;
+} | null = null;
+
+function destroyPortraitCache(): void {
+  if (!_portraitCache) return;
+  try {
+    _portraitCache.clone.destroy();
+    _portraitCache.wrapper.destroy();
+  } catch {
+    // Ignore — best-effort cleanup.
+  }
+  _portraitCache = null;
+}
+
 export function renderPlanetaParaCanvas(planeta: any, tamanho = 96): HTMLCanvasElement | null {
   if (!_appRef) return null;
   const mesh = planeta as Mesh;
@@ -343,29 +366,38 @@ export function renderPlanetaParaCanvas(planeta: any, tamanho = 96): HTMLCanvasE
   if (!shader) return null;
 
   try {
-    const clone = new Mesh({ geometry: quadGeometry, shader, state: mesh.state });
-    clone.scale.set(tamanho);
-    clone.position.set(tamanho / 2, tamanho / 2);
-    const wrapper = new Container();
-    wrapper.addChild(clone);
+    // Rebuild the cache if the target mesh changed (player clicked a
+    // different planet) or the size changed.
+    if (!_portraitCache || _portraitCache.sourceMesh !== mesh || _portraitCache.tamanho !== tamanho) {
+      destroyPortraitCache();
+      const clone = new Mesh({ geometry: quadGeometry, shader, state: mesh.state });
+      clone.scale.set(tamanho);
+      clone.position.set(tamanho / 2, tamanho / 2);
+      const wrapper = new Container();
+      wrapper.addChild(clone);
+      _portraitCache = { sourceMesh: mesh, tamanho, clone, wrapper };
+    }
 
-    const texture = _appRef.renderer.generateTexture({
-      target: wrapper,
+    // extract.canvas handles the render + readback internally and
+    // returns a fresh HTMLCanvasElement — no intermediate RenderTexture
+    // to leak. The underlying framebuffer is pooled by Pixi.
+    const canvas = _appRef.renderer.extract.canvas({
+      target: _portraitCache.wrapper,
       frame: new Rectangle(0, 0, tamanho, tamanho),
       resolution: 1,
       antialias: true,
-    });
-
-    const canvas = _appRef.renderer.extract.canvas(texture) as HTMLCanvasElement;
-
-    clone.destroy();
-    wrapper.destroy();
-    texture.destroy(true);
+    }) as HTMLCanvasElement;
     return canvas;
   } catch (err) {
     console.warn('[planeta-procedural] portrait render failed:', err);
+    destroyPortraitCache();
     return null;
   }
+}
+
+/** Caller-invokable teardown for when the drawer closes. */
+export function liberarPortraitPlaneta(): void {
+  destroyPortraitCache();
 }
 
 /** Swap back from baked sprite to live mesh. */
