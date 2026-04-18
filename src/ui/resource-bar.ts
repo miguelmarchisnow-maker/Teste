@@ -24,7 +24,7 @@ function svg(pathD: string | string[]): SVGSVGElement {
 }
 
 // Ore / crystal cluster
-function oreIcon(): SVGSVGElement {
+export function oreIcon(): SVGSVGElement {
   return svg([
     'M12 2l-3 5h6l-3-5z',
     'M6 8l-2 5 5 2 1-5-4-2z',
@@ -34,7 +34,7 @@ function oreIcon(): SVGSVGElement {
 }
 
 // Alloy / ingot
-function alloyIcon(): SVGSVGElement {
+export function alloyIcon(): SVGSVGElement {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('viewBox', '0 0 24 24');
   s.setAttribute('fill', 'currentColor');
@@ -45,7 +45,7 @@ function alloyIcon(): SVGSVGElement {
 }
 
 // Fuel / water droplet
-function fuelIcon(): SVGSVGElement {
+export function fuelIcon(): SVGSVGElement {
   return svg('M12 2.5c-3 4.5-6 8-6 11.5a6 6 0 0012 0c0-3.5-3-7-6-11.5z');
 }
 

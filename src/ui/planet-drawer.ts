@@ -20,6 +20,7 @@ import { getPersonalidades } from '../world/ia-decisao';
 import { gerarPlanetaLore } from '../world/lore/planeta-lore';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
 import { abrirImperioLore, abrirPlanetaLore } from './lore-modal';
+import { oreIcon, alloyIcon, fuelIcon } from './resource-bar';
 
 let _modal: HTMLDivElement | null = null;
 let _bodyEl: HTMLDivElement | null = null;
@@ -39,14 +40,16 @@ function injectStyles(): void {
        The entry/exit animation uses visibility + opacity + transform;
        display stays flex throughout so the CSS transition fires. */
     .planeta-drawer {
-      /* Compact side panel — just the essentials. */
+      /* Compact side panel — anchored to the right edge, vertically
+         centered on the viewport. max-height prevents it from
+         overlapping the bottom build-panel on short screens. */
       position: fixed;
-      top: calc(var(--hud-margin) + var(--hud-unit) * 5.5);
+      top: 50%;
       left: auto;
       right: var(--hud-margin);
       bottom: auto;
       width: clamp(280px, 24vw, 360px);
-      max-height: calc(100vh - var(--hud-unit) * 14);
+      max-height: calc(100vh - var(--hud-unit) * 16);
       margin: 0;
       box-sizing: border-box;
       background: var(--hud-bg);
@@ -60,11 +63,12 @@ function injectStyles(): void {
       flex-direction: column;
       overflow: hidden;
 
-      /* Entry/exit state — fully off the right edge. */
+      /* Entry/exit state — fully off the right edge, kept vertically
+         centered with translateY(-50%). */
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
-      transform: translateX(calc(100% + var(--hud-margin) * 2));
+      transform: translate(calc(100% + var(--hud-margin) * 2), -50%);
       transition:
         opacity 220ms ease-out,
         transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
@@ -74,7 +78,7 @@ function injectStyles(): void {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
-      transform: translateX(0);
+      transform: translate(0, -50%);
       transition:
         opacity 220ms ease-out,
         transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
@@ -218,7 +222,18 @@ function injectStyles(): void {
       border-radius: calc(var(--hud-radius) * 0.5);
       background: rgba(0,0,0,0.15);
     }
-    .planeta-resource-icon { font-size: calc(var(--hud-unit) * 1); }
+    .planeta-resource-icon {
+      width: calc(var(--hud-unit) * 1.4);
+      height: calc(var(--hud-unit) * 1.4);
+      margin: 0 auto;
+      color: rgba(255,255,255,0.92);
+    }
+    .planeta-resource-icon svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      fill: currentColor;
+    }
     .planeta-resource-label {
       font-family: var(--hud-font);
       font-size: calc(var(--hud-unit) * 0.7);
@@ -338,17 +353,19 @@ function cardRecursos(p: Planeta): HTMLDivElement {
 
   const grid = document.createElement('div');
   grid.className = 'planeta-resources-grid';
-  const tipos: Array<[string, string, number]> = [
-    ['Comum', '▣', p.dados.recursos.comum],
-    ['Raro', '✦', p.dados.recursos.raro],
-    ['Fuel', '◈', p.dados.recursos.combustivel],
+  // Uses the same SVG glyphs as the top resource-bar for a consistent
+  // visual vocabulary across the HUD.
+  const tipos: Array<[string, () => SVGSVGElement, number]> = [
+    ['Comum', oreIcon, p.dados.recursos.comum],
+    ['Raro', alloyIcon, p.dados.recursos.raro],
+    ['Fuel', fuelIcon, p.dados.recursos.combustivel],
   ];
-  for (const [label, icon, val] of tipos) {
+  for (const [label, iconFn, val] of tipos) {
     const r = document.createElement('div');
     r.className = 'planeta-resource';
     const i = document.createElement('div');
     i.className = 'planeta-resource-icon';
-    i.textContent = icon;
+    i.appendChild(iconFn());
     const v = document.createElement('div');
     v.className = 'planeta-resource-value';
     v.textContent = Math.floor(val).toString();
@@ -591,6 +608,12 @@ function close(): void {
   const r = _closeResolver;
   _closeResolver = null;
   if (r) r();
+}
+
+/** Public close — no-op if drawer isn't open. Used by click-outside
+ *  handlers in player.ts. */
+export function fecharPlanetaDrawer(): void {
+  if (_closeResolver) close();
 }
 
 export function destruirPlanetaDrawer(): void {

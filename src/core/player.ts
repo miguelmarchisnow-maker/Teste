@@ -20,7 +20,7 @@ import {
 } from '../world/mundo';
 import { mostrarNotificacao } from '../ui/notificacao';
 import { t } from './i18n/t';
-import { abrirPlanetaDrawer } from '../ui/planet-drawer';
+import { abrirPlanetaDrawer, fecharPlanetaDrawer } from '../ui/planet-drawer';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -347,6 +347,9 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);
+        // Clicking empty space deselects — also close the planet drawer
+        // if it's open, matching the user's expectation.
+        fecharPlanetaDrawer();
       }
     }
 
