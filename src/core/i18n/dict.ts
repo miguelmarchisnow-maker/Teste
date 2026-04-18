@@ -343,6 +343,8 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'settings.row.scanlines': { pt: 'Scanlines CRT', en: 'CRT Scanlines' },
   'settings.row.mostrar_fps': { pt: 'Mostrar FPS', en: 'Show FPS' },
   'settings.row.mostrar_ram': { pt: 'Mostrar uso de RAM', en: 'Show RAM usage' },
+  'settings.opt.desbloqueado': { pt: 'Desbloqueado', en: 'Unlocked' },
+  'settings.opt.vsync': { pt: 'Vsync (monitor)', en: 'Vsync (monitor)' },
   'settings.row.limite_fps': { pt: 'Limite de FPS', en: 'FPS limit' },
   'settings.row.renderer': { pt: 'Motor de renderização', en: 'Rendering engine' },
   'settings.row.webgl_version': { pt: 'Versão do WebGL', en: 'WebGL version' },

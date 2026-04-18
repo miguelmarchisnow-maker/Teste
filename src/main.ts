@@ -159,10 +159,38 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  // FPS cap setting removed at user request — the browser's rAF vsyncs
-  // to monitor refresh anyway, so our cap was a second clamp on top of
-  // that. maxFPS=0 lets the ticker run as often as rAF delivers frames.
-  app.ticker.maxFPS = 0;
+  // ── FPS cap wiring ───────────────────────────────────────────────
+  //   -1  → Desbloqueado. Stop the rAF-driven ticker and drive updates
+  //         from a setTimeout(0) loop. Browser rAF vsyncs to monitor
+  //         refresh (~60/120/144 Hz); setTimeout doesn't, so the FPS
+  //         counter will read higher. Visual is still vsynced by the
+  //         display hardware — you see the benchmark number, not more
+  //         actual motion.
+  //    0  → Vsync. Normal rAF, unlimited ticker = display refresh.
+  //   >0  → Cap via Ticker.maxFPS. Still rAF-driven.
+  let _unlockedRafId: number | null = null;
+  const aplicarFpsCap = (cap: number): void => {
+    // Tear down any previous unlocked loop.
+    if (_unlockedRafId !== null) {
+      window.clearTimeout(_unlockedRafId);
+      _unlockedRafId = null;
+    }
+    if (cap === -1) {
+      // Unlocked: stop Pixi's rAF ticker and drive updates ourselves.
+      app.ticker.stop();
+      const loop = (): void => {
+        app.ticker.update(performance.now());
+        _unlockedRafId = window.setTimeout(loop, 0) as unknown as number;
+      };
+      loop();
+    } else {
+      // Back to rAF-driven ticker (restart if we had stopped it).
+      app.ticker.maxFPS = cap > 0 ? cap : 0;
+      if (!app.ticker.started) app.ticker.start();
+    }
+  };
+  aplicarFpsCap(gfx.fpsCap);
+  onConfigChange((cfg) => aplicarFpsCap(cfg.graphics.fpsCap));
 
   // ── FPS counter ──
   const fpsEl = document.createElement('div');

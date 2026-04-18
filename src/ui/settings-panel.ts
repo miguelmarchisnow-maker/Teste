@@ -602,10 +602,13 @@ function renderGraphicsTab(body: HTMLDivElement): void {
   {
     const [row] = rowWithLabel(t('settings.row.limite_fps'), 'fpsCap');
     const select = criarSelect([
-      ['0', t('settings.opt.sem_limite')],
+      ['-1', t('settings.opt.desbloqueado')],
+      ['0', t('settings.opt.vsync')],
       ['30', '30'],
       ['60', '60'],
       ['120', '120'],
+      ['144', '144'],
+      ['240', '240'],
     ], String(gfx.fpsCap));
     select.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, fpsCap: Number(select.dataset.value!) } });
