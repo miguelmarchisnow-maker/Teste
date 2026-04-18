@@ -127,18 +127,24 @@ const DURATION_MS = 20000;
 const WARMUP_MS = 1500;
 
 /**
- * Block until the GPU has actually finished executing the queued
- * commands. Without this the browser batches drawcalls and rAF
- * waits for vsync — every sample comes back pinned to ~16.67 ms
- * regardless of how heavy the scene is, which made the benchmark
- * useless on any machine with vsync on. gl.finish() forces a
- * pipeline stall in WebGL; queue.onSubmittedWorkDone() is the
- * WebGPU equivalent (it's a promise).
+ * Force the GPU to actually finish executing queued commands before
+ * returning. gl.finish() looks like the right call but on software
+ * backends (Microsoft WARP, SwiftShader, LLVMpipe) it sometimes
+ * returns immediately without waiting — leaving the benchmark to
+ * measure only the JS command-submission time (≈0.01ms). gl.
+ * readPixels(1×1) blocks unconditionally until pixel data is
+ * available so it's a reliable sync primitive. WebGPU has a proper
+ * async primitive instead.
  */
+const _readPxBuf = new Uint8Array(4);
 async function syncGpu(renderer: any): Promise<void> {
   try {
-    if (renderer?.gl?.finish) {
-      renderer.gl.finish();
+    const gl = renderer?.gl as WebGLRenderingContext | WebGL2RenderingContext | undefined;
+    if (gl) {
+      // readPixels against the default framebuffer always stalls
+      // the CPU until the GPU actually delivers the pixel. Unlike
+      // gl.finish(), software drivers don't get to short-circuit.
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, _readPxBuf);
       return;
     }
     const device = renderer?.gpu?.device as GPUDevice | undefined;
@@ -222,21 +228,21 @@ export async function rodarBenchmark(
 
   const samples: number[] = [];
   const start = performance.now();
+  let lastRafMs = start;
 
   try {
     while (true) {
-      // rAF paces the loop politely (gives the browser time for
-      // input/compositor), but the actual frame-time measurement
-      // wraps render+gl.finish, NOT the rAF gap — that way vsync
-      // wait doesn't pollute the sample.
+      // rAF paces the loop. The rAF delta is also our sanity-check
+      // lower bound for the sample: if a software backend manages
+      // to lie about gl.readPixels() sync, the wall-clock gap
+      // between rAFs still captures the real cost.
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       const now = performance.now();
+      const rafDelta = now - lastRafMs;
+      lastRafMs = now;
       const elapsed = now - start;
 
-      // One render per sample — matches what a normal gameplay frame
-      // does, so the result directly maps to expected in-game FPS.
-      // Animate the uniforms so each sample is a fresh frame and the
-      // GPU can't cache.
+      // One render per sample — matches gameplay.
       for (const child of scene.children) {
         const u = (child as any)?._planetShader?.resources?.planetUniforms?.uniforms;
         if (u) {
@@ -250,8 +256,14 @@ export async function rodarBenchmark(
       const renderEnd = performance.now();
       const workMs = renderEnd - renderStart;
 
-      if (elapsed >= WARMUP_MS) samples.push(workMs);
-      if (onProgress) onProgress(Math.min(1, elapsed / DURATION_MS), workMs);
+      // Use the MAX of (measured render+sync) and (rAF delta minus
+      // a ~1ms scheduler slack). If the GPU driver lies about sync,
+      // rAF delta still reflects reality because the browser can't
+      // deliver the next rAF until the current frame's work clears.
+      const honestMs = Math.max(workMs, Math.max(0, rafDelta - 1));
+
+      if (elapsed >= WARMUP_MS) samples.push(honestMs);
+      if (onProgress) onProgress(Math.min(1, elapsed / DURATION_MS), honestMs);
       if (elapsed >= DURATION_MS) break;
     }
   } finally {
