@@ -36,20 +36,45 @@ export interface BenchmarkResult {
   recommendedRenderScale: number;
 }
 
-const DURATION_MS = 8000;
-const WARMUP_MS = 800;
+const DURATION_MS = 20000;
+const WARMUP_MS = 1500;
+
+/**
+ * Block until the GPU has actually finished executing the queued
+ * commands. Without this the browser batches drawcalls and rAF
+ * waits for vsync — every sample comes back pinned to ~16.67 ms
+ * regardless of how heavy the scene is, which made the benchmark
+ * useless on any machine with vsync on. gl.finish() forces a
+ * pipeline stall in WebGL; queue.onSubmittedWorkDone() is the
+ * WebGPU equivalent (it's a promise).
+ */
+async function syncGpu(renderer: any): Promise<void> {
+  try {
+    if (renderer?.gl?.finish) {
+      renderer.gl.finish();
+      return;
+    }
+    const device = renderer?.gpu?.device as GPUDevice | undefined;
+    if (device?.queue?.onSubmittedWorkDone) {
+      await device.queue.onSubmittedWorkDone();
+    }
+  } catch { /* noop — best-effort */ }
+}
 
 function classificar(avgMs: number): {
   preset: OrbitalConfig['graphics']['qualidadeEfeitos'];
   scale: number;
 } {
-  // Thresholds tuned on this on-screen stress scene. Live gameplay
-  // is ~5× lighter than this, so a preset picked here has headroom.
-  if (avgMs < 6)      return { preset: 'alto',   scale: 1.0 };
-  if (avgMs < 14)     return { preset: 'medio',  scale: 1.0 };
-  if (avgMs < 24)     return { preset: 'medio',  scale: 0.85 };
-  if (avgMs < 40)     return { preset: 'baixo',  scale: 0.75 };
-  if (avgMs < 70)     return { preset: 'baixo',  scale: 0.5 };
+  // Thresholds are for the REAL post-gl.finish frame cost (GPU work
+  // only, no vsync wait baked in). The stress scene renders 3× per
+  // sample with 30 max-octave planets + a star, so live gameplay is
+  // ~10-15× lighter than what we measure here — recommended preset
+  // has a lot of headroom.
+  if (avgMs < 12)     return { preset: 'alto',   scale: 1.0 };
+  if (avgMs < 30)     return { preset: 'medio',  scale: 1.0 };
+  if (avgMs < 55)     return { preset: 'medio',  scale: 0.85 };
+  if (avgMs < 90)     return { preset: 'baixo',  scale: 0.75 };
+  if (avgMs < 160)    return { preset: 'baixo',  scale: 0.5 };
   return               { preset: 'minimo', scale: 0.35 };
 }
 
@@ -57,12 +82,14 @@ async function construirCenaTeste(screenW: number, screenH: number): Promise<Con
   const root = new PxContainer();
 
   const tiposArray = Object.values(TIPO_PLANETA);
-  const cols = 5;
-  const rows = 4;
-  // Fit the grid to the viewport with a small margin so every planet
-  // actually falls on-screen.
-  const cellW = screenW * 0.9 / cols;
-  const cellH = screenH * 0.9 / rows;
+  // Denser grid than gameplay ever produces so fragment cost is
+  // dominated by planet surface shading — 30 planets on screen,
+  // each at the largest size that fits, each forced to the maximum
+  // octave count so the fbm loop runs its worst case every pixel.
+  const cols = 6;
+  const rows = 5;
+  const cellW = screenW * 0.98 / cols;
+  const cellH = screenH * 0.98 / rows;
   const cell = Math.min(cellW, cellH);
   const gridW = cell * cols;
   const gridH = cell * rows;
@@ -75,10 +102,20 @@ async function construirCenaTeste(screenW: number, screenH: number): Promise<Con
       const mesh = criarPlanetaProceduralSprite(
         offsetX + c * cell + cell / 2,
         offsetY + r * cell + cell / 2,
-        cell * 0.95,
+        // Slight overlap keeps GPU from skipping boundary pixels.
+        cell * 1.05,
         tipo,
         1 + Math.random() * 9,
       );
+      // Force the heaviest fbm octave count on every planet so even
+      // gas / dry types run the terran-level surface cost. Safe to
+      // touch — if the shader path is active, the uniform group
+      // accepts the write; if we're in Canvas2D mode the paleta
+      // would govern instead, but the stress scene is primarily a
+      // GPU benchmark.
+      const shader = (mesh as any)._planetShader;
+      const uniforms = shader?.resources?.planetUniforms?.uniforms;
+      if (uniforms) uniforms.uOctaves = 6;
       root.addChild(mesh as unknown as Container);
     }
   }
@@ -108,24 +145,31 @@ export async function rodarBenchmark(
 
   const samples: number[] = [];
   const start = performance.now();
-  let last = start;
 
   try {
     while (true) {
+      // rAF paces the loop politely (gives the browser time for
+      // input/compositor), but the actual frame-time measurement
+      // wraps render+gl.finish, NOT the rAF gap — that way vsync
+      // wait doesn't pollute the sample.
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      // Also animate the planets' uTime/uRotation so the fragment
-      // shader actually recomputes varying noise coords each frame.
-      // atualizarTempoPlanetas normally does this from mundo.ts; we
-      // aren't attached to mundo here, so the shader's uTime would
-      // stay frozen otherwise and the GPU would re-use the same
-      // fragment output each frame (a cache-hit workload, not real).
       const now = performance.now();
-      const dt = now - last;
-      last = now;
       const elapsed = now - start;
 
-      if (elapsed >= WARMUP_MS) samples.push(dt);
-      if (onProgress) onProgress(Math.min(1, elapsed / DURATION_MS), dt);
+      // Render the scene 3× per sample. Tripling the per-sample
+      // workload smooths measurement noise and pushes fast GPUs into
+      // a measurable range (a single render on a beefy card can come
+      // back in well under 1ms and get lost in timer resolution).
+      const renderStart = performance.now();
+      app.renderer.render({ container: scene });
+      app.renderer.render({ container: scene });
+      app.renderer.render({ container: scene });
+      await syncGpu(app.renderer);
+      const renderEnd = performance.now();
+      const workMs = renderEnd - renderStart;
+
+      if (elapsed >= WARMUP_MS) samples.push(workMs);
+      if (onProgress) onProgress(Math.min(1, elapsed / DURATION_MS), workMs);
       if (elapsed >= DURATION_MS) break;
     }
   } finally {

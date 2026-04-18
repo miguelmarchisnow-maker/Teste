@@ -551,12 +551,19 @@ function renderGraphicsTab(body: HTMLDivElement): void {
       benchBtn.textContent = t('settings.benchmark.running');
       status.style.display = 'block';
 
+      // Hide the settings modal itself so the user can see the Pixi
+      // stage where the stress scene is rendering. Reopening after
+      // the benchmark finishes restores their place.
+      const settingsOverlay = document.querySelector('.settings-overlay') as HTMLElement | null;
+      const prevDisplay = settingsOverlay?.style.display ?? '';
+      if (settingsOverlay) settingsOverlay.style.display = 'none';
+
       // Fullscreen overlay with live stats while the benchmark runs.
       // Sits on top of the Pixi canvas so the user can see the stress
       // scene and the frame time ticker at the same time.
       const overlay = document.createElement('div');
       overlay.style.cssText = [
-        'position: fixed', 'inset: 0', 'z-index: 9999',
+        'position: fixed', 'inset: 0', 'z-index: 2147483000',
         'pointer-events: none', // lets the stress scene render normally beneath
         'display: flex', 'flex-direction: column',
         'justify-content: flex-start', 'align-items: center',
@@ -609,6 +616,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
         benchBtn.disabled = false;
         benchBtn.textContent = t('settings.benchmark.btn');
         try { overlay.remove(); } catch { /* noop */ }
+        if (settingsOverlay) settingsOverlay.style.display = prevDisplay;
       }
     });
     row.appendChild(benchBtn);
