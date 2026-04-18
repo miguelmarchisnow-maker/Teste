@@ -131,6 +131,22 @@ export function resetMemoriasIa(): void {
   _memorias.clear();
 }
 
+/**
+ * Rough bytes held by all per-AI memory state. Each faction entry has
+ * three Records + a Set of planet ids. Used by the RAM HUD readout.
+ */
+export function getAiMemoryBytes(): number {
+  let total = 0;
+  for (const m of _memorias.values()) {
+    total += Object.keys(m.rancor).length * 64;
+    total += Object.keys(m.forcaPercebida).length * 64;
+    total += Object.keys(m.ultimoAtaque).length * 64;
+    total += m.planetasVistos.size * 48;
+    total += 256; // Map entry + inner object overhead
+  }
+  return total;
+}
+
 // ─── Save/load support ───────────────────────────────────────────────
 
 import type { IaMemoriaDTO } from './save/dto';

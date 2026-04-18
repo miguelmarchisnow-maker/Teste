@@ -87,6 +87,18 @@ function ensureBeamGfx(mundo: Mundo): Graphics {
   return g;
 }
 
+/**
+ * Bytes held by the combat visual pools (beams + particles). These
+ * grow with battle intensity and stabilize; shown in the RAM HUD.
+ */
+export function getCombateMemoryBytes(): number {
+  const BEAM_BYTES = 56;      // 6 numbers × 8 bytes + overhead
+  const PARTICLE_BYTES = 72;  // 6 numbers × 8 bytes + overhead
+  const active = _beams.length * BEAM_BYTES + _particles.length * PARTICLE_BYTES;
+  const pooled = _beamPool.length * BEAM_BYTES + _particlePool.length * PARTICLE_BYTES;
+  return active + pooled;
+}
+
 /** Reset beam state (call when destroying a world). */
 export function resetCombateVisuals(): void {
   _beams.length = 0;

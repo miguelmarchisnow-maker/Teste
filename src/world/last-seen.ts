@@ -34,3 +34,8 @@ export function restaurarLastSeen(dtos: LastSeenDTO[]): void {
 export function resetLastSeen(): void {
   _map.clear();
 }
+
+/** Approximate bytes held by the last-seen ghost map. Used by RAM HUD. */
+export function getLastSeenMemoryBytes(): number {
+  return _map.size * 128;
+}

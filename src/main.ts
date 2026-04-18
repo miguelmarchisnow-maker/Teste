@@ -3,6 +3,10 @@ import type { Mundo, TipoJogador } from './types';
 import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo, setDificuldadeProximoMundo, getDificuldadeAtual } from './world/mundo';
 import { getStarfieldMemoryBytes } from './world/fundo';
 import { getFogMemoryBytes } from './world/nevoa';
+import { getSpritesheetMemoryBytes } from './world/spritesheets';
+import { getAiMemoryBytes } from './world/ia-memoria';
+import { getLastSeenMemoryBytes } from './world/last-seen';
+import { getCombateMemoryBytes } from './world/combate-resolucao';
 import type { Dificuldade, PersonalidadeIA } from './world/personalidade-ia';
 import { gerarPersonalidades, PRESETS_DIFICULDADE } from './world/personalidade-ia';
 import { setPersonalidadesParaMundoCarregado } from './world/ia-decisao';
@@ -172,18 +176,21 @@ async function bootstrap(): Promise<void> {
   `;
   document.body.appendChild(fpsEl);
 
-  // ── RAM counter (Chromium-only; Firefox exposes no equivalent API) ──
-  // Sits just below the FPS readout and mirrors its styling.
+  // ── RAM profiler — breakdown by allocation category ──
+  // Multi-line readout beneath the FPS counter. Uses pre-formatted
+  // monospace text so the columns line up regardless of value width.
   const ramEl = document.createElement('div');
   ramEl.style.cssText = `
     position: fixed;
     top: calc(var(--hud-unit) * 0.5 + var(--hud-unit) * 1.8);
     right: calc(var(--hud-unit) * 0.5);
-    font-family: var(--hud-font); font-size: calc(var(--hud-unit) * 0.75);
-    color: var(--hud-text-dim); background: rgba(0,0,0,0.5);
-    padding: calc(var(--hud-unit) * 0.2) calc(var(--hud-unit) * 0.5);
+    font-family: var(--hud-font); font-size: calc(var(--hud-unit) * 0.7);
+    color: var(--hud-text-dim); background: rgba(0,0,0,0.6);
+    padding: calc(var(--hud-unit) * 0.35) calc(var(--hud-unit) * 0.6);
     border: 1px solid var(--hud-border); z-index: 600; pointer-events: none;
     display: ${gfx.mostrarRam ? 'block' : 'none'};
+    white-space: pre; line-height: 1.35; text-align: right;
+    min-width: calc(var(--hud-unit) * 9);
   `;
   document.body.appendChild(ramEl);
 
@@ -197,27 +204,64 @@ async function bootstrap(): Promise<void> {
   //   - Fog-of-war canvas + GPU upload (~4 MB)
   //   - Planet/ship sprite + data (rough per-entity constant)
   //   - A fixed baseline for Pixi runtime + spritesheets + JS bundle
-  const BASELINE_BYTES = 50 * 1024 * 1024; // Pixi + bundle + spritesheets
+  // Baseline: Pixi runtime + app bundle + misc framework state. Not
+  // broken down further because we have no API to introspect it — it
+  // is a flat "everything else" bucket.
+  const BASELINE_BYTES = 45 * 1024 * 1024;
+
+  const fmtMB = (bytes: number): string => {
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 100) return mb.toFixed(0).padStart(5);
+    if (mb >= 10) return mb.toFixed(1).padStart(5);
+    return mb.toFixed(2).padStart(5);
+  };
+
   const sampleRam = (): void => {
-    let totalBytes = BASELINE_BYTES;
     const activeFundo = _mundo?.fundo ?? _mundoMenu?.fundo;
-    if (activeFundo) totalBytes += getStarfieldMemoryBytes(activeFundo);
-    totalBytes += getFogMemoryBytes();
-    const world = _mundo;
-    if (world) {
-      // ~4 KB per planet (sprite + shader uniforms + data), ~2 KB per ship.
-      totalBytes += world.planetas.length * 4 * 1024;
-      totalBytes += world.naves.length * 2 * 1024;
+    const starfield = activeFundo ? getStarfieldMemoryBytes(activeFundo) : 0;
+    const fog       = getFogMemoryBytes();
+    const sprites   = getSpritesheetMemoryBytes();
+    const aiMem     = getAiMemoryBytes();
+    const lastSeen  = getLastSeenMemoryBytes();
+    const combate   = getCombateMemoryBytes();
+    const world     = _mundo;
+    const planetas  = (world?.planetas.length ?? 0) * 4 * 1024;
+    const naves     = (world?.naves.length ?? 0) * 2 * 1024;
+    const sistemas  = (world?.sistemas.length ?? 0) * 8 * 1024;
+
+    const total =
+      BASELINE_BYTES + starfield + fog + sprites +
+      aiMem + lastSeen + combate +
+      planetas + naves + sistemas;
+
+    // Build the breakdown block. Categories are ordered by typical
+    // size (descending) so the big contributors are at the top.
+    const rows: [string, number][] = [
+      ['Starfield', starfield],
+      ['Baseline ', BASELINE_BYTES],
+      ['Sprites  ', sprites],
+      ['Sistemas ', sistemas],
+      ['Planetas ', planetas],
+      ['Naves    ', naves],
+      ['Fog      ', fog],
+      ['AI memor', aiMem],
+      ['Last-seen', lastSeen],
+      ['Combate  ', combate],
+    ];
+
+    const lines: string[] = [`TOTAL ~${fmtMB(total)} MB`];
+    for (const [label, bytes] of rows) {
+      if (bytes < 1024) continue; // skip sub-1KB noise
+      lines.push(`${label} ${fmtMB(bytes)} MB`);
     }
-    const estMB = totalBytes / (1024 * 1024);
-    let text = `~${estMB.toFixed(0)} MB`;
-    // Chromium bonus: append actual JS heap as a sanity check when present.
+
+    // Chromium bonus — actual JS heap, if the API is exposed.
     const mem = (performance as any).memory;
     if (mem && typeof mem.usedJSHeapSize === 'number') {
-      const jsMB = mem.usedJSHeapSize / (1024 * 1024);
-      text += ` · JS ${jsMB.toFixed(0)}`;
+      lines.push(`JS heap  ${fmtMB(mem.usedJSHeapSize)} MB`);
     }
-    ramEl.textContent = text;
+
+    ramEl.textContent = lines.join('\n');
   };
   // Prime the label so the first toggle-on shows content right away.
   sampleRam();

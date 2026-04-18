@@ -73,3 +73,20 @@ export function onSpritesheetReady(name: 'ships' | 'buildings', cb: () => void):
   if (!sheet.promise) { carregarSpritesheet(name).then(cb); return; }
   sheet.promise.then(cb);
 }
+
+/**
+ * Approximate bytes held by loaded spritesheet textures + decoded
+ * HTMLImageElement originals. RAM readout uses this.
+ */
+export function getSpritesheetMemoryBytes(): number {
+  let total = 0;
+  for (const key of ['ships', 'buildings'] as const) {
+    const sheet = _sheets[key];
+    const img = sheet.image;
+    if (!img) continue;
+    // Decoded image pixels + the GPU upload — count both sides.
+    const pixels = img.naturalWidth * img.naturalHeight * 4;
+    total += pixels * 2;
+  }
+  return total;
+}
