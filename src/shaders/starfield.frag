@@ -1,15 +1,9 @@
 #version 300 es
-// Universal-compatibility starfield. Hash is integer PCG so the
-// star lattice is bit-exact across Chrome/ANGLE, Firefox/native,
-// and SwiftShader. Animation model matches the original: each
-// star has its OWN velocity vector derived from the cell hash, so
-// stars drift linearly at their own speeds, never re-rolling when
-// the camera moves.
-//
-// #version 300 es is REQUIRED (not just relying on Pixi's auto-
-// detection) because we use uint/uvec2 which are GLSL ES 3.00-only
-// types. The directive must be the very first line of the source,
-// otherwise GLSL spec says compilation fails.
+// Universal-compatibility starfield. PCG integer hash → bit-exact
+// across Chrome/ANGLE, Firefox/native, and SwiftShader. Star size
+// is expressed in WHOLE pixels (1 or 2) via integer delta check, so
+// every star is as crisp as the static bitmap reference — no
+// sub-pixel fringing, no aliasing along edges.
 precision highp float;
 precision highp int;
 
@@ -41,65 +35,67 @@ vec2 hash2(ivec2 cell, int salt) {
 }
 
 /**
- * One starfield layer. Cells are partitioned in PARALLAX-adjusted
- * world space so camera motion just scrolls the lattice past the
- * viewport — every cell's content stays identical. Each star picks
- * its own velocity + speed from the hash, so they drift in
- * genuinely different directions (not as one scrolling field).
+ * One starfield layer. Everything is on an INTEGER pixel grid:
+ *
+ *   - Cells partition parallax-offset world space (so camera motion
+ *     scrolls the lattice, never re-rolling cells).
+ *   - Each live cell owns ONE star whose position is floored to the
+ *     integer world grid — guarantees a crisp N×N pixel appearance.
+ *   - Drift is applied BEFORE flooring, so a star still wanders one
+ *     pixel at a time rather than smearing across two.
+ *
+ * sizePx: star size in world-pixels (1 for dim, 2 for bright 2×2).
+ *   At zoom=1, 1 world unit = 1 screen pixel.
  */
 vec3 starLayer(vec2 worldPos, float cellSize, float parallax,
-               float density, float radiusWorld, float brightness,
+               float density, int sizePx, float maxBrightness,
                int salt) {
-    vec2 pp = worldPos * parallax;
+    // Parallax by OFFSET, not scale — keeps star size constant
+    // across layers. Layer at parallax=0 stays still relative to
+    // the screen; parallax=1 moves 1:1 with the camera.
+    vec2 pp = worldPos - uCamera * (1.0 - parallax);
+
     ivec2 cellID = ((ivec2(floor(pp / cellSize)) % 32768) + 32768) % 32768;
     vec2 inCell = fract(pp / cellSize);
 
     float lottery = hash1(cellID, salt);
     if (lottery > density * clamp(uDensidade, 0.0, 2.0)) return vec3(0.0);
 
-    // Per-star velocity vector in [-0.5, 0.5]² and speed 0.015..0.04
-    // — mirrors the original shader's motion model so the star field
-    // still feels alive (each star wandering its own direction) but
-    // every random here goes through the integer PCG hash.
+    // Per-star velocity + speed from the hash → each star wanders
+    // its own direction (same animation model as the original).
     vec2 velDir = hash2(cellID, salt + 23) - 0.5;
     float speed = 0.015 + hash1(cellID, salt + 43) * 0.025;
     vec2 drift = velDir * uTime * speed;
 
-    // Home position + drift, then fract() to wrap the star around
-    // inside its own cell. Invisible wrap because stars are sub-pixel
-    // at the cell boundary.
-    vec2 starPos = fract(hash2(cellID, salt + 13) + drift);
+    // Star position inside cell in [0, 1]² after drift.
+    vec2 starPosNorm = fract(hash2(cellID, salt + 13) + drift);
 
-    vec2 d = (inCell - starPos) * cellSize;
-    float distInf = max(abs(d.x), abs(d.y));
+    // Snap to integer world-pixel grid for crispness.
+    vec2 cellOrigin = vec2(cellID) * cellSize;
+    vec2 starWorldPx = floor(cellOrigin + starPosNorm * cellSize);
 
-    if (distInf > radiusWorld) return vec3(0.0);
+    // Fragment's parallax-space pixel coord.
+    vec2 fragWorldPx = floor(pp);
 
-    // Per-star brightness jitter so the field doesn't read as one flat
-    // greyscale. Matches the static bitmap's `90 + rand*120` range
-    // (roughly 0.35..1.0 in normalized space) within a single layer.
+    vec2 delta = fragWorldPx - starWorldPx;
+    float s = float(sizePx);
+    if (delta.x < 0.0 || delta.x >= s) return vec3(0.0);
+    if (delta.y < 0.0 || delta.y >= s) return vec3(0.0);
+
+    // Bitmap-matched brightness spread: 0.35..1.0 of maxBrightness.
     float bmod = 0.35 + 0.65 * hash1(cellID, salt + 97);
-    return vec3(brightness * bmod);
+    return vec3(maxBrightness * bmod);
 }
 
 void main() {
     vec2 worldPos = uCamera + (vUV - 0.5) * uViewport;
 
     vec3 col = vec3(0.0);
-    // Low parallax → stars feel distant.
-    // Three layers matching the static bitmap's density: dense dim
-    // up front, sparser + brighter at depth.
-    // Tuned to match the static bitmap reference: ~390 dots per 512²
-    // tile × ~4 tiles visible in a 1366×768 viewport ≈ 1500 stars
-    // on screen. Per-layer breakdown:
-    //   - dim: ~1300 stars (cellSize 24, density 0.75)
-    //   - mid: ~120 stars  (cellSize 60)
-    //   - brt: ~10 stars   (cellSize 200, radius 1.5 = 2×2 pixels)
-    // Per-star brightness jitter (inside starLayer) spreads each
-    // layer across a greyscale range so the field isn't flat.
-    col += starLayer(worldPos, 24.0,  0.40, 0.75, 0.5, 0.55, 1);
-    col += starLayer(worldPos, 60.0,  0.25, 0.40, 0.5, 0.85, 2);
-    col += starLayer(worldPos, 200.0, 0.12, 0.30, 1.5, 1.00, 3);
+    // Three layers — dense dim, medium, rare 2×2 brights. Counts
+    // roughly match the static bitmap reference (~1500 visible).
+    col += starLayer(worldPos, 24.0,  0.40, 0.75, 1, 0.80, 1);
+    col += starLayer(worldPos, 60.0,  0.25, 0.40, 1, 0.95, 2);
+    col += starLayer(worldPos, 200.0, 0.12, 0.30, 2, 1.00, 3);
 
     finalColor = vec4(col, 1.0);
 }
