@@ -33,7 +33,7 @@ let _styleInjected = false;
 // ─── Tooltip keys (resolved via t() at render time) ──────────────────
 
 type TooltipKey =
-  | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'fpsCap'
+  | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'ram' | 'fpsCap'
   | 'renderer' | 'webglVersion' | 'gpuPref' | 'verInfo' | 'orbitas'
   | 'starfield' | 'fantasmas' | 'shaderLive' | 'autosave' | 'saveMode'
   | 'confirmar' | 'edge';
@@ -580,6 +580,19 @@ function renderGraphicsTab(body: HTMLDivElement): void {
     cb.checked = gfx.mostrarFps;
     cb.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, mostrarFps: cb.checked } });
+    });
+    row.appendChild(cb);
+    body.appendChild(row);
+  }
+
+  // Mostrar uso de RAM
+  {
+    const [row] = rowWithLabel(t('settings.row.mostrar_ram'), 'ram');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = gfx.mostrarRam;
+    cb.addEventListener('change', () => {
+      setConfig({ graphics: { ...getConfig().graphics, mostrarRam: cb.checked } });
     });
     row.appendChild(cb);
     body.appendChild(row);

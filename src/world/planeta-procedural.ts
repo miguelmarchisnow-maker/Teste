@@ -1,4 +1,4 @@
-import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite, Container, Rectangle } from 'pixi.js';
+import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite, Container, Rectangle, RenderTexture } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import vertexSrc from '../shaders/planeta.vert?raw';
 import fragmentSrc from '../shaders/planeta.frag?raw';
@@ -10,6 +10,47 @@ let _appRef: Application | null = null;
 
 export function setAppReferenceForBake(app: Application): void {
   _appRef = app;
+}
+
+/**
+ * Force the planet shader program to compile + link NOW, before any real
+ * planet first renders. In Pixi v8 the GL/GPU program is compiled lazily
+ * on first draw, which produced a visible 100-400ms hitch the first time
+ * a world became visible (player sees "loaded" then FPS tanks as the
+ * driver compiles mid-frame). Calling this during the load/menu screen
+ * amortises that cost into the loading phase where the user expects a
+ * pause anyway.
+ *
+ * Safe to call multiple times — the GPU driver caches the linked program.
+ */
+export async function precompilarShadersPlaneta(app: Application): Promise<void> {
+  let warmup: Container | null = null;
+  let target: RenderTexture | null = null;
+  try {
+    warmup = new Container();
+    const tipos = Object.values(TIPO_PLANETA);
+    for (const tipo of tipos) {
+      const mesh = criarPlanetaProceduralSprite(0, 0, 8, tipo, 1.0);
+      warmup.addChild(mesh);
+    }
+    const solMesh = criarEstrelaProcedural(0, 0, 8);
+    warmup.addChild(solMesh);
+
+    // Render into an 8×8 RenderTexture — forces the driver to compile
+    // + link the shared GlProgram without flashing anything onto the
+    // visible canvas.
+    target = RenderTexture.create({ width: 8, height: 8 });
+    app.renderer.render({ container: warmup, target });
+
+    // One RAF for the GPU to settle; two to be safe across drivers.
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  } catch (err) {
+    console.warn('[planeta-procedural] shader warmup failed (non-fatal):', err);
+  } finally {
+    try { warmup?.destroy({ children: true }); } catch { /* noop */ }
+    try { target?.destroy(true); } catch { /* noop */ }
+  }
 }
 
 interface PaletaPlaneta {

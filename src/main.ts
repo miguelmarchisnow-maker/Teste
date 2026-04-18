@@ -37,7 +37,7 @@ import { criarLoadingScreen, mostrarCarregando, esconderCarregando, setLoadingFa
 import { t } from './core/i18n/t';
 import { somVitoria, somDerrota } from './audio/som';
 import { iniciarMusicaAmbiente, pararMusicaAmbiente } from './audio/musica-ambiente';
-import { setAppReferenceForBake } from './world/planeta-procedural';
+import { setAppReferenceForBake, precompilarShadersPlaneta } from './world/planeta-procedural';
 // Top-level state shared across bootstrap, iniciarJogoNovo, and carregarMundo.
 let _app: Application | null = null;
 let _mundo: Mundo | null = null;
@@ -174,8 +174,25 @@ async function bootstrap(): Promise<void> {
     display: ${gfx.mostrarFps ? 'block' : 'none'};
   `;
   document.body.appendChild(fpsEl);
+
+  // ── RAM counter (Chromium-only; Firefox exposes no equivalent API) ──
+  // Sits just below the FPS readout and mirrors its styling.
+  const ramEl = document.createElement('div');
+  ramEl.style.cssText = `
+    position: fixed;
+    top: calc(var(--hud-unit) * 0.5 + var(--hud-unit) * 1.8);
+    right: calc(var(--hud-unit) * 0.5);
+    font-family: var(--hud-font); font-size: calc(var(--hud-unit) * 0.75);
+    color: var(--hud-text-dim); background: rgba(0,0,0,0.5);
+    padding: calc(var(--hud-unit) * 0.2) calc(var(--hud-unit) * 0.5);
+    border: 1px solid var(--hud-border); z-index: 600; pointer-events: none;
+    display: ${gfx.mostrarRam ? 'block' : 'none'};
+  `;
+  document.body.appendChild(ramEl);
+
   let _fpsAccum = 0;
   let _fpsFrames = 0;
+  let _ramAccum = 0;
   app.ticker.add(() => {
     _fpsFrames++;
     _fpsAccum += app.ticker.deltaMS;
@@ -184,9 +201,24 @@ async function bootstrap(): Promise<void> {
       _fpsAccum = 0;
       _fpsFrames = 0;
     }
+    // RAM sampled at ~1Hz; performance.memory is a heavy call on some
+    // engines and the value only moves on the scale of MB anyway.
+    _ramAccum += app.ticker.deltaMS;
+    if (_ramAccum >= 1000 && ramEl.style.display !== 'none') {
+      _ramAccum = 0;
+      const mem = (performance as any).memory;
+      if (mem && typeof mem.usedJSHeapSize === 'number') {
+        const usedMB = mem.usedJSHeapSize / (1024 * 1024);
+        const totalMB = mem.jsHeapSizeLimit / (1024 * 1024);
+        ramEl.textContent = `${usedMB.toFixed(0)} / ${totalMB.toFixed(0)} MB`;
+      } else {
+        ramEl.textContent = 'RAM --';
+      }
+    }
   });
   onConfigChange((cfg) => {
     fpsEl.style.display = cfg.graphics.mostrarFps ? 'block' : 'none';
+    ramEl.style.display = cfg.graphics.mostrarRam ? 'block' : 'none';
   });
 
   // ── Scanlines CRT overlay ──
@@ -245,6 +277,13 @@ async function bootstrap(): Promise<void> {
   _app = app;
   (window as any)._app = app;
   setAppReferenceForBake(app);
+
+  // Pre-compile the planet/star shader programs NOW so the driver link
+  // step happens during boot (where a pause is expected) instead of
+  // mid-frame the first time a real planet renders. Without this the
+  // initial ~second of gameplay showed a visible FPS sag while the GL
+  // driver compiled + linked the shared GlProgram.
+  await precompilarShadersPlaneta(app);
 
   // Build the menu background: a lightweight single-system world, not
   // the full 18-system game world. When the player clicks Novo Jogo we

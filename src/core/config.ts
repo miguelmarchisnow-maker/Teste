@@ -19,6 +19,7 @@ export interface OrbitalConfig {
     fullscreen: boolean;
     scanlines: boolean;
     mostrarFps: boolean;
+    mostrarRam: boolean;
     fpsCap: number;
     renderer: 'webgl' | 'webgpu' | 'software';
     webglVersion: 'auto' | '1' | '2';
@@ -59,6 +60,7 @@ export const DEFAULTS: OrbitalConfig = {
     fullscreen: false,
     scanlines: true,
     mostrarFps: false,
+    mostrarRam: false,
     fpsCap: 0,
     renderer: 'webgl',
     webglVersion: 'auto',
