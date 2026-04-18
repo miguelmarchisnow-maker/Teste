@@ -631,29 +631,61 @@ function renderGraphicsTab(body: HTMLDivElement): void {
     body.appendChild(row);
   }
 
-  // Render scale — reduces GPU pixel count without changing the
-  // on-screen layout. At 0.5 the game renders at a quarter of the
-  // pixels and the browser upscales. Huge win on weak GPUs.
+  // Render scale — slider from 0.1× to 4×. Multiplies the pixel
+  // count the GPU processes without changing the on-screen layout.
+  // A live readout below the slider shows the effective render
+  // resolution (window.css × scale × dpr) alongside the native CSS
+  // size so users can see exactly how many pixels they just saved.
   {
-    const [row] = rowWithLabel(t('settings.row.escala_render'), 'renderScale');
-    const select = criarSelect([
-      ['0.1',  '0.1× (pixel art extremo)'],
-      ['0.15', '0.15×'],
-      ['0.2',  '0.2×'],
-      ['0.25', '0.25× (1/16 pixels)'],
-      ['0.33', '0.33×'],
-      ['0.5',  '0.5× (1/4 pixels)'],
-      ['0.66', '0.66×'],
-      ['0.75', '0.75×'],
-      ['1',    '1× (nativo)'],
-      ['1.25', '1.25×'],
-      ['1.5',  '1.5× (supersample)'],
-      ['2',    '2× (4K ↑ nitidez)'],
-    ], String(gfx.renderScale ?? 1));
-    select.addEventListener('change', () => {
-      setConfig({ graphics: { ...getConfig().graphics, renderScale: Number(select.dataset.value!) } });
+    const [row, lbl] = rowWithLabel(t('settings.row.escala_render'), 'renderScale');
+    lbl.style.gridColumn = '1 / -1';
+    row.style.gridTemplateColumns = '1fr';
+
+    const controlBar = document.createElement('div');
+    controlBar.style.cssText = 'display: flex; align-items: center; gap: calc(var(--hud-unit) * 0.6); width: 100%;';
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0.1';
+    slider.max = '4';
+    slider.step = '0.05';
+    slider.value = String(gfx.renderScale ?? 1);
+    slider.style.cssText = 'flex: 1;';
+
+    const scaleReadout = document.createElement('span');
+    scaleReadout.style.cssText = 'min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; color: #fff;';
+
+    const resReadout = document.createElement('div');
+    resReadout.style.cssText = 'font-size: 0.85em; color: rgba(255,255,255,0.6); margin-top: 4px; font-variant-numeric: tabular-nums;';
+
+    const refresh = (v: number): void => {
+      scaleReadout.textContent = `${v.toFixed(2)}×`;
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = window.innerWidth;
+      const cssH = window.innerHeight;
+      const renderW = Math.round(cssW * v * dpr);
+      const renderH = Math.round(cssH * v * dpr);
+      const nativeW = Math.round(cssW * dpr);
+      const nativeH = Math.round(cssH * dpr);
+      const pixelsAtual = renderW * renderH;
+      const pixelsNativo = nativeW * nativeH;
+      const ratio = pixelsNativo > 0 ? pixelsAtual / pixelsNativo : 1;
+      resReadout.textContent =
+        `Renderizando em ${renderW}×${renderH} · nativo ${nativeW}×${nativeH}` +
+        ` · ${(ratio * 100).toFixed(0)}% dos pixels`;
+    };
+    refresh(Number(slider.value));
+
+    slider.addEventListener('input', () => {
+      refresh(Number(slider.value));
     });
-    row.appendChild(select);
+    slider.addEventListener('change', () => {
+      setConfig({ graphics: { ...getConfig().graphics, renderScale: Number(slider.value) } });
+    });
+
+    controlBar.append(slider, scaleReadout);
+    row.appendChild(controlBar);
+    row.appendChild(resReadout);
     body.appendChild(row);
   }
 
