@@ -228,6 +228,15 @@ async function bootstrap(): Promise<void> {
             ...currentGfx,
             qualidadeEfeitos: 'minimo',
             renderScale: 0.15,
+            // Fog on software is expensive (canvas draw + GPU upload
+            // every frame). Bump throttle hard — 15 means the fog
+            // refreshes ~4×/s instead of 12×/s, imperceptible for
+            // the player and a big saving on WARP.
+            fogThrottle: 15,
+            // Dim the starfield density even though we route to the
+            // static tiling path — defensive in case the shader path
+            // kicks in anyway (e.g. Canvas2D mode dispatcher differs).
+            densidadeStarfield: 0.1,
             _softwareDetectedOnce: true,
           } as any,
         });

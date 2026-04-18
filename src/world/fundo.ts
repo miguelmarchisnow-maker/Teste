@@ -10,6 +10,10 @@ import { getConfig } from '../core/config';
 import {
   criarFundoCanvas, atualizarFundoCanvas, getStarfieldCanvasMemoryBytes,
 } from './fundo-canvas';
+import {
+  criarFundoEstatico, atualizarFundoEstatico, getStarfieldEstaticoMemoryBytes,
+} from './fundo-estatico';
+import { detectarRendererSoftware } from '../core/benchmark';
 
 /**
  * Starfield renderer — one fullscreen Mesh running a procedural
@@ -28,11 +32,13 @@ interface FundoContainer extends Container {
 }
 
 /**
- * Approximate bytes held by the starfield renderer. Shader path is
- * ~10 KB; Canvas2D path adds the ImageData + uploaded texture.
+ * Approximate bytes held by the starfield renderer. Varies by path:
+ * shader (~10 KB), Canvas2D JS port (ImageData + upload), or the
+ * static WARP-friendly tiling sprite.
  */
 export function getStarfieldMemoryBytes(fundo: Container): number {
   if ((fundo as any)._isCanvasFundo) return getStarfieldCanvasMemoryBytes(fundo);
+  if ((fundo as any)._isStaticFundo) return getStarfieldEstaticoMemoryBytes(fundo);
   return 10 * 1024;
 }
 
@@ -47,6 +53,15 @@ function isCanvas2dRenderer(): boolean {
   const anyR = _appRef.renderer as any;
   const name = anyR.name ?? anyR.type ?? '';
   return typeof name === 'string' && name.toLowerCase().includes('canvas');
+}
+
+function isSoftwareRenderer(): boolean {
+  if (!_appRef) return false;
+  try {
+    return detectarRendererSoftware(_appRef).isSoftware;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Shared GPU resources ─────────────────────────────────────────
@@ -127,6 +142,15 @@ export async function precompilarShaderStarfield(
 }
 
 export function criarFundo(tamanhoMundo: number): FundoContainer {
+  // Software (WARP / SwiftShader / LLVMpipe) → static tiling sprite.
+  // No per-frame shader, no per-pixel compute; just a pre-baked
+  // canvas tile that pans with the camera. Expect ~20 ms/frame back
+  // compared to the procedural shader on CPU-rasterized WebGL.
+  if (isSoftwareRenderer() && !isCanvas2dRenderer()) {
+    const staticFundo = criarFundoEstatico(tamanhoMundo) as unknown as FundoContainer;
+    (staticFundo as any)._isStaticFundo = true;
+    return staticFundo;
+  }
   if (isCanvas2dRenderer()) {
     const canvasFundo = criarFundoCanvas(tamanhoMundo) as unknown as FundoContainer;
     (canvasFundo as any)._isCanvasFundo = true;
@@ -159,6 +183,10 @@ export function atualizarFundo(
   telaW: number,
   telaH: number,
 ): void {
+  if ((fundo as any)._isStaticFundo) {
+    atualizarFundoEstatico(fundo as any, jogadorX, jogadorY, telaW, telaH);
+    return;
+  }
   if ((fundo as any)._isCanvasFundo) {
     atualizarFundoCanvas(fundo as any, jogadorX, jogadorY, telaW, telaH);
     return;
