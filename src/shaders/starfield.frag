@@ -83,9 +83,15 @@ void main() {
     // Low parallax → stars feel distant.
     // Three layers matching the static bitmap's density: dense dim
     // up front, sparser + brighter at depth.
-    col += starLayer(worldPos, 22.0,  0.40, 0.85, 1.0, 0.45, 1);
-    col += starLayer(worldPos, 34.0,  0.25, 0.60, 1.0, 0.70, 2);
-    col += starLayer(worldPos, 160.0, 0.12, 0.45, 2.0, 1.00, 3);
+    // Tuned to roughly match the static bitmap (~390 dots per 512²
+    // tile = ~0.0015 dots/px). On a 1366×768 viewport at zoom=1
+    // that's ~150 visible stars — readable, not busy.
+    //
+    // radiusWorld is in world units; at zoom=1 that's pixels, so
+    // 0.5 draws a 1×1 pixel star, 1.5 draws a 2×2 star.
+    col += starLayer(worldPos, 55.0,  0.40, 0.35, 0.5, 0.40, 1);
+    col += starLayer(worldPos, 80.0,  0.25, 0.30, 0.5, 0.65, 2);
+    col += starLayer(worldPos, 200.0, 0.12, 0.28, 1.5, 1.00, 3);
 
     finalColor = vec4(col, 1.0);
 }

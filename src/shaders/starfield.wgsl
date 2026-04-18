@@ -103,9 +103,9 @@ fn mainFragment(@location(0) vUV: vec2<f32>) -> @location(0) vec4<f32> {
     let dens = starUniforms.uDensidade;
 
     var col = vec3<f32>(0.0);
-    col = col + starLayer(worldPos, 22.0,  0.40, 0.85, 1.0, 0.45, 1, t, dens);
-    col = col + starLayer(worldPos, 34.0,  0.25, 0.60, 1.0, 0.70, 2, t, dens);
-    col = col + starLayer(worldPos, 160.0, 0.12, 0.45, 2.0, 1.00, 3, t, dens);
+    col = col + starLayer(worldPos, 55.0,  0.40, 0.35, 0.5, 0.40, 1, t, dens);
+    col = col + starLayer(worldPos, 80.0,  0.25, 0.30, 0.5, 0.65, 2, t, dens);
+    col = col + starLayer(worldPos, 200.0, 0.12, 0.28, 1.5, 1.00, 3, t, dens);
 
     return vec4<f32>(col, 1.0);
 }
