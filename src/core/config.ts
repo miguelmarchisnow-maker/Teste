@@ -22,6 +22,9 @@ export interface OrbitalConfig {
     mostrarRam: boolean;
     vsync: boolean;
     fpsCap: number;
+    renderScale: number;   // 0.5..1.5. Pixi resolution multiplier — independent
+                           // of window DPR. <1 renders fewer pixels + browser
+                           // upscales; >1 oversamples for crisper output.
     renderer: 'webgl' | 'webgpu' | 'software';
     webglVersion: 'auto' | '1' | '2';
     gpuPreference: 'auto' | 'high-performance' | 'low-power';
@@ -64,6 +67,7 @@ export const DEFAULTS: OrbitalConfig = {
     mostrarRam: false,
     vsync: true,
     fpsCap: 0,
+    renderScale: 1.0,
     renderer: 'webgl',
     webglVersion: 'auto',
     gpuPreference: 'auto',

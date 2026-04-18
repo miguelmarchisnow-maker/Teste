@@ -33,7 +33,7 @@ let _styleInjected = false;
 // ─── Tooltip keys (resolved via t() at render time) ──────────────────
 
 type TooltipKey =
-  | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'ram' | 'fpsCap' | 'vsync'
+  | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'ram' | 'fpsCap' | 'vsync' | 'renderScale'
   | 'renderer' | 'webglVersion' | 'gpuPref' | 'verInfo' | 'orbitas'
   | 'starfield' | 'fantasmas' | 'shaderLive' | 'autosave' | 'saveMode'
   | 'confirmar' | 'edge';
@@ -626,6 +626,32 @@ function renderGraphicsTab(body: HTMLDivElement): void {
     ], String(gfx.fpsCap));
     select.addEventListener('change', () => {
       setConfig({ graphics: { ...getConfig().graphics, fpsCap: Number(select.dataset.value!) } });
+    });
+    row.appendChild(select);
+    body.appendChild(row);
+  }
+
+  // Render scale — reduces GPU pixel count without changing the
+  // on-screen layout. At 0.5 the game renders at a quarter of the
+  // pixels and the browser upscales. Huge win on weak GPUs.
+  {
+    const [row] = rowWithLabel(t('settings.row.escala_render'), 'renderScale');
+    const select = criarSelect([
+      ['0.1',  '0.1× (pixel art extremo)'],
+      ['0.15', '0.15×'],
+      ['0.2',  '0.2×'],
+      ['0.25', '0.25× (1/16 pixels)'],
+      ['0.33', '0.33×'],
+      ['0.5',  '0.5× (1/4 pixels)'],
+      ['0.66', '0.66×'],
+      ['0.75', '0.75×'],
+      ['1',    '1× (nativo)'],
+      ['1.25', '1.25×'],
+      ['1.5',  '1.5× (supersample)'],
+      ['2',    '2× (4K ↑ nitidez)'],
+    ], String(gfx.renderScale ?? 1));
+    select.addEventListener('change', () => {
+      setConfig({ graphics: { ...getConfig().graphics, renderScale: Number(select.dataset.value!) } });
     });
     row.appendChild(select);
     body.appendChild(row);

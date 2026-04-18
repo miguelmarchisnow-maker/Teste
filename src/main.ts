@@ -83,11 +83,18 @@ async function bootstrap(): Promise<void> {
   const app = new Application();
 
   const gfx = getConfig().graphics;
+  // renderScale multiplies the baseline (devicePixelRatio) so users on
+  // high-DPI displays can drop below native and users on low-end GPUs
+  // can render fewer pixels without changing window layout. The CSS
+  // size of the canvas stays at window.innerWidth × innerHeight;
+  // only the backing-store resolution changes.
+  const baselineDpr = window.devicePixelRatio || 1;
+  const renderScale = gfx.renderScale ?? 1;
   const baseInit: any = {
     width: window.innerWidth,
     height: window.innerHeight,
     backgroundColor: 0x000000,
-    resolution: window.devicePixelRatio || 1,
+    resolution: baselineDpr * renderScale,
     autoDensity: true,
     antialias: true,
   };
@@ -195,6 +202,19 @@ async function bootstrap(): Promise<void> {
   };
   aplicarModoFps(gfx.vsync, gfx.fpsCap);
   onConfigChange((cfg) => aplicarModoFps(cfg.graphics.vsync, cfg.graphics.fpsCap));
+
+  // Live render-scale updates: change Pixi's backing-store resolution
+  // and force a resize so every Mesh/Sprite gets the new projection.
+  // The canvas CSS size stays the same; browser bilinear-upscales when
+  // renderScale < 1.
+  let _lastRenderScale = renderScale;
+  onConfigChange((cfg) => {
+    const next = cfg.graphics.renderScale ?? 1;
+    if (next === _lastRenderScale) return;
+    _lastRenderScale = next;
+    (app.renderer as any).resolution = baselineDpr * next;
+    app.renderer.resize(window.innerWidth, window.innerHeight);
+  });
 
   // ── FPS counter ──
   const fpsEl = document.createElement('div');

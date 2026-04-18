@@ -344,6 +344,8 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'settings.row.mostrar_fps': { pt: 'Mostrar FPS', en: 'Show FPS' },
   'settings.row.mostrar_ram': { pt: 'Mostrar uso de RAM', en: 'Show RAM usage' },
   'settings.row.vsync': { pt: 'Vsync', en: 'Vsync' },
+  'settings.row.escala_render': { pt: 'Escala de renderização', en: 'Render scale' },
+  'tooltips.renderScale': { pt: 'Escala de renderização\n\nMultiplica o número de pixels que a GPU processa,\nsem mudar o tamanho da tela.\n\n0.5× = 1/4 dos pixels → 4× menos trabalho, upscale\nfeito pelo browser. Essencial em GPU fraca.\n\n1× = nativo. 1.5× = supersample (mais nítido,\nmais pesado).', en: 'Render scale\n\nMultiplies the pixel count the GPU processes\nwithout changing the on-screen size.\n\n0.5× = 1/4 pixels → 4× less work, browser\nupscales. Essential on weak GPUs.\n\n1× = native. 1.5× = supersampled (crisper,\nheavier).' },
   'tooltips.vsync': { pt: 'Vsync\n\nSincroniza a renderização com o refresh do\nmonitor (60/120/144 Hz). Sem vsync o loop roda\nvia setTimeout, o contador de FPS sobe pro\nmáximo que o PC consegue — mas visualmente a\ntela ainda pinta no refresh do display.\n\nDesligue pra benchmark; ligue pra economizar\nCPU/GPU e bateria.', en: 'Vsync\n\nSyncs rendering with the monitor refresh rate\n(60/120/144 Hz). Off drives the loop via\nsetTimeout — the FPS counter climbs to the raw\nprocessing rate, but the screen still paints at\ndisplay refresh.\n\nTurn off to benchmark; on to save CPU/GPU and\nbattery.' },
   'settings.row.limite_fps': { pt: 'Limite de FPS', en: 'FPS limit' },
   'settings.row.renderer': { pt: 'Motor de renderização', en: 'Rendering engine' },
