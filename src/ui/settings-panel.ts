@@ -628,15 +628,14 @@ function renderGraphicsTab(body: HTMLDivElement): void {
         });
         _refreshBody?.();
 
-        // Final report — a styled card with GPU tier, perf stats,
-        // and applied recommendations. Stays visible until the
+        // Final report — monochrome card. Stays visible until the
         // player clicks OK.
         while (card.firstChild) card.removeChild(card.firstChild);
         card.style.cssText = [
-          'background: linear-gradient(180deg, rgba(12,16,28,0.92), rgba(4,6,12,0.92))',
+          'background: linear-gradient(180deg, rgba(10,10,10,0.94), rgba(0,0,0,0.94))',
           'backdrop-filter: blur(10px)',
-          'border: 1px solid rgba(110,193,255,0.35)',
-          'box-shadow: 0 0 40px rgba(110,193,255,0.15), inset 0 0 20px rgba(110,193,255,0.05)',
+          'border: 1px solid rgba(255,255,255,0.3)',
+          'box-shadow: 0 0 40px rgba(0,0,0,0.6), inset 0 0 20px rgba(255,255,255,0.03)',
           'padding: 20px 26px 18px',
           'min-width: 420px', 'max-width: 520px',
           'border-radius: 6px',
@@ -648,21 +647,15 @@ function renderGraphicsTab(body: HTMLDivElement): void {
         const avgFps = result.avgFrameMs > 0 ? Math.round(1000 / result.avgFrameMs) : 0;
         const p95Fps = result.p95FrameMs > 0 ? Math.round(1000 / result.p95FrameMs) : 0;
 
+        // Monochrome tier palette — shades of white/gray. Darker
+        // the tier, dimmer the readout.
         const tierColor: Record<string, string> = {
-          'topo':         '#a8f0c8',
-          'alto':         '#6ec1ff',
-          'medio':        '#f5d86e',
-          'entrada':      '#f5a86e',
-          'fraco':        '#f27570',
-          'muito-fraco':  '#c8585a',
-        };
-        const tierPt: Record<string, string> = {
-          'topo':         'TOPO DE LINHA',
-          'alto':         'ALTO',
-          'medio':        'MÉDIO',
-          'entrada':      'ENTRADA',
-          'fraco':        'FRACO',
-          'muito-fraco':  'MUITO FRACO',
+          'topo':         '#ffffff',
+          'alto':         '#e6e6e6',
+          'medio':        '#c2c2c2',
+          'entrada':      '#9a9a9a',
+          'fraco':        '#747474',
+          'muito-fraco':  '#505050',
         };
         const tierIdx: Record<string, number> = {
           'muito-fraco': 0, 'fraco': 1, 'entrada': 2, 'medio': 3, 'alto': 4, 'topo': 5,
@@ -672,7 +665,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
         const header = document.createElement('div');
         header.style.cssText = 'text-align: center; margin-bottom: 14px;';
         const titleEl = document.createElement('div');
-        titleEl.style.cssText = 'font-size: 1.2em; letter-spacing: 0.1em; color: #6ec1ff;';
+        titleEl.style.cssText = 'font-size: 1.2em; letter-spacing: 0.1em; color: #fff;';
         titleEl.textContent = '◆ RELATÓRIO DO BENCHMARK ◆';
         const subtitle = document.createElement('div');
         subtitle.style.cssText = 'font-size: 0.7em; color: rgba(255,255,255,0.5); margin-top: 2px;';
@@ -737,21 +730,20 @@ function renderGraphicsTab(body: HTMLDivElement): void {
           makeStat('Mais lento',  `${result.maxFrameMs.toFixed(1)} ms`, ''),
         );
 
-        // Section: recommendation (highlighted)
+        // Section: recommendation (highlighted — monochrome)
         const recSec = document.createElement('div');
-        recSec.style.cssText = 'background: linear-gradient(180deg, rgba(110,193,255,0.14), rgba(110,193,255,0.04)); border: 1px solid rgba(110,193,255,0.3); border-radius: 4px; padding: 10px 12px; margin-bottom: 10px;';
+        recSec.style.cssText = 'background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03)); border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 10px 12px; margin-bottom: 10px;';
         const recTitle = document.createElement('div');
         recTitle.style.cssText = 'font-size: 0.7em; color: rgba(255,255,255,0.6); letter-spacing: 0.1em; margin-bottom: 6px;';
         recTitle.textContent = 'RECOMENDADO';
         const recGrid = document.createElement('div');
         recGrid.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;';
         const recPreset = document.createElement('div');
-        recPreset.innerHTML = '';
         const presetLbl = document.createElement('div');
         presetLbl.style.cssText = 'font-size: 0.7em; color: rgba(255,255,255,0.5);';
         presetLbl.textContent = 'Preset';
         const presetVal = document.createElement('div');
-        presetVal.style.cssText = 'font-size: 1.1em; color: #6ec1ff; font-weight: bold;';
+        presetVal.style.cssText = 'font-size: 1.1em; color: #fff; font-weight: bold;';
         presetVal.textContent = result.recommendedPreset.toUpperCase();
         recPreset.append(presetLbl, presetVal);
         const recScale = document.createElement('div');
@@ -759,30 +751,30 @@ function renderGraphicsTab(body: HTMLDivElement): void {
         scaleLbl.style.cssText = 'font-size: 0.7em; color: rgba(255,255,255,0.5);';
         scaleLbl.textContent = 'Escala de render';
         const scaleVal = document.createElement('div');
-        scaleVal.style.cssText = 'font-size: 1.1em; color: #6ec1ff; font-weight: bold;';
+        scaleVal.style.cssText = 'font-size: 1.1em; color: #fff; font-weight: bold;';
         scaleVal.textContent = `${result.recommendedRenderScale.toFixed(2)}×`;
         recScale.append(scaleLbl, scaleVal);
         recGrid.append(recPreset, recScale);
         recSec.append(recTitle, recGrid);
 
-        // Applied message + OK button
+        // Applied message + OK button (monochrome)
         const applied = document.createElement('div');
-        applied.style.cssText = 'text-align: center; color: #5fbd6f; font-size: 0.85em; margin-bottom: 12px;';
+        applied.style.cssText = 'text-align: center; color: rgba(255,255,255,0.7); font-size: 0.85em; margin-bottom: 12px;';
         applied.textContent = '✓ configurações aplicadas automaticamente';
 
         const closeBtn = document.createElement('button');
         closeBtn.style.cssText = [
           'display: block', 'margin: 0 auto',
           'padding: 8px 32px',
-          'background: rgba(110,193,255,0.15)', 'color: #fff',
-          'border: 1px solid rgba(110,193,255,0.5)', 'border-radius: 3px',
+          'background: rgba(255,255,255,0.08)', 'color: #fff',
+          'border: 1px solid rgba(255,255,255,0.5)', 'border-radius: 3px',
           'cursor: pointer', 'pointer-events: auto',
           'font-family: inherit', 'font-size: 0.9em', 'letter-spacing: 0.1em',
           'transition: background 120ms ease',
         ].join(';');
         closeBtn.textContent = 'OK';
-        closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'rgba(110,193,255,0.3)'; });
-        closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'rgba(110,193,255,0.15)'; });
+        closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'rgba(255,255,255,0.18)'; });
+        closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'rgba(255,255,255,0.08)'; });
         closeBtn.addEventListener('click', () => { try { overlay.remove(); } catch { /* noop */ } });
 
         card.append(header, gpuSec, perfSec, recSec, applied, closeBtn);

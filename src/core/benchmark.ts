@@ -152,17 +152,17 @@ function classificar(avgMs: number): {
   preset: OrbitalConfig['graphics']['qualidadeEfeitos'];
   scale: number;
 } {
-  // Thresholds target gameplay-equivalent workload: the scene
-  // approximates what a player actually sees (a handful of planets
-  // at mixed sizes + a sun, one render per sample, natural octave
-  // counts from the palette). avgMs is the real post-gl.finish
-  // frame cost for that workload. The preset is picked so that at
-  // 60 FPS (16.67 ms budget) the user has headroom on 'alto'.
-  if (avgMs < 4)      return { preset: 'alto',   scale: 1.0 };
-  if (avgMs < 9)      return { preset: 'medio',  scale: 1.0 };
-  if (avgMs < 14)     return { preset: 'medio',  scale: 0.85 };
-  if (avgMs < 22)     return { preset: 'baixo',  scale: 0.75 };
-  if (avgMs < 40)     return { preset: 'baixo',  scale: 0.5 };
+  // Preset thresholds are deliberately generous — the game itself is
+  // very light, roughly 4× less expensive than the benchmark scene.
+  // Intel HD integrated graphics runs it at 'alto' without problems,
+  // so any dedicated GPU should get 'alto' too. We only drop to
+  // lower presets when the measurement suggests the machine is
+  // genuinely struggling on the stress scene.
+  if (avgMs < 20)     return { preset: 'alto',   scale: 1.0 };
+  if (avgMs < 35)     return { preset: 'medio',  scale: 1.0 };
+  if (avgMs < 55)     return { preset: 'medio',  scale: 0.85 };
+  if (avgMs < 80)     return { preset: 'baixo',  scale: 0.75 };
+  if (avgMs < 130)    return { preset: 'baixo',  scale: 0.5 };
   return               { preset: 'minimo', scale: 0.35 };
 }
 
