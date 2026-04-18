@@ -3,6 +3,18 @@ import { getConfig } from '../core/config';
 
 const TILE = 2048;
 
+/**
+ * Rough GPU memory held by the starfield texture cache right now.
+ * Each tile is an RGBA canvas-backed texture of TILE × TILE = 16 MB.
+ * Used by the RAM HUD readout when `performance.memory` isn't
+ * available (Firefox/Safari) or to show the GPU side of the budget.
+ */
+export function getStarfieldMemoryBytes(fundo: Container): number {
+  const f = fundo as FundoContainer;
+  const count = f._cache?.size ?? 0;
+  return count * TILE * TILE * 4;
+}
+
 interface TileSprite extends Sprite {
   _tx: number;
   _ty: number;

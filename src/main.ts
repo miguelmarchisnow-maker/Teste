@@ -1,6 +1,8 @@
 import { Application } from 'pixi.js';
 import type { Mundo, TipoJogador } from './types';
 import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo, setDificuldadeProximoMundo, getDificuldadeAtual } from './world/mundo';
+import { getStarfieldMemoryBytes } from './world/fundo';
+import { getFogMemoryBytes } from './world/nevoa';
 import type { Dificuldade, PersonalidadeIA } from './world/personalidade-ia';
 import { gerarPersonalidades, PRESETS_DIFICULDADE } from './world/personalidade-ia';
 import { setPersonalidadesParaMundoCarregado } from './world/ia-decisao';
@@ -185,19 +187,37 @@ async function bootstrap(): Promise<void> {
   `;
   document.body.appendChild(ramEl);
 
-  // Sample performance.memory once and write into ramEl. Factored out so
-  // we can fire it immediately on toggle-on instead of making the user
-  // stare at an empty box for up to a second until the periodic tick.
+  // Build an app-side estimate of total RAM use — this always works
+  // (unlike performance.memory which is Chromium-only and doesn't
+  // even reflect GPU textures, the real cost in this game). We show
+  // performance.memory as an extra field if the browser exposes it.
+  //
+  // Accounted for:
+  //   - Starfield GPU tile cache (the big one: 16 MB / tile × cache size)
+  //   - Fog-of-war canvas + GPU upload (~4 MB)
+  //   - Planet/ship sprite + data (rough per-entity constant)
+  //   - A fixed baseline for Pixi runtime + spritesheets + JS bundle
+  const BASELINE_BYTES = 50 * 1024 * 1024; // Pixi + bundle + spritesheets
   const sampleRam = (): void => {
+    let totalBytes = BASELINE_BYTES;
+    const activeFundo = _mundo?.fundo ?? _mundoMenu?.fundo;
+    if (activeFundo) totalBytes += getStarfieldMemoryBytes(activeFundo);
+    totalBytes += getFogMemoryBytes();
+    const world = _mundo;
+    if (world) {
+      // ~4 KB per planet (sprite + shader uniforms + data), ~2 KB per ship.
+      totalBytes += world.planetas.length * 4 * 1024;
+      totalBytes += world.naves.length * 2 * 1024;
+    }
+    const estMB = totalBytes / (1024 * 1024);
+    let text = `~${estMB.toFixed(0)} MB`;
+    // Chromium bonus: append actual JS heap as a sanity check when present.
     const mem = (performance as any).memory;
     if (mem && typeof mem.usedJSHeapSize === 'number') {
-      const usedMB = mem.usedJSHeapSize / (1024 * 1024);
-      const totalMB = mem.jsHeapSizeLimit / (1024 * 1024);
-      ramEl.textContent = `${usedMB.toFixed(0)} / ${totalMB.toFixed(0)} MB`;
-    } else {
-      // Firefox + Safari don't expose performance.memory at all.
-      ramEl.textContent = 'RAM n/a';
+      const jsMB = mem.usedJSHeapSize / (1024 * 1024);
+      text += ` · JS ${jsMB.toFixed(0)}`;
     }
+    ramEl.textContent = text;
   };
   // Prime the label so the first toggle-on shows content right away.
   sampleRam();

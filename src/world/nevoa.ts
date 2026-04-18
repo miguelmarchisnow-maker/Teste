@@ -383,6 +383,17 @@ import { config } from '../ui/debug';
 const FOG_MAX_W = 960;
 const FOG_MAX_H = 540;
 
+/**
+ * Approximate bytes held by fog-of-war resources — the backing 2D
+ * canvas plus its uploaded GPU texture. Returns 0 before the first
+ * frame draws anything. Used by the RAM HUD estimate.
+ */
+export function getFogMemoryBytes(): number {
+  if (!_fogCanvas) return 0;
+  // Canvas bytes + GPU upload ≈ 2× the pixel data.
+  return FOG_MAX_W * FOG_MAX_H * 4 * 2;
+}
+
 let _fogCanvas: HTMLCanvasElement | null = null;
 let _fogCtx: CanvasRenderingContext2D | null = null;
 let _fogSprite: Sprite | null = null;
