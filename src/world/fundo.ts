@@ -82,6 +82,32 @@ function criarUniforms(): UniformGroup {
   });
 }
 
+/**
+ * Force the starfield shader program to compile + link NOW by rendering
+ * an off-screen test mesh. Call this once at boot — same pattern as
+ * precompilarShadersPlaneta — so the first world/menu render doesn't
+ * pay the GL link cost mid-frame.
+ */
+export async function precompilarShaderStarfield(
+  app: { renderer: { render: (opts: { container: Container; target: any }) => void } },
+): Promise<void> {
+  let warmup: Container | null = null;
+  let target: any = null;
+  try {
+    const { RenderTexture } = await import('pixi.js');
+    warmup = criarFundo(1) as Container;
+    target = RenderTexture.create({ width: 8, height: 8 });
+    app.renderer.render({ container: warmup, target });
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  } catch (err) {
+    console.warn('[fundo] starfield shader warmup failed (non-fatal):', err);
+  } finally {
+    try { warmup?.destroy({ children: true }); } catch { /* noop */ }
+    try { target?.destroy(true); } catch { /* noop */ }
+  }
+}
+
 export function criarFundo(_tamanhoMundo: number): FundoContainer {
   const container = new Container() as FundoContainer;
 
@@ -152,5 +178,6 @@ export function atualizarFundo(
   uniforms.uViewport[1] = telaH;
   uniforms.uTime = fundo._tempoAcumMs / 1000;
   uniforms.uDensidade = getConfig().graphics.densidadeStarfield;
-  fundo._uniforms.update();
+  // UniformGroup in Pixi v8 auto-dirty tracks property writes — no
+  // explicit .update() call needed (and none exists on the API).
 }

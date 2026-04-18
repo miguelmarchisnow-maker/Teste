@@ -1,7 +1,5 @@
-precision highp float;
-
 in vec2 vUV;
-out vec4 fragColor;
+out vec4 finalColor;
 
 // Camera in world units (center of viewport).
 uniform vec2 uCamera;
@@ -123,5 +121,5 @@ void main() {
     // Subtle background tint (deep-space blue) so it's not pure black.
     col += vec3(0.012, 0.014, 0.028);
 
-    fragColor = vec4(col, 1.0);
+    finalColor = vec4(col, 1.0);
 }

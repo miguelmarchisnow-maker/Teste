@@ -1,7 +1,7 @@
 import { Application } from 'pixi.js';
 import type { Mundo, TipoJogador } from './types';
 import { criarMundo, atualizarMundo, getEstadoJogo, destruirMundo, setDificuldadeProximoMundo, getDificuldadeAtual } from './world/mundo';
-import { getStarfieldMemoryBytes } from './world/fundo';
+import { getStarfieldMemoryBytes, precompilarShaderStarfield } from './world/fundo';
 import { getFogMemoryBytes } from './world/nevoa';
 import { getSpritesheetMemoryBytes } from './world/spritesheets';
 import { getAiMemoryBytes } from './world/ia-memoria';
@@ -356,6 +356,7 @@ async function bootstrap(): Promise<void> {
   // initial ~second of gameplay showed a visible FPS sag while the GL
   // driver compiled + linked the shared GlProgram.
   await precompilarShadersPlaneta(app);
+  await precompilarShaderStarfield(app);
 
   // Build the menu background: a lightweight single-system world, not
   // the full 18-system game world. When the player clicks Novo Jogo we
