@@ -154,25 +154,6 @@ function injectStyles(): void {
     }
     .planeta-drawer-owner.clickable:hover .planeta-drawer-owner-name { text-decoration: underline; }
 
-    .planeta-drawer-close {
-      appearance: none;
-      background: transparent;
-      border: 1px solid var(--hud-border);
-      color: var(--hud-text-dim);
-      font-family: var(--hud-font);
-      font-size: calc(var(--hud-unit) * 0.8);
-      width: calc(var(--hud-unit) * 1.3);
-      height: calc(var(--hud-unit) * 1.3);
-      cursor: pointer;
-      border-radius: 50%;
-      transition: background 120ms ease, color 120ms ease;
-      flex-shrink: 0;
-    }
-    .planeta-drawer-close:hover {
-      background: rgba(255,255,255,0.08);
-      color: var(--hud-text);
-    }
-
     .planeta-drawer-body {
       padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.7);
       overflow-y: auto;
@@ -461,18 +442,9 @@ function buildHeader(p: Planeta): HTMLDivElement {
   meta.appendChild(owner);
   head.appendChild(meta);
 
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'planeta-drawer-close';
-  closeBtn.setAttribute('aria-label', 'Fechar');
-  closeBtn.textContent = '×';
-  closeBtn.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    marcarInteracaoUi();
-    close();
-  });
-  head.appendChild(closeBtn);
+  // Close button intentionally omitted — the drawer closes on
+  // click-outside (via fecharPlanetaDrawer wired in core/player.ts)
+  // and on ESC (keydown handler), so an explicit × is redundant.
 
   return head;
 }
