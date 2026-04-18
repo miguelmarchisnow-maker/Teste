@@ -658,12 +658,42 @@ function renderGraphicsTab(body: HTMLDivElement): void {
     const resReadout = document.createElement('div');
     resReadout.style.cssText = 'font-size: 0.7em; color: rgba(255,255,255,0.55); margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;';
 
+    const warnReadout = document.createElement('div');
+    warnReadout.style.cssText = 'font-size: 0.7em; color: #ff9b6b; margin-top: 2px; display: none;';
+
+    // Probe the live renderer for its maximum supported backing-store
+    // size. WebGPU's default is 8192; WebGL2 is typically 16384. When
+    // requested (viewport × scale × dpr) exceeds this, WebGPU fails
+    // silently and the canvas renders blank — clamp is in place on the
+    // render side, but we want the user to know why their 4× setting
+    // isn't having full effect.
+    const probeLimits = (): { max: number; rendererName: string } => {
+      const anyApp = (window as any)._app;
+      const r = anyApp?.renderer;
+      const rendererName = String(r?.name ?? r?.type ?? 'unknown').toLowerCase();
+      const max = r?.limits?.maxTextureSize ?? r?.maxTextureSize ?? 8192;
+      return { max, rendererName };
+    };
+
     const refresh = (v: number): void => {
       scaleReadout.textContent = `${v.toFixed(2)}×`;
       const dpr = window.devicePixelRatio || 1;
       const renderW = Math.round(window.innerWidth * v * dpr);
       const renderH = Math.round(window.innerHeight * v * dpr);
       resReadout.textContent = `${renderW}×${renderH}`;
+
+      const { max, rendererName } = probeLimits();
+      const biggest = Math.max(renderW, renderH);
+      // Only warn in WebGPU — WebGL2 ceilings are high enough that
+      // practical settings never trip them, and Canvas2D has no such
+      // limit at all.
+      if (rendererName.includes('webgpu') && biggest > max) {
+        const effective = (max / (Math.max(window.innerWidth, window.innerHeight) * dpr));
+        warnReadout.style.display = 'block';
+        warnReadout.textContent = `⚠ passa do limite WebGPU (${max}px) — aplicado como ${effective.toFixed(2)}×`;
+      } else {
+        warnReadout.style.display = 'none';
+      }
     };
     refresh(Number(slider.value));
 
@@ -677,6 +707,7 @@ function renderGraphicsTab(body: HTMLDivElement): void {
     controlBar.append(slider, scaleReadout);
     row.appendChild(controlBar);
     row.appendChild(resReadout);
+    row.appendChild(warnReadout);
     body.appendChild(row);
   }
 
