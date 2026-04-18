@@ -26,6 +26,7 @@ let _styleInjected = false;
 let _options: MainMenuOptions | null = null;
 let _unsubConfig: (() => void) | null = null;
 let _refreshTextos: (() => void) | null = null;
+let _escHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -559,14 +560,15 @@ export function criarMainMenu(options: MainMenuOptions): HTMLDivElement {
   _unsubConfig = onConfigChange(() => _refreshTextos?.());
 
   // Esc on sub-screens goes back to main
-  window.addEventListener('keydown', (e) => {
+  _escHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     if (!_container || _container.classList.contains('hidden')) return;
     if (_mainScreen?.classList.contains('hidden')) {
       e.preventDefault();
       showMainScreen();
     }
-  });
+  };
+  window.addEventListener('keydown', _escHandler);
 
   document.body.appendChild(container);
   _container = container;
@@ -586,6 +588,10 @@ export function destruirMainMenu(): void {
   _unsubConfig?.();
   _unsubConfig = null;
   _refreshTextos = null;
+  if (_escHandler) {
+    window.removeEventListener('keydown', _escHandler);
+    _escHandler = null;
+  }
   _container?.remove();
   _container = null;
   _mainScreen = null;

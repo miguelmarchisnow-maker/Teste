@@ -485,3 +485,27 @@ export function desenharNeblinaVisao(mundo: Mundo, fontesVisao: FonteVisao[], ca
     _fogSprite.height = worldH;
   }
 }
+
+/**
+ * Release the module-level fog singletons — sprite, texture, image
+ * source, and the backing 2D canvas. Must be called from destruirMundo
+ * so that leaving a world (new game, load, return to menu) doesn't
+ * leave a dangling RGBA texture + canvas in memory.
+ */
+export function destruirFog(): void {
+  if (_fogSprite) {
+    try { _fogSprite.destroy(); } catch { /* best-effort */ }
+    _fogSprite = null;
+  }
+  if (_fogTexture) {
+    try { _fogTexture.destroy(true); } catch { /* best-effort */ }
+    _fogTexture = null;
+  }
+  if (_fogSource) {
+    try { _fogSource.destroy(); } catch { /* best-effort */ }
+    _fogSource = null;
+  }
+  _fogCanvas = null;
+  _fogCtx = null;
+  _fogFrame = 0;
+}

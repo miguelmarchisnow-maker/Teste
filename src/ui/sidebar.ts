@@ -67,6 +67,7 @@ let _onNavigate: ((id: string) => void) | null = null;
 let _styleInjected = false;
 let _unsubConfig: (() => void) | null = null;
 let _refreshTextos: (() => void) | null = null;
+let _unsubLayout: (() => void) | null = null;
 
 export function onSidebarNavigate(cb: (id: string) => void): void {
   _onNavigate = cb;
@@ -255,7 +256,7 @@ export function criarSidebar(): HTMLDivElement {
   _unsubConfig = onConfigChange(() => _refreshTextos?.());
 
   // Redraw icons whenever layout changes (resize, sidebar height update).
-  onLayoutChange(() => requestAnimationFrame(redrawAllIcons));
+  _unsubLayout = onLayoutChange(() => requestAnimationFrame(redrawAllIcons));
 
   // Initial draw once image loads and after first layout.
   _spritePromise.then(() => requestAnimationFrame(redrawAllIcons));
@@ -271,5 +272,7 @@ export function destruirSidebar(): void {
   }
   _unsubConfig?.();
   _unsubConfig = null;
+  _unsubLayout?.();
+  _unsubLayout = null;
   _refreshTextos = null;
 }

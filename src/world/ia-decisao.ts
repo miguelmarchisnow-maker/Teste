@@ -229,11 +229,15 @@ export function atualizarIasV2(mundo: Mundo, deltaMs: number): void {
     }
   }
 
-  // Conquest mechanic: AI ships orbiting a neutro flip ownership
+  // Conquest mechanic: AI ships orbiting a neutro flip ownership.
+  // Pre-build a Set of AI ids so the per-ship predicate is O(1)
+  // instead of an O(AI) .some() scan nested inside .filter().
+  const iaIds = new Set<string>();
+  for (const p of _personalidades) iaIds.add(p.id);
   for (const planeta of mundo.planetas) {
     if (planeta.dados.dono !== 'neutro') continue;
     const orbitantes = mundo.naves.filter(
-      (n) => n.estado === 'orbitando' && n.alvo === planeta && _personalidades.some((p) => p.id === n.dono),
+      (n) => n.estado === 'orbitando' && n.alvo === planeta && iaIds.has(n.dono),
     );
     if (orbitantes.length === 0) continue;
     const counts: Record<string, number> = {};

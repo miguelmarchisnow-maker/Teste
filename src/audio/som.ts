@@ -22,6 +22,12 @@ function tocar(
   gain.connect(catNode);
   osc.start(m.ctx.currentTime);
   osc.stop(m.ctx.currentTime + dur);
+  // Tear down the graph once the oscillator finishes. Without this the
+  // GainNode stayed connected to the category bus forever, one per call;
+  // on long sessions that's thousands of dangling nodes per minute.
+  osc.onended = () => {
+    try { gain.disconnect(); } catch { /* already torn down */ }
+  };
 }
 
 function tocarRuido(categoria: AudioCategoria, dur: number, volume = 0.2): void {
@@ -42,6 +48,11 @@ function tocarRuido(categoria: AudioCategoria, dur: number, volume = 0.2): void 
   src.connect(gain);
   gain.connect(catNode);
   src.start();
+  // Same cleanup story as tocar(): disconnect the gain when the buffer
+  // source naturally ends so we don't pile up orphan nodes on the bus.
+  src.onended = () => {
+    try { gain.disconnect(); } catch { /* already torn down */ }
+  };
 }
 
 export function somClique(): void {

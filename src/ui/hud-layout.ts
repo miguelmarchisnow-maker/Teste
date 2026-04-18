@@ -178,8 +178,18 @@ export function unregisterChatLog(): void {
   recalc();
 }
 
-export function onLayoutChange(cb: LayoutCallback): void {
+/**
+ * Subscribe to layout change notifications. Returns an unsubscribe
+ * function — callers that outlive a single world (e.g. HUD panels
+ * that get torn down on game-over) MUST invoke it on teardown, or
+ * their callback will be held alive across every world rebuild.
+ */
+export function onLayoutChange(cb: LayoutCallback): () => void {
   _listeners.push(cb);
+  return () => {
+    const i = _listeners.indexOf(cb);
+    if (i !== -1) _listeners.splice(i, 1);
+  };
 }
 
 function startListening(): void {

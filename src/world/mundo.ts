@@ -4,7 +4,7 @@ import type { Mundo, Planeta, Sol, Nave, Camera, TipoJogador } from '../types';
 import { criarFundo, atualizarFundo } from './fundo';
 import { TIPO_PLANETA } from './planeta';
 import { atualizarTempoPlanetas, atualizarLuzPlaneta } from './planeta-procedural';
-import { criarCamadaMemoria, criarMemoriaVisualPlaneta, registrarMemoriaPlaneta, atualizarVisibilidadeMemoria, atualizarEscalaLabelMemoria, aplicarLimiteFantasmas } from './nevoa';
+import { criarCamadaMemoria, criarMemoriaVisualPlaneta, registrarMemoriaPlaneta, atualizarVisibilidadeMemoria, atualizarEscalaLabelMemoria, aplicarLimiteFantasmas, destruirFog } from './nevoa';
 import { criarSistemaSolar } from './sistema';
 import { calcularBoundsViewport } from './viewport-bounds';
 import { resetarNomesPlanetas } from './nomes';
@@ -350,6 +350,10 @@ export function destruirMundo(mundo: Mundo, app: Application): void {
   mundo.container.destroy({ children: true });
   estadoJogo = 'jogando';
   resetDistanceMatrix();
+  // The fog-of-war layer keeps module-level singletons (sprite, texture,
+  // image source, backing canvas) that outlive a world otherwise.
+  destruirFog();
+  _primeiroContatoCompleto = false;
 }
 
 // === Game loop ===

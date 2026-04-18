@@ -89,6 +89,14 @@ export function tempoDesdeUltimoAtaque(donoIa: string, contra: string): number {
   return ult ? Date.now() - ult : Infinity;
 }
 
+/** TTL for ultimoAtaque entries — attacks older than this stop biasing
+ *  cooldown decisions. Matches 'rancor has faded' timescale. */
+const ULTIMO_ATAQUE_TTL_MS = 5 * 60 * 1000;
+
+/** Cap on planetasVistos per AI. Beyond this we prune the oldest
+ *  entries so the Set doesn't grow forever during hour-long sessions. */
+const PLANETAS_VISTOS_CAP = 200;
+
 /** Decay all memories. Called once per AI tick. */
 export function decairMemorias(donoIa: string): void {
   const m = getMem(donoIa);
@@ -99,6 +107,22 @@ export function decairMemorias(donoIa: string): void {
   for (const k of Object.keys(m.forcaPercebida)) {
     m.forcaPercebida[k] *= FORCA_DECAY_PER_TICK;
     if (m.forcaPercebida[k] < 0.5) delete m.forcaPercebida[k];
+  }
+  // Prune ultimoAtaque entries older than the TTL — previously this
+  // map grew forever, one entry per unique dono ever attacked.
+  const agora = Date.now();
+  for (const k of Object.keys(m.ultimoAtaque)) {
+    if (agora - m.ultimoAtaque[k] > ULTIMO_ATAQUE_TTL_MS) {
+      delete m.ultimoAtaque[k];
+    }
+  }
+  // Cap planetasVistos — if somehow the AI saw more than the cap
+  // (shouldn't happen in current gameplay but defensive), trim the
+  // oldest via the Set's insertion order.
+  if (m.planetasVistos.size > PLANETAS_VISTOS_CAP) {
+    const keep = Array.from(m.planetasVistos).slice(-PLANETAS_VISTOS_CAP);
+    m.planetasVistos.clear();
+    for (const id of keep) m.planetasVistos.add(id);
   }
 }
 

@@ -120,13 +120,17 @@ export function atualizarFundo(fundo: FundoContainer, jogadorX: number, jogadorY
     }
   }
 
-  // Limpar tiles distantes do cache (manter só os próximos)
+  // Limpar tiles distantes do cache (manter só os próximos). Destroy
+  // the evicted Texture explicitly — just deleting the Map entry left
+  // the GPU-side texture alive indefinitely, leaking a ~TILE² RGBA
+  // upload per panned-past tile over long play sessions.
   if (cache.size > 25) {
-    for (const [key] of cache) {
+    for (const [key, tex] of cache) {
       const [tx, ty] = key.split('_').map(Number);
       const px = tx * TILE;
       const py = ty * TILE;
       if (px + TILE < esq - TILE || px > dir + TILE || py + TILE < cima - TILE || py > baixo + TILE) {
+        try { tex.destroy(true); } catch { /* best-effort */ }
         cache.delete(key);
       }
     }

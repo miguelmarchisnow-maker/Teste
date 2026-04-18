@@ -57,11 +57,26 @@ function poderCombate(naves: Nave[]): number {
 
 // ─── Score functions ─────────────────────────────────────────────────────
 
+/**
+ * Context bundle passed through the scoring pipeline so expensive
+ * per-tick computations (filter passes over mundo.naves, threat maps)
+ * happen once per AI tick instead of once per (planet × ship type).
+ *
+ * On long sessions with SHIP_CAP_MUNDO=300 and 8 AIs, the old "each
+ * score function re-filters the ship list" pattern ran ~120 full
+ * ship scans per tick; this bundle collapses that to ~4.
+ */
+interface ScoreCtx {
+  tipoParaCount: Map<string, number>;
+  ameacaPorPlaneta: Map<string, number>;
+}
+
 function scoreProduzirNave(
   ia: PersonalidadeIA,
   planeta: Planeta,
   tipoNave: string,
   mundo: Mundo,
+  ctx?: ScoreCtx,
 ): number {
   let base = 10;
 
@@ -74,17 +89,22 @@ function scoreProduzirNave(
   if (tipoNave === 'batedora') base *= (ia.pesos.expansao * 0.7 + ia.pesos.agressao * 0.3);
   if (tipoNave === 'cargueira') base *= ia.pesos.economia * 0.6;
 
-  // Threat at this planet → boost defensive choices
-  const ameacaAqui = ameacaNoPlaneta(mundo, planeta, ia.id);
+  // Threat at this planet → boost defensive choices. Cached per tick.
+  const ameacaAqui = ctx
+    ? (ctx.ameacaPorPlaneta.get(planeta.id) ?? 0)
+    : ameacaNoPlaneta(mundo, planeta, ia.id);
   if (tipoNave === 'torreta' && ameacaAqui > 0) {
     base *= 1 + ameacaAqui * 0.4;
   }
   if (tipoNave === 'fragata' && ameacaAqui > 0) {
-    base *= 1 + ameacaAqui * 0.2; // fragata also helps defense
+    base *= 1 + ameacaAqui * 0.2;
   }
 
-  // Diminishing returns: lots of one type already? scale down
-  const minhaFrotaTipo = mundo.naves.filter((n) => n.dono === ia.id && n.tipo === tipoNave).length;
+  // Diminishing returns: lots of one type already? scale down.
+  // Uses pre-counted ship-type histogram from ctx, not a fresh filter.
+  const minhaFrotaTipo = ctx
+    ? (ctx.tipoParaCount.get(tipoNave) ?? 0)
+    : mundo.naves.filter((n) => n.dono === ia.id && n.tipo === tipoNave).length;
   base *= 1 / (1 + minhaFrotaTipo * 0.1);
 
   // Difficulty multiplier
@@ -263,6 +283,19 @@ export function gerarAcoesCandidatas(ia: PersonalidadeIA, mundo: Mundo): AcaoCom
   // Update recon — what the AI has seen so far
   atualizarReconIa(ia, mundo);
 
+  // ── Precompute per-tick context so scoring functions avoid O(N)
+  //    filters on every (planet × ship-type) combination. On long
+  //    idle sessions this was one of the dominant AI-tick costs.
+  const tipoParaCount = new Map<string, number>();
+  for (const n of minhasNaves) {
+    tipoParaCount.set(n.tipo, (tipoParaCount.get(n.tipo) ?? 0) + 1);
+  }
+  const ameacaPorPlaneta = new Map<string, number>();
+  for (const p of meusPlanetas) {
+    ameacaPorPlaneta.set(p.id, ameacaNoPlaneta(mundo, p, ia.id));
+  }
+  const ctx: ScoreCtx = { tipoParaCount, ameacaPorPlaneta };
+
   const acoes: AcaoComScore[] = [];
 
   // Production candidates: each planet × each ship type
@@ -270,7 +303,7 @@ export function gerarAcoesCandidatas(ia: PersonalidadeIA, mundo: Mundo): AcaoCom
     if (planeta.dados.fabricas < 1) continue;
     if (minhasNaves.length >= ia.frotaMax) continue;
     for (const tipoNave of ['fragata', 'torreta', 'batedora', 'cargueira']) {
-      const score = scoreProduzirNave(ia, planeta, tipoNave, mundo);
+      const score = scoreProduzirNave(ia, planeta, tipoNave, mundo, ctx);
       if (score > 0) acoes.push({ acao: { tipo: 'produzir_nave', planeta, tipoNave }, score });
     }
 
@@ -361,7 +394,7 @@ export function gerarAcoesCandidatas(ia: PersonalidadeIA, mundo: Mundo): AcaoCom
   // from elsewhere to defend. High utility — defending home matters more
   // than expansion or attack.
   for (const planetaAmeacado of meusPlanetas) {
-    const ameaca = ameacaNoPlaneta(mundo, planetaAmeacado, ia.id);
+    const ameaca = ameacaPorPlaneta.get(planetaAmeacado.id) ?? 0;
     if (ameaca < 0.5) continue; // ignore low threats
 
     // Find my combat ships that are at OTHER planets (not already defending here)

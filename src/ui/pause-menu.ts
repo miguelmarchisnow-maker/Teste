@@ -7,6 +7,7 @@ import { t } from '../core/i18n/t';
 
 let _container: HTMLDivElement | null = null;
 let _styleInjected = false;
+let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -235,16 +236,18 @@ export function abrirPauseMenu(): void {
     }
   });
 
-  // Close on Escape
-  const handleKey = (e: KeyboardEvent) => {
+  // Close on Escape. Stash the handler on a module-level slot so the
+  // backdrop-click path (fecharPauseMenu) can also tear it down — prior
+  // version only removed on Escape, leaking a listener each time the
+  // user dismissed the menu by clicking outside.
+  _keydownHandler = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       fecharPauseMenu();
-      window.removeEventListener('keydown', handleKey, true);
     }
   };
-  window.addEventListener('keydown', handleKey, true);
+  window.addEventListener('keydown', _keydownHandler, true);
 
   document.body.appendChild(overlay);
   _container = overlay;
@@ -254,6 +257,10 @@ export function fecharPauseMenu(): void {
   if (!_container) return;
   const c = _container;
   _container = null;
+  if (_keydownHandler) {
+    window.removeEventListener('keydown', _keydownHandler, true);
+    _keydownHandler = null;
+  }
   c.classList.add('closing');
   setTimeout(() => c.remove(), 200);
 }

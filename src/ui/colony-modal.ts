@@ -15,6 +15,7 @@ let _bonusEl: HTMLDivElement | null = null;
 let _pendingNave: Nave | null = null;
 let _pendingPlaneta: Planeta | null = null;
 let _mundoRef: Mundo | null = null;
+let _escHandler: ((e: KeyboardEvent) => void) | null = null;
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
@@ -342,12 +343,13 @@ export function criarColonyModal(): void {
   // Global Escape that works regardless of which element is focused.
   // Gated on _pendingNave so it doesn't interfere with other panels when
   // no colony decision is pending.
-  window.addEventListener('keydown', (e) => {
+  _escHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     if (!_pendingNave) return;
     e.preventDefault();
     handleOutpost();
-  });
+  };
+  window.addEventListener('keydown', _escHandler);
 }
 
 export function atualizarColonyModal(mundo: Mundo): void {
@@ -383,6 +385,10 @@ export function atualizarColonyModal(mundo: Mundo): void {
 }
 
 export function destruirColonyModal(): void {
+  if (_escHandler) {
+    window.removeEventListener('keydown', _escHandler);
+    _escHandler = null;
+  }
   _container?.remove();
   _backdrop?.remove();
   _container = null;
