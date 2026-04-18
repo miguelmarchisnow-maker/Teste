@@ -172,8 +172,8 @@ export function detectarRendererSoftware(app: Application): SoftwareDetection {
   return { isSoftware: false, kind: 'nenhum', friendlyName: '' };
 }
 
-const DURATION_MS = 20000;
-const WARMUP_MS = 1500;
+const DURATION_MS = 10000;
+const WARMUP_MS = 750;
 
 /**
  * Force the GPU to actually finish executing queued commands before
