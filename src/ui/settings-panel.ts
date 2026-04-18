@@ -1,5 +1,6 @@
 import { getConfig, setConfig, DEFAULTS } from '../core/config';
 import { aplicarPreset, presetBateComFlagsDerivadas } from '../core/graphics-preset';
+import { rodarBenchmark } from '../core/benchmark';
 import { comHelp } from './tooltip';
 import { abrirRendererInfoModal } from './renderer-info-modal';
 import { toast } from './toast';
@@ -533,6 +534,47 @@ function renderGraphicsTab(body: HTMLDivElement): void {
       _refreshBody?.();
     });
     row.appendChild(select);
+
+    // Benchmark trigger — stress-tests the GPU with a worst-case
+    // scene and picks a preset + renderScale that fits. See
+    // core/benchmark.ts for the workload details.
+    const benchBtn = document.createElement('button');
+    benchBtn.className = 'settings-btn';
+    benchBtn.textContent = t('settings.benchmark.btn');
+    benchBtn.style.cssText = 'margin-left: calc(var(--hud-unit) * 0.4); padding: 2px 8px; font-family: inherit; font-size: 0.85em; cursor: pointer; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 3px;';
+    const status = document.createElement('div');
+    status.style.cssText = 'font-size: 0.7em; color: rgba(255,255,255,0.55); margin-top: 4px; grid-column: 1 / -1; display: none;';
+    benchBtn.addEventListener('click', async () => {
+      const app = (window as any)._app;
+      if (!app) return;
+      benchBtn.disabled = true;
+      benchBtn.textContent = t('settings.benchmark.running');
+      status.style.display = 'block';
+      status.textContent = '0%';
+      try {
+        const result = await rodarBenchmark(app, (p) => {
+          status.textContent = `${Math.round(p * 100)}%`;
+        });
+        // Apply the recommendation — preset first, then renderScale
+        // on top (the preset mapping may or may not touch it).
+        aplicarPreset(result.recommendedPreset);
+        setConfig({ graphics: { ...getConfig().graphics, renderScale: result.recommendedRenderScale } });
+        status.textContent = t('settings.benchmark.done', {
+          ms: result.avgFrameMs.toFixed(1),
+          preset: result.recommendedPreset,
+          scale: result.recommendedRenderScale.toFixed(2),
+        });
+        _refreshBody?.();
+      } catch (err) {
+        console.warn('[benchmark] failed:', err);
+        status.textContent = t('settings.benchmark.failed');
+      } finally {
+        benchBtn.disabled = false;
+        benchBtn.textContent = t('settings.benchmark.btn');
+      }
+    });
+    row.appendChild(benchBtn);
+    row.appendChild(status);
     body.appendChild(row);
   }
 
