@@ -732,6 +732,84 @@ export function criarDebugMenu(app: Application, mundo: Mundo): HTMLDivElement {
   reloadBtn.addEventListener('click', () => window.location.reload());
   actionsSec.appendChild(reloadBtn);
 
+  // Profiling logger — starts a flight-recorder capture of per-frame
+  // profiling data. User plays normally, comes back, downloads JSON.
+  const profLogSec = document.createElement('div');
+  profLogSec.className = 'debug-section';
+  const profLogTitle = document.createElement('div');
+  profLogTitle.className = 'debug-section-title';
+  profLogTitle.textContent = 'Captura de profiling';
+  profLogSec.appendChild(profLogTitle);
+
+  const profStatus = document.createElement('div');
+  profStatus.style.cssText = 'font-size: 0.75em; color: rgba(255,255,255,0.55); margin: 4px 0 6px; font-variant-numeric: tabular-nums;';
+  profStatus.textContent = 'parado — 0 frames capturados';
+  profLogSec.appendChild(profStatus);
+
+  const recBtn = document.createElement('button');
+  recBtn.className = 'debug-action-btn';
+  recBtn.textContent = '● Gravar';
+  profLogSec.appendChild(recBtn);
+
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'debug-action-btn';
+  dlBtn.textContent = '↓ Baixar JSON';
+  dlBtn.disabled = true;
+  dlBtn.style.opacity = '0.5';
+  profLogSec.appendChild(dlBtn);
+
+  // Poll the logger state every ~250ms so the count updates live
+  // without tying it to the main ticker (profiling module is in
+  // world/, debug UI is ui/ — keep the coupling through functions).
+  let profPollTimer: number | null = null;
+  const refreshProfStatus = async (): Promise<void> => {
+    const { estaLoggingProfiling, getFramesCapturadosCount } = await import('../world/profiling-logger');
+    const ativo = estaLoggingProfiling();
+    const frames = getFramesCapturadosCount();
+    profStatus.textContent = ativo
+      ? `● gravando — ${frames} frames`
+      : `parado — ${frames} frames capturados`;
+    recBtn.textContent = ativo ? '■ Parar' : '● Gravar';
+    dlBtn.disabled = frames === 0;
+    dlBtn.style.opacity = frames === 0 ? '0.5' : '1';
+  };
+  const startPolling = (): void => {
+    if (profPollTimer !== null) return;
+    profPollTimer = window.setInterval(() => { void refreshProfStatus(); }, 250) as unknown as number;
+  };
+  const stopPolling = (): void => {
+    if (profPollTimer !== null) {
+      window.clearInterval(profPollTimer);
+      profPollTimer = null;
+    }
+  };
+
+  recBtn.addEventListener('click', async () => {
+    const mod = await import('../world/profiling-logger');
+    if (mod.estaLoggingProfiling()) {
+      mod.pararLoggingProfiling();
+      stopPolling();
+    } else {
+      mod.limparLogProfiling();
+      mod.iniciarLoggingProfiling();
+      startPolling();
+    }
+    void refreshProfStatus();
+  });
+
+  dlBtn.addEventListener('click', async () => {
+    const mod = await import('../world/profiling-logger');
+    const { getConfig } = await import('../core/config');
+    // Stop first so the download reflects a final, clean state.
+    if (mod.estaLoggingProfiling()) {
+      mod.pararLoggingProfiling();
+      stopPolling();
+    }
+    mod.baixarLogProfiling(_app, getConfig());
+    void refreshProfStatus();
+  });
+
+  actionsSec.appendChild(profLogSec);
   panel.appendChild(actionsSec);
 
   document.body.appendChild(panel);

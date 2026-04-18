@@ -5,7 +5,8 @@ type Nivel = OrbitalConfig['graphics']['qualidadeEfeitos'];
 
 type FlagsDerivadas = Pick<
   OrbitalConfig['graphics'],
-  'fogThrottle' | 'maxFantasmas' | 'densidadeStarfield' | 'shaderLive' | 'mostrarOrbitas' | 'renderScale'
+  'fogThrottle' | 'maxFantasmas' | 'densidadeStarfield' | 'shaderLive' | 'mostrarOrbitas'
+  | 'renderScale' | 'starfieldLayers' | 'planetMaxOctaves'
 >;
 
 // Render scale is the single biggest perf knob (pixel count scales
@@ -20,6 +21,8 @@ const PRESETS: Record<Nivel, FlagsDerivadas> = {
     shaderLive: true,
     mostrarOrbitas: true,
     renderScale: 1.0,
+    starfieldLayers: 3,
+    planetMaxOctaves: 6,
   },
   medio: {
     fogThrottle: 2,
@@ -28,6 +31,8 @@ const PRESETS: Record<Nivel, FlagsDerivadas> = {
     shaderLive: true,
     mostrarOrbitas: true,
     renderScale: 0.85,
+    starfieldLayers: 3,
+    planetMaxOctaves: 5,
   },
   baixo: {
     fogThrottle: 3,
@@ -39,14 +44,23 @@ const PRESETS: Record<Nivel, FlagsDerivadas> = {
     shaderLive: true,
     mostrarOrbitas: true,
     renderScale: 0.65,
+    starfieldLayers: 2,
+    planetMaxOctaves: 3,
   },
+  // Minimum preset doubles as the software-renderer safety net.
+  // Values are picked so Microsoft WARP, SwiftShader, LLVMpipe, or
+  // Canvas2D mode all reach viable framerates without needing any
+  // extra renderer-specific overrides — applying this preset alone
+  // is enough.
   minimo: {
-    fogThrottle: 5,
+    fogThrottle: 15,
     maxFantasmas: 0,
-    densidadeStarfield: 0.15,
+    densidadeStarfield: 0.1,
     shaderLive: false,
     mostrarOrbitas: false,
-    renderScale: 0.4,
+    renderScale: 0.2,
+    starfieldLayers: 1,
+    planetMaxOctaves: 2,
   },
 };
 

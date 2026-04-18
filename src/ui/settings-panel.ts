@@ -1142,6 +1142,62 @@ function renderGraphicsTabAvancado(body: HTMLDivElement): void {
     row.appendChild(cb);
     body.appendChild(row);
   }
+
+  // Camadas do starfield (1-3) — quantas camadas de parallax o
+  // shader procedural desenha. 3 = padrão, 1 = mais barato.
+  {
+    const [row] = rowWithLabel(t('settings.row.camadas_estrelas'), 'starfield');
+    const select = criarSelect([
+      ['1', '1 (mais rápido)'],
+      ['2', '2'],
+      ['3', '3 (padrão)'],
+    ], String(gfx.starfieldLayers ?? 3));
+    select.addEventListener('change', () => {
+      const v = Number(select.dataset.value!) as 1 | 2 | 3;
+      setConfig({ graphics: { ...getConfig().graphics, starfieldLayers: v } });
+    });
+    row.appendChild(select);
+    body.appendChild(row);
+  }
+
+  // Octaves máximas do ruído dos planetas (1-6). Cada octave ≈
+  // dobra o custo do fragment shader — reduzir derrete o FPS em
+  // GPU fraca sem mudar muito o visual do longe.
+  {
+    const [row] = rowWithLabel(t('settings.row.octaves_planeta'), 'shaderLive');
+    const select = criarSelect([
+      ['2', '2 (barato)'],
+      ['3', '3'],
+      ['4', '4'],
+      ['5', '5'],
+      ['6', '6 (padrão)'],
+    ], String(gfx.planetMaxOctaves ?? 6));
+    select.addEventListener('change', () => {
+      setConfig({ graphics: { ...getConfig().graphics, planetMaxOctaves: Number(select.dataset.value!) } });
+    });
+    row.appendChild(select);
+    body.appendChild(row);
+  }
+
+  // Fog throttle — quantos frames entre redesenhos do fog of war.
+  // Em software/WARP o fog canvas é caro, subir esse valor recupera
+  // uns 5-8 ms/frame com custo visual imperceptível.
+  {
+    const [row] = rowWithLabel(t('settings.row.fog_throttle'), 'fantasmas');
+    const select = criarSelect([
+      ['1', 'Todo frame'],
+      ['2', 'Cada 2 frames'],
+      ['3', 'Cada 3 frames'],
+      ['5', 'Cada 5 frames'],
+      ['10', 'Cada 10 frames'],
+      ['20', 'Cada 20 frames'],
+    ], String(gfx.fogThrottle ?? 3));
+    select.addEventListener('change', () => {
+      setConfig({ graphics: { ...getConfig().graphics, fogThrottle: Number(select.dataset.value!) } });
+    });
+    row.appendChild(select);
+    body.appendChild(row);
+  }
 }
 
 // ─── Gameplay tab (Task 28) ──────────────────────────────────────────

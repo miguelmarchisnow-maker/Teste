@@ -220,25 +220,15 @@ async function bootstrap(): Promise<void> {
     const sw = detectarRendererSoftware(app);
     if (sw.isSoftware) {
       const currentGfx = getConfig().graphics;
-      // Only auto-apply on the first detection — once the user has
-      // seen the toast, we trust them to tune manually.
+      // Software detected → apply 'mínimo' preset once. The preset
+      // itself carries every software-friendly value (low render
+      // scale, aggressive fog throttle, 1 starfield layer, 2 planet
+      // octaves etc) so no renderer-specific overrides needed here.
       if (!(currentGfx as any)._softwareDetectedOnce) {
+        const { aplicarPreset } = await import('./core/graphics-preset');
+        aplicarPreset('minimo');
         setConfigDuranteBoot({
-          graphics: {
-            ...currentGfx,
-            qualidadeEfeitos: 'minimo',
-            renderScale: 0.15,
-            // Fog on software is expensive (canvas draw + GPU upload
-            // every frame). Bump throttle hard — 15 means the fog
-            // refreshes ~4×/s instead of 12×/s, imperceptible for
-            // the player and a big saving on WARP.
-            fogThrottle: 15,
-            // Dim the starfield density even though we route to the
-            // static tiling path — defensive in case the shader path
-            // kicks in anyway (e.g. Canvas2D mode dispatcher differs).
-            densidadeStarfield: 0.1,
-            _softwareDetectedOnce: true,
-          } as any,
+          graphics: { ...getConfig().graphics, _softwareDetectedOnce: true } as any,
         });
       }
       window.setTimeout(() => {

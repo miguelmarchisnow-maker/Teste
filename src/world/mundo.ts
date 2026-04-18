@@ -31,6 +31,7 @@ import { atualizarPesquisaPlaneta } from './pesquisa';
 import { atualizarCampoDeVisao } from './visao';
 import { atualizarFilasPlaneta, atualizarRecursosPlaneta } from './construcao';
 import { profileMark, profileAcumular, profileFlush } from './profiling';
+import { amostrarFrameProfiling } from './profiling-logger';
 import { getConfig } from '../core/config';
 
 // Cached lazy import to avoid circular dep (mundo → save → reconstruir → mundo)
@@ -524,6 +525,10 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
 
   profileAcumular('total', frameInicio);
   profileFlush();
+  // If the user is recording a profiling session from the debug
+  // menu, append this frame's averaged buckets to the log. Cheap —
+  // ~one object clone per frame.
+  amostrarFrameProfiling();
 
   if (getConfig().saveMode === 'experimental') {
     if (_marcarTudoDirty) {
