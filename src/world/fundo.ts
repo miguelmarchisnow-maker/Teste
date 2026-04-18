@@ -1,100 +1,121 @@
-import { Sprite, Texture, Container } from 'pixi.js';
+import {
+  Buffer, Container, Geometry, GlProgram, GpuProgram, Mesh,
+  Shader, State, UniformGroup,
+} from 'pixi.js';
+import vertexSrc from '../shaders/starfield.vert?raw';
+import fragmentSrc from '../shaders/starfield.frag?raw';
+import wgslSrc from '../shaders/starfield.wgsl?raw';
 import { getConfig } from '../core/config';
 
-const TILE = 2048;
-
 /**
- * Rough GPU memory held by the starfield texture cache right now.
- * Each tile is an RGBA canvas-backed texture of TILE × TILE = 16 MB.
- * Used by the RAM HUD readout when `performance.memory` isn't
- * available (Firefox/Safari) or to show the GPU side of the budget.
+ * Starfield renderer. Replaced the old canvas-tile-cache approach
+ * (400 MB GPU pior caso) with a single fullscreen fragment shader
+ * that procedurally draws 3 parallax layers of stars on the GPU.
+ *
+ * How it works:
+ *   - A single unit quad Mesh sits at world position (camX - vpW/2,
+ *     camY - vpH/2) with size (vpW, vpH). Repositioned each frame by
+ *     atualizarFundo() so it always exactly covers the visible area.
+ *   - The fragment shader computes a "virtual world position" per
+ *     pixel from camera + UV and hashes it to decide whether a star
+ *     exists at that coordinate, plus its brightness/color/twinkle.
+ *   - Layers have different cell sizes, parallax factors, and drift
+ *     speeds to simulate depth; uTime drives per-star twinkle and
+ *     slow world-space drift.
+ *
+ * Memory: ~10 KB (shader programs + uniform block). No textures at
+ * all — the old cache is gone.
  */
-export function getStarfieldMemoryBytes(fundo: Container): number {
-  const f = fundo as FundoContainer;
-  const count = f._cache?.size ?? 0;
-  return count * TILE * TILE * 4;
-}
-
-interface TileSprite extends Sprite {
-  _tx: number;
-  _ty: number;
-}
 
 interface FundoContainer extends Container {
-  _tileSprites: TileSprite[];
-  _cache: Map<string, Texture>;
-  _tamanhoMundo: number;
+  _mesh: Mesh<Geometry, Shader>;
+  _uniforms: UniformGroup;
+  _tempoAcumMs: number;
 }
 
-function gerarTile(w: number, h: number, seed: number): Texture {
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
-
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, w, h);
-
-  // Seed simples para estrelas consistentes por tile
-  let s = seed;
-  const rand = (): number => { s = (s * 16807 + 0) % 2147483647; return s / 2147483647; };
-
-  const densidade = getConfig().graphics.densidadeStarfield;
-  const estrelas = Math.max(1, Math.floor(180 * (w / TILE) * (h / TILE) * densidade));
-  for (let i = 0; i < estrelas; i++) {
-    const x = rand() * w;
-    const y = rand() * h;
-    const r = rand() * 1.5 + 0.3;
-    const brilho = Math.floor(rand() * 155 + 100);
-    ctx.fillStyle = `rgb(${brilho},${brilho},${brilho})`;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  return Texture.from(canvas);
+/**
+ * Approximate bytes held by the starfield renderer. Now trivially
+ * tiny — kept for compatibility with the RAM HUD readout.
+ */
+export function getStarfieldMemoryBytes(_fundo: Container): number {
+  // 2 shader programs (GLSL + WGSL) + one uniform block.
+  return 10 * 1024;
 }
 
-export function criarFundo(tamanhoMundo: number): FundoContainer {
-  const tilesX = Math.ceil(tamanhoMundo / TILE);
-  const tilesY = Math.ceil(tamanhoMundo / TILE);
+// ─── Shared GPU resources ─────────────────────────────────────────
+// Programs + geometry are created once at module load and reused for
+// every FundoContainer (menu world + main world).
 
+function criarUnitQuadGeometry(): Geometry {
+  const positions = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
+  const uvs = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
+  const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+  return new Geometry({
+    attributes: {
+      aPosition: { buffer: new Buffer({ data: positions, usage: 32 | 8 }), format: 'float32x2' },
+      aUV: { buffer: new Buffer({ data: uvs, usage: 32 | 8 }), format: 'float32x2' },
+    },
+    indexBuffer: new Buffer({ data: indices, usage: 16 | 8 }),
+  });
+}
+
+const sharedQuadGeometry = criarUnitQuadGeometry();
+
+const sharedGlProgram = GlProgram.from({
+  vertex: vertexSrc,
+  fragment: fragmentSrc,
+  name: 'starfield-shader',
+});
+
+const sharedGpuProgram = GpuProgram.from({
+  vertex: { source: wgslSrc, entryPoint: 'mainVertex' },
+  fragment: { source: wgslSrc, entryPoint: 'mainFragment' },
+  name: 'starfield-shader',
+});
+
+function criarUniforms(): UniformGroup {
+  return new UniformGroup({
+    uCamera:    { value: new Float32Array([0, 0]), type: 'vec2<f32>' },
+    uViewport:  { value: new Float32Array([1920, 1080]), type: 'vec2<f32>' },
+    uTime:      { value: 0, type: 'f32' },
+    uDensidade: { value: 1.0, type: 'f32' },
+  });
+}
+
+export function criarFundo(_tamanhoMundo: number): FundoContainer {
   const container = new Container() as FundoContainer;
-  const cache = new Map<string, Texture>();
 
-  // Placeholder: cria sprites vazios para todos os tiles
-  const tileSprites: TileSprite[] = [];
-  for (let ty = 0; ty < tilesY; ty++) {
-    for (let tx = 0; tx < tilesX; tx++) {
-      const sprite = new Sprite() as TileSprite;
-      sprite.x = tx * TILE;
-      sprite.y = ty * TILE;
-      sprite.visible = false;
-      sprite._tx = tx;
-      sprite._ty = ty;
-      container.addChild(sprite);
-      tileSprites.push(sprite);
-    }
-  }
+  const uniforms = criarUniforms();
+  const shader = new Shader({
+    gpuProgram: sharedGpuProgram,
+    glProgram: sharedGlProgram,
+    resources: { starUniforms: uniforms },
+  });
 
-  container._tileSprites = tileSprites;
-  container._cache = cache;
-  container._tamanhoMundo = tamanhoMundo;
+  const state = State.for2d();
+  state.blend = false; // Opaque fullscreen draw — blending is pointless overhead.
+
+  const mesh = new Mesh({
+    geometry: sharedQuadGeometry,
+    shader,
+    state,
+  });
+  // The quad is unit-sized; atualizarFundo scales + positions it to
+  // exactly cover the current viewport every frame.
+  mesh.eventMode = 'none';
+
+  container.addChild(mesh);
+  container._mesh = mesh;
+  container._uniforms = uniforms;
+  container._tempoAcumMs = 0;
 
   return container;
 }
 
 /**
- * Atualiza o starfield do fundo pra refletir o panning da câmera.
- *
- * IMPORTANTE: `jogadorX/jogadorY` são o centro da viewport em
- * coordenadas de mundo. `telaW/telaH` são as dimensões da viewport
- * visível em **unidades de MUNDO**, não pixels — o chamador deve
- * dividir screen.width/height pelo zoom antes de passar aqui.
- *
- * Exemplo de chamada correta:
- *   atualizarFundo(fundo, camera.x, camera.y,
- *                  app.screen.width / zoom, app.screen.height / zoom);
+ * Repositions the fullscreen starfield quad to cover the current
+ * viewport in world coords and pushes camera + time uniforms to the
+ * shader. Called every frame from the main ticker.
  *
  * @param fundo   Container do starfield retornado por criarFundo()
  * @param jogadorX Centro X da viewport em world units
@@ -102,49 +123,34 @@ export function criarFundo(tamanhoMundo: number): FundoContainer {
  * @param telaW   Largura da viewport em world units
  * @param telaH   Altura da viewport em world units
  */
-export function atualizarFundo(fundo: FundoContainer, jogadorX: number, jogadorY: number, telaW: number, telaH: number): void {
-  const margem = TILE;
-  const esq = jogadorX - telaW / 2 - margem;
-  const dir = jogadorX + telaW / 2 + margem;
-  const cima = jogadorY - telaH / 2 - margem;
-  const baixo = jogadorY + telaH / 2 + margem;
+export function atualizarFundo(
+  fundo: FundoContainer,
+  jogadorX: number,
+  jogadorY: number,
+  telaW: number,
+  telaH: number,
+): void {
+  const mesh = fundo._mesh;
+  // Cover the viewport exactly — a touch of overscan isn't needed
+  // because the shader has no texture boundaries to hide.
+  mesh.x = jogadorX - telaW / 2;
+  mesh.y = jogadorY - telaH / 2;
+  mesh.scale.set(telaW, telaH);
 
-  const cache = fundo._cache;
-  const tamanhoMundo = fundo._tamanhoMundo;
-
-  for (const sprite of fundo._tileSprites) {
-    const tx = sprite._tx;
-    const ty = sprite._ty;
-    const px = tx * TILE;
-    const py = ty * TILE;
-    const visivel = px + TILE > esq && px < dir && py + TILE > cima && py < baixo;
-
-    sprite.visible = visivel;
-
-    if (visivel && !(sprite.texture as any).valid) {
-      const key = `${tx}_${ty}`;
-      if (!cache.has(key)) {
-        const w = Math.min(TILE, tamanhoMundo - px);
-        const h = Math.min(TILE, tamanhoMundo - py);
-        cache.set(key, gerarTile(w, h, tx * 7919 + ty * 104729 + 1));
-      }
-      sprite.texture = cache.get(key)!;
-    }
-  }
-
-  // Limpar tiles distantes do cache (manter só os próximos). Destroy
-  // the evicted Texture explicitly — just deleting the Map entry left
-  // the GPU-side texture alive indefinitely, leaking a ~TILE² RGBA
-  // upload per panned-past tile over long play sessions.
-  if (cache.size > 25) {
-    for (const [key, tex] of cache) {
-      const [tx, ty] = key.split('_').map(Number);
-      const px = tx * TILE;
-      const py = ty * TILE;
-      if (px + TILE < esq - TILE || px > dir + TILE || py + TILE < cima - TILE || py > baixo + TILE) {
-        try { tex.destroy(true); } catch { /* best-effort */ }
-        cache.delete(key);
-      }
-    }
-  }
+  // Integrate time (seconds) for parallax drift + twinkle.
+  fundo._tempoAcumMs += 16.67; // Called once per frame; real dt isn't
+                               // critical — the effect is cosmetic.
+  const uniforms = fundo._uniforms.uniforms as {
+    uCamera: Float32Array;
+    uViewport: Float32Array;
+    uTime: number;
+    uDensidade: number;
+  };
+  uniforms.uCamera[0] = jogadorX;
+  uniforms.uCamera[1] = jogadorY;
+  uniforms.uViewport[0] = telaW;
+  uniforms.uViewport[1] = telaH;
+  uniforms.uTime = fundo._tempoAcumMs / 1000;
+  uniforms.uDensidade = getConfig().graphics.densidadeStarfield;
+  fundo._uniforms.update();
 }
