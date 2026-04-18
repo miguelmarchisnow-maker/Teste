@@ -1,4 +1,6 @@
-// Group 0: Pixi globals
+// WGSL mirror of starfield.frag. PCG integer hash → bit-exact
+// with the WebGL2 path. Same per-star velocity motion model.
+
 struct GlobalUniforms {
     uProjectionMatrix: mat3x3<f32>,
     uWorldTransformMatrix: mat3x3<f32>,
@@ -7,7 +9,6 @@ struct GlobalUniforms {
 };
 @group(0) @binding(0) var<uniform> globalUniforms : GlobalUniforms;
 
-// Group 1: Pixi locals
 struct LocalUniforms {
     uTransformMatrix: mat3x3<f32>,
     uColor: vec4<f32>,
@@ -15,7 +16,6 @@ struct LocalUniforms {
 };
 @group(1) @binding(0) var<uniform> localUniforms : LocalUniforms;
 
-// Group 2: Starfield custom uniforms
 struct StarfieldUniforms {
     uCamera: vec2<f32>,
     uViewport: vec2<f32>,
@@ -42,48 +42,58 @@ fn mainVertex(
     return output;
 }
 
-fn hash12(p_in: vec2<f32>) -> f32 {
-    var p = fract(p_in * vec2<f32>(443.897, 441.423));
-    p = p + vec2<f32>(dot(p, p + 37.73));
-    return fract(p.x * p.y);
+fn pcg2d(v_in: vec2<u32>) -> u32 {
+    var v = v_in;
+    v = v * vec2<u32>(1664525u) + vec2<u32>(1013904223u);
+    v.x = v.x + v.y * 1664525u;
+    v.y = v.y + v.x * 1664525u;
+    v = v ^ (v >> vec2<u32>(16u));
+    v.x = v.x + v.y * 1664525u;
+    v.y = v.y + v.x * 1664525u;
+    v = v ^ (v >> vec2<u32>(16u));
+    return v.x ^ v.y;
 }
 
-fn hash22(p_in: vec2<f32>) -> vec2<f32> {
-    var p3 = fract(vec3<f32>(p_in.x, p_in.y, p_in.x) * vec3<f32>(0.1031, 0.1030, 0.0973));
-    p3 = p3 + vec3<f32>(dot(p3, vec3<f32>(p3.y, p3.z, p3.x) + 33.33));
-    return fract((vec2<f32>(p3.x, p3.x) + vec2<f32>(p3.y, p3.z)) * vec2<f32>(p3.z, p3.y));
+fn hash1(cell: vec2<i32>, salt: i32) -> f32 {
+    let c = vec2<u32>(cell + vec2<i32>(salt + 32768));
+    return f32(pcg2d(c)) * (1.0 / 4294967296.0);
+}
+
+fn hash2(cell: vec2<i32>, salt: i32) -> vec2<f32> {
+    let c = vec2<u32>(cell + vec2<i32>(salt + 32768));
+    let h = pcg2d(c);
+    return vec2<f32>(f32(h & 0xFFFFu), f32(h >> 16u)) * (1.0 / 65536.0);
 }
 
 fn starLayer(
     worldPos: vec2<f32>,
     cellSize: f32,
     parallax: f32,
-    baseRadius: f32,
-    densityThreshold: f32,
+    density: f32,
+    radiusWorld: f32,
+    brightness: f32,
+    salt: i32,
     uTime: f32,
     uDensidade: f32,
 ) -> vec3<f32> {
     let pp = worldPos * parallax;
-    let cellID = floor(pp / cellSize);
+    var cellRaw = vec2<i32>(floor(pp / cellSize));
+    cellRaw = ((cellRaw % vec2<i32>(32768)) + vec2<i32>(32768)) % vec2<i32>(32768);
     let inCell = fract(pp / cellSize);
 
-    let lottery = hash12(cellID);
-    if (lottery > densityThreshold * uDensidade) { return vec3<f32>(0.0); }
+    let lottery = hash1(cellRaw, salt);
+    if (lottery > density * clamp(uDensidade, 0.0, 2.0)) { return vec3<f32>(0.0); }
 
-    let velDir = hash22(cellID + vec2<f32>(23.0)) - vec2<f32>(0.5);
-    let speed = 0.015 + hash12(cellID + vec2<f32>(43.0)) * 0.025;
+    let velDir = hash2(cellRaw, salt + 23) - vec2<f32>(0.5);
+    let speed = 0.015 + hash1(cellRaw, salt + 43) * 0.025;
     let drift = velDir * uTime * speed;
 
-    let starPos = fract(hash22(cellID + vec2<f32>(13.0)) + drift);
-    let d = inCell - starPos;
-    let dist = length(d);
+    let starPos = fract(hash2(cellRaw, salt + 13) + drift);
+    let d = (inCell - starPos) * cellSize;
+    let distInf = max(abs(d.x), abs(d.y));
 
-    let sizeRand = hash12(cellID + vec2<f32>(97.0));
-    let radius = baseRadius * (0.6 + 0.4 * sizeRand);
-
-    // Pixel-perfect hard edge. step(dist, radius) = 1.0 if dist <= radius.
-    let intensity = step(dist, radius);
-    return vec3<f32>(1.0) * intensity;
+    if (distInf > radiusWorld) { return vec3<f32>(0.0); }
+    return vec3<f32>(brightness);
 }
 
 @fragment
@@ -93,10 +103,9 @@ fn mainFragment(@location(0) vUV: vec2<f32>) -> @location(0) vec4<f32> {
     let dens = starUniforms.uDensidade;
 
     var col = vec3<f32>(0.0);
-
-    col = col + starLayer(worldPos, 260.0, 0.15, 0.006, 0.55, t, dens);
-    col = col + starLayer(worldPos, 180.0, 0.45, 0.008, 0.40, t, dens);
-    col = col + starLayer(worldPos, 140.0, 0.90, 0.011, 0.22, t, dens);
+    col = col + starLayer(worldPos, 22.0,  0.40, 0.85, 1.0, 0.45, 1, t, dens);
+    col = col + starLayer(worldPos, 34.0,  0.25, 0.60, 1.0, 0.70, 2, t, dens);
+    col = col + starLayer(worldPos, 160.0, 0.12, 0.45, 2.0, 1.00, 3, t, dens);
 
     return vec4<f32>(col, 1.0);
 }
