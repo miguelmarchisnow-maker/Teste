@@ -684,13 +684,14 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
       const { max, rendererName } = probeLimits();
       const biggest = Math.max(renderW, renderH);
-      // Only warn in WebGPU — WebGL2 ceilings are high enough that
-      // practical settings never trip them, and Canvas2D has no such
-      // limit at all.
-      if (rendererName.includes('webgpu') && biggest > max) {
+      // Warn on WebGL / WebGPU (both have GPU texture size ceilings).
+      // Canvas2D has no such limit so the warning stays off.
+      const isGpuRenderer = rendererName.includes('webgl') || rendererName.includes('webgpu');
+      if (isGpuRenderer && biggest > max) {
         const effective = (max / (Math.max(window.innerWidth, window.innerHeight) * dpr));
+        const label = rendererName.includes('webgpu') ? 'WebGPU' : 'WebGL';
         warnReadout.style.display = 'block';
-        warnReadout.textContent = `⚠ passa do limite WebGPU (${max}px) — aplicado como ${effective.toFixed(2)}×`;
+        warnReadout.textContent = `⚠ passa do limite ${label} (${max}px) — aplicado como ${effective.toFixed(2)}×`;
       } else {
         warnReadout.style.display = 'none';
       }
