@@ -48,17 +48,19 @@ const PRESETS: Record<Nivel, FlagsDerivadas> = {
     planetMaxOctaves: 3,
   },
   // Minimum preset doubles as the software-renderer safety net.
-  // Values are picked so Microsoft WARP, SwiftShader, LLVMpipe, or
-  // Canvas2D mode all reach viable framerates without needing any
-  // extra renderer-specific overrides — applying this preset alone
-  // is enough.
+  // renderScale bumped from 0.2 → 0.3 after playtests on SwiftShader
+  // showed that 0.2 was technically playable (~30 FPS) but visually
+  // unreadable (1920×1080 × 0.2 = 384×216 — smaller than a thumbnail).
+  // 0.3 = 576×324, which is still pixel-art territory but the sun,
+  // planets, and UI text stay legible. Expect ~20 FPS on software,
+  // which is tight but usable.
   minimo: {
     fogThrottle: 15,
     maxFantasmas: 0,
     densidadeStarfield: 0.1,
     shaderLive: false,
     mostrarOrbitas: false,
-    renderScale: 0.2,
+    renderScale: 0.3,
     starfieldLayers: 1,
     planetMaxOctaves: 2,
   },

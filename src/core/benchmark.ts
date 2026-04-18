@@ -219,9 +219,12 @@ function classificar(avgMs: number): {
   if (avgMs < 55)     return { preset: 'medio',  scale: 0.85 };
   if (avgMs < 80)     return { preset: 'baixo',  scale: 0.75 };
   if (avgMs < 130)    return { preset: 'baixo',  scale: 0.5 };
-  if (avgMs < 250)    return { preset: 'minimo', scale: 0.35 };
-  if (avgMs < 500)    return { preset: 'minimo', scale: 0.2 };
-  return               { preset: 'minimo', scale: 0.15 };
+  // Below 0.3 the game becomes unreadable — text turns into a few
+  // pixels, planets lose their surface detail to upscale blur,
+  // ships are dots. Floor the recommendation there even for very
+  // slow software renderers; the user can always drop further in
+  // the slider if they really need FPS over looks.
+  return               { preset: 'minimo', scale: 0.3 };
 }
 
 async function construirCenaTeste(screenW: number, screenH: number): Promise<Container> {
@@ -365,7 +368,10 @@ export async function rodarBenchmark(
   let plainSummary = gpu.plainSummary;
   if (swDet.isSoftware) {
     preset = 'minimo';
-    scale = Math.min(scale, 0.2);
+    // Floor is 0.3 — below that the UI text is unreadable, and on
+    // software renderers the user already has 30+ FPS at 0.3 with
+    // the minimo preset (bake + static starfield + throttled fog).
+    scale = Math.min(scale, 0.3);
     plainLabel = `${swDet.friendlyName} (CPU)`;
     plainSummary = 'Sem aceleração de GPU — renderização por software é muito lenta';
   }
