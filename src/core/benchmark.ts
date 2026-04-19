@@ -1,0 +1,398 @@
+import type { Application, Container } from 'pixi.js';
+import { Container as PxContainer } from 'pixi.js';
+import { criarPlanetaProceduralSprite, criarEstrelaProcedural } from '../world/planeta-procedural';
+import { TIPO_PLANETA } from '../world/planeta';
+import type { OrbitalConfig } from './config';
+
+/**
+ * On-screen stress benchmark.
+ *
+ * Adds a full-viewport scene to app.stage (on top of whatever is
+ * there — the menu or the game — dimmed behind a backdrop), renders
+ * it for ~8 seconds while measuring per-frame wall time, then picks
+ * a preset + renderScale recommendation from the result.
+ *
+ * The scene is intentionally harsher than live gameplay:
+ *   - 20 planet meshes in a 5×4 grid covering every planet type,
+ *     each 256 world units wide. Each mesh animates time/rotation
+ *     so the fragment shader actually re-runs every frame.
+ *   - 1 star mesh at 384 units wide so the star shader path is
+ *     exercised too.
+ *   - Scene is SHOWN, not rendered to a RenderTexture, so the
+ *     measurement reflects the full pipeline the user sees.
+ *
+ * Because the scene is live we observe the actual app.ticker frame
+ * deltas rather than wrapping the render call — no chance of GPU
+ * pipeline desync hiding cost.
+ */
+
+export type GpuTier = 'topo' | 'alto' | 'medio' | 'entrada' | 'fraco' | 'muito-fraco';
+
+export interface BenchmarkResult {
+  avgFrameMs: number;
+  minFrameMs: number;
+  maxFrameMs: number;
+  p95FrameMs: number;
+  framesSampled: number;
+  recommendedPreset: OrbitalConfig['graphics']['qualidadeEfeitos'];
+  recommendedRenderScale: number;
+  gpuTier: GpuTier;
+  /** Plain-Portuguese label (e.g. "PC gamer moderno"). */
+  gpuPlainLabel: string;
+  /** One-sentence takeaway about what this machine handles. */
+  gpuPlainSummary: string;
+  /** Technical equivalent (e.g. "~RTX 30xx / RX 6xxx"). */
+  gpuTechLabel: string;
+  /** The renderer backend string from the live Pixi renderer. */
+  rendererName: string;
+  /** Best-effort GPU identifier from debug-renderer-info. Often masked. */
+  gpuVendor: string;
+  gpuRenderer: string;
+  /** True when the renderer is CPU software (WARP, SwiftShader, etc). */
+  isSoftware: boolean;
+  softwareKind: SoftwareDetection['kind'];
+  softwareFriendlyName: string;
+}
+
+export interface GpuInfo {
+  tier: GpuTier;
+  /** Plain-Portuguese friendly name that non-gamers understand. */
+  plainLabel: string;
+  /** One-sentence takeaway about what this machine handles. */
+  plainSummary: string;
+  /** Technical equivalent for users who know GPU model families. */
+  techLabel: string;
+}
+
+function classificarGpu(avgMs: number): GpuInfo {
+  // GPU names here are CONSUMER-RECOGNIZABLE — things the average
+  // gamer has heard of or searched for in a store. Grouped by rough
+  // generation/tier so the user sees "ok my PC is about like those".
+  if (avgMs < 1.5) return {
+    tier: 'topo',
+    plainLabel: 'RTX 4080 / RTX 4090 / RX 7900',
+    plainSummary: 'Placa top de linha — qualidade máxima sem esforço',
+    techLabel: 'avg frame < 1.5 ms',
+  };
+  if (avgMs < 3) return {
+    tier: 'alto',
+    plainLabel: 'RTX 3070 / RTX 4070 / RX 6700',
+    plainSummary: 'Placa gamer moderna — roda em qualidade alta',
+    techLabel: 'avg frame 1.5–3 ms',
+  };
+  if (avgMs < 6) return {
+    tier: 'medio',
+    plainLabel: 'RTX 3060 / GTX 1080 / RX 5600',
+    plainSummary: 'Placa gamer intermediária — boa em qualidade média',
+    techLabel: 'avg frame 3–6 ms',
+  };
+  if (avgMs < 12) return {
+    tier: 'entrada',
+    plainLabel: 'GTX 1660 / GTX 1060 / RX 580',
+    plainSummary: 'Placa de entrada ou integrada moderna — qualidade baixa',
+    techLabel: 'avg frame 6–12 ms',
+  };
+  if (avgMs < 25) return {
+    tier: 'fraco',
+    plainLabel: 'GTX 1050 / GT 1030 / Intel Iris Xe',
+    plainSummary: 'Notebook antigo ou placa fraca — preset mínimo',
+    techLabel: 'avg frame 12–25 ms',
+  };
+  return {
+    tier: 'muito-fraco',
+    plainLabel: 'Intel HD / iGPU antiga / renderização por software',
+    plainSummary: 'Sem aceleração de vídeo — performance será limitada',
+    techLabel: 'avg frame > 25 ms',
+  };
+}
+
+function coletarInfoRenderer(app: Application): { name: string; vendor: string; renderer: string } {
+  const r = app.renderer as any;
+  const name = String(r?.name ?? r?.type ?? 'desconhecido');
+  let vendor = 'desconhecido';
+  let renderer = 'desconhecido';
+  const gl = r?.gl as WebGLRenderingContext | WebGL2RenderingContext | undefined;
+  if (gl) {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    if (ext) {
+      vendor = (gl.getParameter((ext as any).UNMASKED_VENDOR_WEBGL) as string) ?? vendor;
+      renderer = (gl.getParameter((ext as any).UNMASKED_RENDERER_WEBGL) as string) ?? renderer;
+    }
+  }
+  const adapter = r?.gpu?.adapter as GPUAdapter | undefined;
+  if (adapter?.info) {
+    vendor = adapter.info.vendor || vendor;
+    renderer = adapter.info.description || adapter.info.device || adapter.info.architecture || renderer;
+  }
+  return { name, vendor, renderer };
+}
+
+/**
+ * Detect whether the active renderer is CPU-based software rasterization
+ * (WARP on Windows, SwiftShader on Chromium, LLVMpipe on Linux Mesa,
+ * or the Canvas2D fallback). These cases can't reach gameplay-viable
+ * framerates on anything except extreme-low-res — the caller may want
+ * to apply the most aggressive preset and show a toast explaining
+ * why the game will look pixelated.
+ */
+export interface SoftwareDetection {
+  isSoftware: boolean;
+  kind: 'warp' | 'swiftshader' | 'llvmpipe' | 'canvas2d' | 'outro' | 'nenhum';
+  /** Friendly name to show in the report / toast. */
+  friendlyName: string;
+}
+
+export function detectarRendererSoftware(app: Application): SoftwareDetection {
+  const info = coletarInfoRenderer(app);
+  const name = info.name.toLowerCase();
+  const renderer = info.renderer.toLowerCase();
+  const vendor = info.vendor.toLowerCase();
+
+  if (name.includes('canvas')) {
+    return { isSoftware: true, kind: 'canvas2d', friendlyName: 'Canvas2D (CPU)' };
+  }
+  // Microsoft WARP — what Chrome on Windows falls back to when GPU
+  // acceleration is disabled or the driver is blacklisted. The
+  // string always contains 'Basic Render Driver'.
+  if (renderer.includes('basic render driver') || renderer.includes('warp')) {
+    return { isSoftware: true, kind: 'warp', friendlyName: 'Microsoft WARP' };
+  }
+  // Chromium's own software backend.
+  if (renderer.includes('swiftshader') || vendor.includes('swiftshader') || vendor.includes('google swiftshader')) {
+    return { isSoftware: true, kind: 'swiftshader', friendlyName: 'Google SwiftShader' };
+  }
+  // Linux Mesa software path.
+  if (renderer.includes('llvmpipe') || renderer.includes('softpipe')) {
+    return { isSoftware: true, kind: 'llvmpipe', friendlyName: 'Mesa LLVMpipe' };
+  }
+  // Generic "software" hint — rare but covers corner cases.
+  if (renderer.includes('software') || vendor.includes('software')) {
+    return { isSoftware: true, kind: 'outro', friendlyName: 'renderizador por software' };
+  }
+  return { isSoftware: false, kind: 'nenhum', friendlyName: '' };
+}
+
+const DURATION_MS = 10000;
+const WARMUP_MS = 750;
+
+/**
+ * Force the GPU to actually finish executing queued commands before
+ * returning. gl.finish() looks like the right call but on software
+ * backends (Microsoft WARP, SwiftShader, LLVMpipe) it sometimes
+ * returns immediately without waiting — leaving the benchmark to
+ * measure only the JS command-submission time (≈0.01ms). gl.
+ * readPixels(1×1) blocks unconditionally until pixel data is
+ * available so it's a reliable sync primitive. WebGPU has a proper
+ * async primitive instead.
+ */
+const _readPxBuf = new Uint8Array(4);
+async function syncGpu(renderer: any): Promise<void> {
+  try {
+    const gl = renderer?.gl as WebGLRenderingContext | WebGL2RenderingContext | undefined;
+    if (gl) {
+      // readPixels against the default framebuffer always stalls
+      // the CPU until the GPU actually delivers the pixel. Unlike
+      // gl.finish(), software drivers don't get to short-circuit.
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, _readPxBuf);
+      return;
+    }
+    const device = renderer?.gpu?.device as GPUDevice | undefined;
+    if (device?.queue?.onSubmittedWorkDone) {
+      await device.queue.onSubmittedWorkDone();
+    }
+  } catch { /* noop — best-effort */ }
+}
+
+function classificar(avgMs: number): {
+  preset: OrbitalConfig['graphics']['qualidadeEfeitos'];
+  scale: number;
+} {
+  // Preset thresholds are deliberately generous — the game itself is
+  // very light. Intel HD integrated graphics runs it at 'alto', so
+  // any dedicated GPU should too. We only drop to lower presets when
+  // the machine is genuinely struggling. For software renderers
+  // (WARP, SwiftShader) we go down to render scale 0.15 so 1920×1080
+  // shrinks to 288×162 — the only way to get close to 60 FPS without
+  // hardware acceleration.
+  if (avgMs < 20)     return { preset: 'alto',   scale: 1.0 };
+  if (avgMs < 35)     return { preset: 'medio',  scale: 1.0 };
+  if (avgMs < 55)     return { preset: 'medio',  scale: 0.85 };
+  if (avgMs < 80)     return { preset: 'baixo',  scale: 0.75 };
+  if (avgMs < 130)    return { preset: 'baixo',  scale: 0.5 };
+  // Below 0.3 the game becomes unreadable — text turns into a few
+  // pixels, planets lose their surface detail to upscale blur,
+  // ships are dots. Floor the recommendation there even for very
+  // slow software renderers; the user can always drop further in
+  // the slider if they really need FPS over looks.
+  return               { preset: 'minimo', scale: 0.3 };
+}
+
+async function construirCenaTeste(screenW: number, screenH: number): Promise<Container> {
+  const root = new PxContainer();
+
+  const tiposArray = Object.values(TIPO_PLANETA);
+  // Gameplay-representative scene: what a typical player viewport
+  // looks like — a handful of planets at mixed sizes, one sun.
+  // Natural octave counts from each palette (terran=6, dry=4,
+  // gas=5 etc) so the measurement reflects the real fragment cost.
+  const placements: Array<{ x: number; y: number; size: number; tipoIdx: number }> = [
+    // Center-ish medium planet (what 'the planet you're looking at' looks like)
+    { x: 0.50, y: 0.55, size: 0.42, tipoIdx: 0 },
+    // Two small planets further out (orbiting neighbours)
+    { x: 0.22, y: 0.30, size: 0.18, tipoIdx: 1 },
+    { x: 0.80, y: 0.75, size: 0.20, tipoIdx: 2 },
+    // Distant gas / islands, small
+    { x: 0.75, y: 0.22, size: 0.14, tipoIdx: 3 },
+    { x: 0.18, y: 0.80, size: 0.15, tipoIdx: 0 },
+  ];
+  const minSide = Math.min(screenW, screenH);
+  for (const p of placements) {
+    const mesh = criarPlanetaProceduralSprite(
+      screenW * p.x,
+      screenH * p.y,
+      minSide * p.size,
+      tiposArray[p.tipoIdx % tiposArray.length],
+      1 + Math.random() * 9,
+    );
+    root.addChild(mesh as unknown as Container);
+  }
+
+  // Sun at the edge of the scene, typical medium size.
+  const sol = criarEstrelaProcedural(screenW * 0.12, screenH * 0.15, minSide * 0.08);
+  root.addChild(sol as unknown as Container);
+
+  return root;
+}
+
+/**
+ * Run the on-screen benchmark. The caller is expected to have shown
+ * a UI overlay (progress + running state) before calling this.
+ *
+ * `onProgress(p, liveFrameMs)` fires every rendered frame with:
+ *   p           — 0..1, how much of the sampling window elapsed
+ *   liveFrameMs — instant frame time for the most-recent frame
+ */
+export async function rodarBenchmark(
+  app: Application,
+  onProgress?: (p: number, liveFrameMs: number) => void,
+): Promise<BenchmarkResult> {
+  const screenW = app.screen.width;
+  const screenH = app.screen.height;
+  const scene = await construirCenaTeste(screenW, screenH);
+  app.stage.addChild(scene);
+
+  const samples: number[] = [];
+  const start = performance.now();
+  let lastRafMs = start;
+
+  try {
+    while (true) {
+      // rAF paces the loop. The rAF delta is also our sanity-check
+      // lower bound for the sample: if a software backend manages
+      // to lie about gl.readPixels() sync, the wall-clock gap
+      // between rAFs still captures the real cost.
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      const now = performance.now();
+      const rafDelta = now - lastRafMs;
+      lastRafMs = now;
+      const elapsed = now - start;
+
+      // One render per sample — matches gameplay.
+      for (const child of scene.children) {
+        const u = (child as any)?._planetShader?.resources?.planetUniforms?.uniforms;
+        if (u) {
+          u.uTime += 0.02;
+          u.uRotation += 0.01;
+        }
+      }
+      const renderStart = performance.now();
+      app.renderer.render({ container: scene });
+      await syncGpu(app.renderer);
+      const renderEnd = performance.now();
+      const workMs = renderEnd - renderStart;
+
+      // Use the MAX of (measured render+sync) and (rAF delta minus
+      // a ~1ms scheduler slack). If the GPU driver lies about sync,
+      // rAF delta still reflects reality because the browser can't
+      // deliver the next rAF until the current frame's work clears.
+      const honestMs = Math.max(workMs, Math.max(0, rafDelta - 1));
+
+      if (elapsed >= WARMUP_MS) samples.push(honestMs);
+      if (onProgress) onProgress(Math.min(1, elapsed / DURATION_MS), honestMs);
+      if (elapsed >= DURATION_MS) break;
+    }
+  } finally {
+    try {
+      app.stage.removeChild(scene);
+      scene.destroy({ children: true });
+    } catch { /* noop */ }
+  }
+
+  const info = coletarInfoRenderer(app);
+  const swDet = detectarRendererSoftware(app);
+
+  if (samples.length === 0) {
+    const fallbackGpu = classificarGpu(999);
+    return {
+      avgFrameMs: 999,
+      minFrameMs: 999,
+      maxFrameMs: 999,
+      p95FrameMs: 999,
+      framesSampled: 0,
+      recommendedPreset: 'minimo',
+      recommendedRenderScale: 0.15,
+      gpuTier: fallbackGpu.tier,
+      gpuPlainLabel: fallbackGpu.plainLabel,
+      gpuPlainSummary: fallbackGpu.plainSummary,
+      gpuTechLabel: fallbackGpu.techLabel,
+      rendererName: info.name,
+      gpuVendor: info.vendor,
+      gpuRenderer: info.renderer,
+      isSoftware: swDet.isSoftware,
+      softwareKind: swDet.kind,
+      softwareFriendlyName: swDet.friendlyName,
+    };
+  }
+
+  const sorted = [...samples].sort((a, b) => a - b);
+  const trimmed = sorted.slice(0, Math.ceil(sorted.length * 0.9));
+  const avg = trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+  const p95 = sorted[Math.floor(sorted.length * 0.95)];
+  let { preset, scale } = classificar(avg);
+  const gpu = classificarGpu(avg);
+
+  // Software renderer override: cap the recommendation at minimo +
+  // tiny render scale regardless of what the measurement said.
+  // Even a 'fast' WARP sample can't sustain 60 FPS on the real game.
+  let plainLabel = gpu.plainLabel;
+  let plainSummary = gpu.plainSummary;
+  if (swDet.isSoftware) {
+    preset = 'minimo';
+    // Floor is 0.3 — below that the UI text is unreadable, and on
+    // software renderers the user already has 30+ FPS at 0.3 with
+    // the minimo preset (bake + static starfield + throttled fog).
+    scale = Math.min(scale, 0.3);
+    plainLabel = `${swDet.friendlyName} (CPU)`;
+    plainSummary = 'Sem aceleração de GPU — renderização por software é muito lenta';
+  }
+
+  return {
+    avgFrameMs: avg,
+    minFrameMs: sorted[0],
+    maxFrameMs: sorted[sorted.length - 1],
+    p95FrameMs: p95,
+    framesSampled: samples.length,
+    recommendedPreset: preset,
+    recommendedRenderScale: scale,
+    gpuTier: gpu.tier,
+    gpuPlainLabel: plainLabel,
+    gpuPlainSummary: plainSummary,
+    gpuTechLabel: gpu.techLabel,
+    rendererName: info.name,
+    gpuVendor: info.vendor,
+    gpuRenderer: info.renderer,
+    isSoftware: swDet.isSoftware,
+    softwareKind: swDet.kind,
+    softwareFriendlyName: swDet.friendlyName,
+  };
+}
