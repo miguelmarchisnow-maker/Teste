@@ -13,22 +13,24 @@ function injectStyles(): void {
     .mobile-menu-btn {
       display: none;
       position: fixed;
-      top: 12px;
-      left: 12px;
-      width: 52px;
-      height: 52px;
-      border-radius: 10px;
-      border: 1px solid var(--hud-border, rgba(255,255,255,0.35));
-      background: rgba(10,20,35,0.82);
+      top: 14px;
+      left: 14px;
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      border: 1px solid var(--hud-border, rgba(255,255,255,0.45));
+      background: rgba(10,20,35,0.88);
       color: var(--hud-text, #e8f2ff);
       z-index: 501;
       cursor: pointer;
       align-items: center;
       justify-content: center;
-      font-size: 26px;
+      font-size: 34px;
+      line-height: 1;
       font-family: "Silkscreen", "VT323", monospace;
       touch-action: manipulation;
       pointer-events: auto;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.5);
     }
     body.size-sm .mobile-menu-btn,
     body.portrait.size-md .mobile-menu-btn {

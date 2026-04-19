@@ -68,7 +68,7 @@ export function injectMobileStyles(): void {
     /* Nudge top HUD below the hamburger strip. */
     body.size-sm .resource-bar,
     body.size-sm .empire-badge {
-      top: 76px !important;
+      top: 92px !important;
     }
 
     /* ── Modal cards: card feel, not fullscreen slab. */
