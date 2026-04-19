@@ -25,7 +25,7 @@ import { setCameraFollow } from '../core/player';
 import { abrirPlanetDetailsModal } from './planet-details-modal';
 import { parseAcaoNave } from '../world/naves';
 import { diagnosticarFila, moverItemFila, removerItemFila } from '../world/construcao';
-import { bindFilaDragDrop, isFilaDragging } from './fila-dnd';
+import { bindFilaDragDrop, isFilaDragging, isFilaInteracting } from './fila-dnd';
 
 const LABEL_NAVE_DRAWER: Record<string, string> = {
   colonizadora: 'Colonizadora',
@@ -1091,7 +1091,7 @@ export function atualizarPlanetaDrawer(): void {
   // Suppress body rebuilds while the user is mid-drag in the fila —
   // otherwise the tick would blow the drag state away every 500ms and
   // the reorder would never complete.
-  if (isFilaDragging()) return;
+  if (isFilaDragging() || isFilaInteracting()) return;
   _lastRebuildMs = now;
   rebuildBody(_currentPlaneta, _currentMundo);
 }

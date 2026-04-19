@@ -12,6 +12,13 @@
 
 let _draggingActive = false;
 let _stylesInjected = false;
+// Pointer-down-in-fila tracker. The modal / drawer rebuild their
+// sections on every HUD tick (~33ms drawer drawer at 500ms). That
+// re-render destroys and recreates each handle/button DOM node mid-
+// interaction, eating clicks (removeBtn) and orphaning drags. Any
+// pointer currently pressed anywhere inside a fila list flips this
+// flag so the rebuild loop waits until the user releases.
+let _pointerDownInsideFila = 0;
 
 function injectFilaStyles(): void {
   if (_stylesInjected) return;
@@ -82,6 +89,16 @@ function injectFilaStyles(): void {
 
 export function isFilaDragging(): boolean {
   return _draggingActive;
+}
+
+/**
+ * True while any pointer is currently pressed inside a bound fila list.
+ * Rebuild loops consult this (together with isFilaDragging) to avoid
+ * destroying the button/handle the user is interacting with before
+ * click / pointerup can fire.
+ */
+export function isFilaInteracting(): boolean {
+  return _pointerDownInsideFila > 0;
 }
 
 export interface FilaDragOptions {
@@ -237,4 +254,20 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
   handles.forEach((handle) => {
     handle.addEventListener('pointerdown', (e) => start(e, handle));
   });
+
+  // Any pointerdown anywhere in the list — handle, remove button,
+  // elsewhere — stalls the rebuild loop until pointerup. Without this
+  // the ~33ms modal tick destroys the button between down and up and
+  // click never fires ("fica bloqueado").
+  const onListPointerDown = (): void => {
+    _pointerDownInsideFila++;
+    const release = (): void => {
+      _pointerDownInsideFila = Math.max(0, _pointerDownInsideFila - 1);
+      document.removeEventListener('pointerup', release);
+      document.removeEventListener('pointercancel', release);
+    };
+    document.addEventListener('pointerup', release);
+    document.addEventListener('pointercancel', release);
+  };
+  listEl.addEventListener('pointerdown', onListPointerDown);
 }

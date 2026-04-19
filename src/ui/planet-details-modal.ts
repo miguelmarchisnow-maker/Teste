@@ -30,7 +30,7 @@ import { getMemoria } from '../world/nevoa';
 import { getPrimeiroContato } from '../world/first-contact';
 import { inferirArquetipo } from '../world/imperio-jogador';
 import { diagnosticarFila, moverItemFila, removerItemFila } from '../world/construcao';
-import { bindFilaDragDrop, isFilaDragging } from './fila-dnd';
+import { bindFilaDragDrop, isFilaDragging, isFilaInteracting } from './fila-dnd';
 import { attachTooltip } from './tooltip';
 import { aplicarTooltipsLore } from './lore-keywords';
 import { Application, Container, Ticker } from 'pixi.js';
@@ -1986,9 +1986,11 @@ export function abrirPlanetDetailsModal(p: Planeta, mundo: Mundo): Promise<void>
 export function atualizarPlanetDetailsModal(): void {
   if (!_modal || !_current) return;
   if (!_modal.classList.contains('visible')) return;
-  // Suppress live refreshes while the user is dragging a fila item —
-  // otherwise the tick would rebuild the section and wipe the drag state.
-  if (isFilaDragging()) return;
+  // Suppress live refreshes while the user is dragging a fila item OR
+  // while any pointer is pressed inside the fila (mid-click on × or
+  // on the drag handle) — otherwise the tick would rebuild the
+  // section and the click/drag target disappears before release.
+  if (isFilaDragging() || isFilaInteracting()) return;
   refreshContent();
 }
 
