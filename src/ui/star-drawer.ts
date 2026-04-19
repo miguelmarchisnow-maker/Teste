@@ -102,6 +102,13 @@ function injectStyles(): void {
       height: 100%;
       display: block;
       border-radius: 50%;
+      /* The star shader paints a disc occupying only ~1/2.9 of the
+         quad (the rest is reserved for the world-space glow halo).
+         Compensate by scaling the canvas so the visible disc fills
+         the portrait circle. Portrait has overflow:hidden so the
+         scaled-off glow is safely clipped. */
+      transform: scale(2.4);
+      transform-origin: center;
     }
     .estrela-drawer-meta {
       display: flex;
