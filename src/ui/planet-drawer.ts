@@ -97,7 +97,8 @@ function injectStyles(): void {
       align-items: center;
       gap: calc(var(--hud-unit) * 0.6);
       padding: calc(var(--hud-unit) * 0.7) calc(var(--hud-unit) * 0.9);
-      border-bottom: 1px solid var(--hud-line);
+      /* No bottom divider — the Ver Detalhes button's own border and
+         the first card below it provide enough visual separation. */
     }
 
     .planeta-drawer-portrait {
@@ -195,52 +196,34 @@ function injectStyles(): void {
       flex-shrink: 0;
     }
 
-    /* "Ver detalhes" button — clean monochrome primary. Sits just
-       below the header border with a bit of breathing room so the
-       two lines (header bottom + button top-border) don't visually
-       stack into a weird double divider. Letter-spacing + chevron
-       slide carry the hover feedback. */
+    /* "Ver detalhes" button — minimal outlined CTA. Full-width inside
+       the drawer, white 1px outline, dimmed text. Hover brightens
+       border + text + background faintly. No icons, no pseudo-
+       elements, no letter-spacing dance: just a button. */
     .planeta-drawer-details-btn {
       appearance: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: calc(var(--hud-unit) * 0.5);
-      margin: calc(var(--hud-unit) * 0.55) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.4);
-      padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.95);
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      color: var(--hud-text);
+      display: block;
+      width: calc(100% - var(--hud-unit) * 1.6);
+      margin: calc(var(--hud-unit) * 0.55) auto calc(var(--hud-unit) * 0.4);
+      padding: calc(var(--hud-unit) * 0.58) calc(var(--hud-unit) * 0.9);
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.8);
       font-family: var(--hud-font);
       font-weight: 600;
       font-size: calc(var(--hud-unit) * 0.78);
-      letter-spacing: 0.14em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       cursor: pointer;
       border-radius: calc(var(--hud-radius) * 0.5);
-      transition:
-        background 140ms ease,
-        border-color 140ms ease,
-        transform 120ms ease,
-        letter-spacing 140ms ease;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
     }
     .planeta-drawer-details-btn:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: #fff;
-      letter-spacing: 0.18em;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.7);
+      color: #fff;
     }
-    .planeta-drawer-details-btn:active { transform: translateY(1px); }
-    .planeta-drawer-details-btn svg {
-      width: calc(var(--hud-unit) * 0.8);
-      height: calc(var(--hud-unit) * 0.8);
-      transition: transform 180ms ease;
-      flex-shrink: 0;
-      opacity: 0.7;
-    }
-    .planeta-drawer-details-btn:hover svg {
-      transform: translateX(3px);
-      opacity: 1;
-    }
+    .planeta-drawer-details-btn:active { background: rgba(255, 255, 255, 0.14); }
 
     .planeta-drawer-body {
       padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.7);
@@ -569,22 +552,7 @@ function buildDetailsButton(p: Planeta, mundo: Mundo): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'planeta-drawer-details-btn';
-  const label = document.createElement('span');
-  label.textContent = 'Ver detalhes';
-  btn.appendChild(label);
-  // Chevron — slides on hover thanks to the CSS transform. SVG
-  // inline so it inherits `color` and scales with the button font.
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  const path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', 'M5 12h14M13 5l7 7-7 7');
-  svg.appendChild(path);
-  btn.appendChild(svg);
+  btn.textContent = 'Ver detalhes';
   btn.addEventListener('click', (ev) => {
     ev.stopPropagation();
     void abrirPlanetDetailsModal(p, mundo);
@@ -746,7 +714,21 @@ export function abrirPlanetaDrawer(planeta: Planeta, mundo: Mundo): Promise<void
   const actions = buildActions(planeta, mundo);
   if (actions) _modal.appendChild(actions);
 
-  _modal.classList.add('visible');
+  // Ensure the slide-in animation plays reliably. Without this,
+  // opening the drawer right after mount (or right after a planet-
+  // switch which clears .visible) sometimes skipped the transition
+  // because the browser hadn't painted the hidden state yet. Force a
+  // style read to flush pending layout, then defer the class toggle
+  // to the next frame so the transition from opacity:0 + translateX
+  // actually runs every time.
+  const modal = _modal;
+  const wasVisible = modal.classList.contains('visible');
+  if (!wasVisible) {
+    void modal.offsetWidth;
+    requestAnimationFrame(() => { modal.classList.add('visible'); });
+  } else {
+    modal.classList.add('visible');
+  }
 
   return new Promise<void>((resolve) => { _closeResolver = resolve; });
 }

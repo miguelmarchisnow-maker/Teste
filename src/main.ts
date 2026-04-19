@@ -14,7 +14,7 @@ import { gerarPersonalidades, PRESETS_DIFICULDADE } from './world/personalidade-
 import { setPersonalidadesParaMundoCarregado } from './world/ia-decisao';
 import { gerarLoreFaccao } from './world/lore-faccao';
 import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu } from './world/mundo-menu';
-import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo, clearCameraFollow } from './core/player';
+import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setCameraPosAnimated, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo, clearCameraFollow } from './core/player';
 import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatcher';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
 import { criarMobileMenuBtn } from './ui/mobile-menu-btn';
@@ -634,13 +634,13 @@ async function bootstrap(): Promise<void> {
   onAction('focar_alvo', () => {
     if (!_mundo) return;
     const nave = _mundo.naves.find((n) => n.selecionado && n.dono === 'jogador');
-    if (nave) { setCameraPos(nave.x, nave.y); return; }
+    if (nave) { setCameraPosAnimated(nave.x, nave.y); return; }
     const planeta = _mundo.planetas.find((p) => p.dados.selecionado);
-    if (planeta) { setCameraPos(planeta.x, planeta.y); return; }
+    if (planeta) { setCameraPosAnimated(planeta.x, planeta.y); return; }
     const sol = _mundo.sois.find((s) => (s as any)._selecionado);
-    if (sol) { setCameraPos(sol.x, sol.y); return; }
+    if (sol) { setCameraPosAnimated(sol.x, sol.y); return; }
     const home = _mundo.planetas.find((p) => p.dados.dono === 'jogador');
-    if (home) setCameraPos(home.x, home.y);
+    if (home) setCameraPosAnimated(home.x, home.y);
   });
 
   onAction('cancel_or_menu', () => {

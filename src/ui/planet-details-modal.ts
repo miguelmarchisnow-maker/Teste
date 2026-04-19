@@ -578,8 +578,21 @@ export function abrirPlanetDetailsModal(p: Planeta, mundo: Mundo): Promise<void>
   _currentMundo = mundo;
   refreshContent();
 
-  _backdrop.classList.add('visible');
-  _modal.classList.add('visible');
+  // CRITICAL: on the FIRST open after ensureModal creates the element,
+  // the modal starts at opacity:0 + visibility:hidden from CSS. Adding
+  // `.visible` in the same tick triggers the class change BEFORE the
+  // browser ever painted the hidden state, so the CSS transition
+  // doesn't play (user sees nothing, thinks the click was dropped,
+  // clicks again — the 'double-click to open' bug). Force layout once
+  // via getComputedStyle, then rAF-defer the class toggle so the
+  // browser has a frame to register the initial state first.
+  const modal = _modal;
+  const backdrop = _backdrop;
+  void modal.offsetWidth; // read-layout → flush pending style calcs
+  requestAnimationFrame(() => {
+    backdrop.classList.add('visible');
+    modal.classList.add('visible');
+  });
   marcarInteracaoUi();
 
   return new Promise<void>((resolve) => { _closeResolver = resolve; });

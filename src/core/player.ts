@@ -136,6 +136,63 @@ function cancelarZoomTween(): void {
   _zoomTween = null;
 }
 
+// Pan-only tween (no zoom change) used when the player clicks an
+// entity — camera glides to the target in ~350ms instead of teleporting.
+let _panTween: {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  startMs: number;
+  durationMs: number;
+} | null = null;
+
+function cancelarPanTween(): void {
+  _panTween = null;
+}
+
+function avancarPanTween(): void {
+  if (!_panTween) return;
+  const t = (performance.now() - _panTween.startMs) / _panTween.durationMs;
+  if (t >= 1) {
+    camera.x = _panTween.toX;
+    camera.y = _panTween.toY;
+    _panTween = null;
+    return;
+  }
+  const e = 1 - Math.pow(1 - t, 3);
+  camera.x = _panTween.fromX + (_panTween.toX - _panTween.fromX) * e;
+  camera.y = _panTween.fromY + (_panTween.toY - _panTween.fromY) * e;
+}
+
+/**
+ * Smoothly pans the camera from its current position to (x, y). Used
+ * when the player clicks an entity — a hard jump was jarring,
+ * especially across long distances. The tween takes ~350ms with an
+ * ease-out cubic. Also cancels follow-mode so the pan doesn't get
+ * overridden next frame.
+ */
+export function setCameraPosAnimated(x: number, y: number, durationMs: number = 350): void {
+  cancelarZoomTween();
+  _followTarget = null;
+  // If the camera is already essentially at the target, don't bother
+  // tweening — saves a pointless 350ms of inert frames.
+  if (Math.hypot(x - camera.x, y - camera.y) < 1) {
+    camera.x = x;
+    camera.y = y;
+    _panTween = null;
+    return;
+  }
+  _panTween = {
+    fromX: camera.x,
+    fromY: camera.y,
+    toX: x,
+    toY: y,
+    startMs: performance.now(),
+    durationMs,
+  };
+}
+
 function avancarZoomTween(): void {
   if (!_zoomTween) return;
   const t = (performance.now() - _zoomTween.startMs) / _zoomTween.durationMs;
@@ -171,6 +228,7 @@ export function setCameraPos(x: number, y: number): void {
   // Cancel any in-flight zoom tween — otherwise the next frame's lerp
   // overwrites the explicit position (e.g. F-focus firing mid-tween).
   cancelarZoomTween();
+  cancelarPanTween();
   // Explicit reposition overrides any active follow — otherwise the
   // follow would snap the camera back next frame.
   _followTarget = null;
@@ -496,7 +554,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       if (clickInfo?.nave) {
         cancelarComandoNave();
         selecionarNave(mundo, clickInfo.nave);
-        setCameraPos(clickInfo.nave.x, clickInfo.nave.y);
+        setCameraPosAnimated(clickInfo.nave.x, clickInfo.nave.y);
         somClique();
       } else if (
         naveSelecionada
@@ -522,7 +580,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       } else if (clickInfo?.planeta) {
         cancelarComandoNave();
         selecionarPlaneta(mundo, clickInfo.planeta);
-        setCameraPos(clickInfo.planeta.x, clickInfo.planeta.y);
+        setCameraPosAnimated(clickInfo.planeta.x, clickInfo.planeta.y);
         somClique();
         fecharStarDrawer();
         if (isTouchMode()) {
@@ -535,7 +593,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         limparSelecoes(mundo);
         if (isTouchMode()) fecharMobilePlanetaDrawer();
         else fecharPlanetaDrawer();
-        setCameraPos(clickInfo.sol.x, clickInfo.sol.y);
+        setCameraPosAnimated(clickInfo.sol.x, clickInfo.sol.y);
         void abrirStarDrawer(clickInfo.sol, mundo);
         somClique();
       } else {
@@ -575,6 +633,7 @@ export function cancelarRotaNaveSelecionada(mundo: Mundo): void {
 
 export function atualizarCamera(mundo: Mundo, app: Application): void {
   avancarZoomTween();
+  avancarPanTween();
   // Follow: pin camera to target each frame. Auto-drop if target died
   // (ship destroyed, planet consumed) so we don't hold a ghost ref.
   if (_followTarget) {
