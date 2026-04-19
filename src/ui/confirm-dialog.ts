@@ -1,5 +1,6 @@
 import { marcarInteracaoUi } from './interacao-ui';
 import { t } from '../core/i18n/t';
+import { setupDialog, trapFocusHandler } from './_modal-a11y';
 
 /**
  * In-game replacement for the native `confirm()` dialog. Promise-based,
@@ -33,8 +34,13 @@ let _activeResolver: ((ok: boolean) => void) | null = null;
 function injectStyles(): void {
   if (_styleInjected) return;
   _styleInjected = true;
+  // Remove any orphan style from a previous game cycle (destruir resets the
+  // flag but doesn't tear the <style> down — would accumulate over sessions).
+  const orphan = document.head.querySelector('style[data-confirm-dialog]');
+  if (orphan) orphan.remove();
 
   const style = document.createElement('style');
+  style.setAttribute('data-confirm-dialog', '1');
   style.textContent = `
     .confirm-backdrop {
       position: fixed;
@@ -42,9 +48,17 @@ function injectStyles(): void {
       background: rgba(0,0,0,0.6);
       backdrop-filter: blur(3px);
       z-index: 950;
-      display: none;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 160ms ease-out, visibility 0s linear 200ms;
     }
-    .confirm-backdrop.visible { display: block; }
+    .confirm-backdrop.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: opacity 160ms ease-out, visibility 0s linear 0s;
+    }
 
     .confirm-dialog {
       position: fixed;
@@ -199,8 +213,11 @@ export function criarConfirmDialog(): void {
 
   const title = document.createElement('h2');
   title.className = 'confirm-title';
+  title.id = 'confirm-dialog-title';
   _titleEl = title;
   modal.appendChild(title);
+  setupDialog(modal, 'confirm-dialog-title');
+  modal.addEventListener('keydown', trapFocusHandler(modal));
 
   const message = document.createElement('div');
   message.className = 'confirm-message';
@@ -279,6 +296,10 @@ export function destruirConfirmDialog(): void {
   _confirmBtn = null;
   _cancelBtn = null;
   _styleInjected = false;
+  // Remove the orphaned <style> too — otherwise re-injecting on the next
+  // game cycle would stack duplicate stylesheets in <head>.
+  const orphan = document.head.querySelector('style[data-confirm-dialog]');
+  if (orphan) orphan.remove();
   if (_activeResolver) {
     const r = _activeResolver;
     _activeResolver = null;

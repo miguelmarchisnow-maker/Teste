@@ -37,7 +37,7 @@ type TooltipKey =
   | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'ram' | 'fpsCap' | 'vsync' | 'renderScale'
   | 'renderer' | 'webglVersion' | 'gpuPref' | 'verInfo' | 'orbitas'
   | 'starfield' | 'fantasmas' | 'shaderLive' | 'autosave' | 'saveMode'
-  | 'confirmar' | 'edge';
+  | 'confirmar' | 'edge' | 'touchMode';
 
 function tooltip(key: TooltipKey): string {
   return t(`tooltips.${key}`);
@@ -320,11 +320,21 @@ export function renderSettingsInto(host: HTMLDivElement): void {
   refreshBody();
 }
 
+interface AbrirSettingsOptions {
+  /** Invoked after the panel finishes closing — used by the pause menu
+   *  to restore itself so the player doesn't drop back into a live game. */
+  onClose?: () => void;
+}
+
+let _onCloseCallback: (() => void) | null = null;
+
 /** @deprecated Kept for potential future in-game use; not called from main menu. */
-export function abrirSettings(): void {
+export function abrirSettings(opts?: AbrirSettingsOptions): void {
   injectStyles();
   instalarFullscreenListener();
   if (_overlay) return;
+
+  _onCloseCallback = opts?.onClose ?? null;
 
   const overlay = document.createElement('div');
   overlay.className = 'settings-overlay';
@@ -333,6 +343,9 @@ export function abrirSettings(): void {
 
   const card = document.createElement('div');
   card.className = 'settings-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-labelledby', 'settings-title');
   overlay.appendChild(card);
 
   // Header
@@ -340,9 +353,11 @@ export function abrirSettings(): void {
   header.className = 'settings-header';
   const title = document.createElement('h2');
   title.className = 'settings-title';
+  title.id = 'settings-title';
   title.textContent = t('settings.titulo');
   const close = document.createElement('button');
   close.className = 'settings-close';
+  close.setAttribute('aria-label', 'Fechar');
   close.textContent = '\u2715';
   close.addEventListener('click', () => fecharSettings());
   header.append(title, close);
@@ -433,9 +448,12 @@ export function fecharSettings(): void {
   if (_overlay) _refreshBody = null;
   if (!_overlay) return;
   const ov = _overlay;
+  const cb = _onCloseCallback;
+  _onCloseCallback = null;
   ov.classList.add('closing');
   setTimeout(() => {
     ov.remove();
+    if (cb) cb();
   }, 250);
   _overlay = null;
 }
@@ -1262,6 +1280,22 @@ function renderGameplayTab(body: HTMLDivElement): void {
       setConfig({ gameplay: { ...getConfig().gameplay, edgeScroll: cb.checked } });
     });
     row.appendChild(cb);
+    body.appendChild(row);
+  }
+
+  // Touch mode
+  {
+    const [row] = rowWithLabel(t('settings.row.touch_mode'), 'touchMode');
+    const select = criarSelect([
+      ['auto', t('settings.touch_mode.auto')],
+      ['on',   t('settings.touch_mode.on')],
+      ['off',  t('settings.touch_mode.off')],
+    ], getConfig().ui?.touchMode ?? 'auto');
+    select.addEventListener('change', () => {
+      const val = select.dataset.value as 'auto' | 'on' | 'off';
+      setConfig({ ui: { ...getConfig().ui, touchMode: val } });
+    });
+    row.appendChild(select);
     body.appendChild(row);
   }
 

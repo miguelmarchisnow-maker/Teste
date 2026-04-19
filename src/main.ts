@@ -16,6 +16,7 @@ import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu }
 import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo } from './core/player';
 import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatcher';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
+import { criarMobileMenuBtn } from './ui/mobile-menu-btn';
 import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
 import { criarChatLog, destruirChatLog } from './ui/chat-log';
 import { criarResourceBar, destruirResourceBar, atualizarResourceBar } from './ui/resource-bar';
@@ -23,10 +24,24 @@ import { criarCreditsBar, destruirCreditsBar } from './ui/credits-bar';
 import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMinimapZoomOut, destruirMinimap } from './ui/minimap';
 import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats, destruirDebugMenu, setGameSpeed, fecharDebugOverlays, toggleDebugFast, toggleDebugFull } from './ui/debug-menu';
 import { installRootVariables } from './ui/hud-layout';
+import { instalarUiMode } from './core/ui-mode';
+import { criarZoomControls } from './ui/zoom-controls';
+import { injectMobileStyles } from './ui/mobile.css';
+import { injectAnimations } from './ui/animations.css';
 import { criarPlanetPanel, atualizarPlanetPanel, destruirPlanetPanel } from './ui/planet-panel';
 import { atualizarPlanetaDrawer, destruirPlanetaDrawer } from './ui/planet-drawer';
+import { atualizarMobilePlanetaDrawer, destruirMobilePlanetaDrawer } from './ui/mobile-planet-drawer';
 import { criarBuildPanel, atualizarBuildPanel, destruirBuildPanel } from './ui/build-panel';
 import { criarShipPanel, atualizarShipPanel, destruirShipPanel } from './ui/ship-panel';
+import { criarMobileShipPanel, atualizarMobileShipPanel, destruirMobileShipPanel } from './ui/mobile-ship-panel';
+import { criarMobileColonizerPanel, atualizarMobileColonizerPanel, destruirMobileColonizerPanel } from './ui/mobile-colonizer-panel';
+import { isTouchMode } from './core/ui-mode';
+
+function isMobileRuntime(): boolean {
+  if (isTouchMode()) return true;
+  const b = document.body.classList;
+  return b.contains('size-sm') || b.contains('mobile-ua');
+}
 import { criarColonizerPanel, atualizarColonizerPanel, destruirColonizerPanel } from './ui/colonizer-panel';
 import { criarColonyModal, atualizarColonyModal, destruirColonyModal } from './ui/colony-modal';
 import { criarConfirmDialog, destruirConfirmDialog } from './ui/confirm-dialog';
@@ -59,6 +74,7 @@ let _fimTocado = false;
 let _cinematicTime = 0;
 
 const _panState = { up: false, down: false, left: false, right: false };
+let _hudAcumMs = 0;
 
 // ─── Feature flags ──────────────────────────────────────────────────
 // All flags use the HABILITADO suffix for consistency with credits-bar.
@@ -539,6 +555,9 @@ async function bootstrap(): Promise<void> {
     scanlinesEl.style.display = cfg.graphics.scanlines ? 'block' : 'none';
   });
 
+  instalarUiMode();
+  injectMobileStyles();
+  injectAnimations();
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
   document.body.appendChild(app.canvas);
@@ -696,6 +715,21 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('orbital:voltar-ao-menu', () => {
     void voltarAoMenu();
   });
+
+  // Hardware back (Android back button, iOS edge-swipe in PWA).
+  // Push initial state so popstate is interceptable; convert to a custom
+  // event that open modals can listen for. Fire-and-forget — modals that
+  // don't subscribe simply ignore it.
+  try {
+    if (typeof history !== 'undefined' && history.replaceState) {
+      history.replaceState({ orbital: 'root' }, '');
+      window.addEventListener('popstate', () => {
+        window.dispatchEvent(new CustomEvent('orbital:hardware-back'));
+        // Re-push so the next back press is also catchable.
+        history.pushState({ orbital: 'root' }, '');
+      });
+    }
+  } catch { /* SSR / restricted env */ }
 }
 
 function startTicker(): void {
@@ -764,16 +798,29 @@ function startTicker(): void {
 
     atualizarMundo(mundo, app, camera);
 
-    atualizarMinimap(camera);
-    atualizarPlanetPanel(mundo, app);
-    atualizarPlanetaDrawer();
-    atualizarResourceBar(mundo);
-    atualizarBuildPanel(mundo);
-    atualizarShipPanel(mundo);
-    atualizarColonizerPanel(mundo);
-    atualizarColonyModal(mundo);
-    atualizarDebugMenu();
-    atualizarHudBannerErro();
+    // HUD refresh throttle — DOM mutations don't need 60 Hz. Cap to ~30 Hz
+    // (33 ms) so heavy panels (resource-bar, build-panel, ship-panel) run
+    // half as often without any visible lag.
+    _hudAcumMs += app.ticker.deltaMS;
+    if (_hudAcumMs >= 33) {
+      _hudAcumMs = 0;
+      atualizarMinimap(camera);
+      atualizarPlanetPanel(mundo, app);
+      if (isMobileRuntime()) atualizarMobilePlanetaDrawer();
+      else atualizarPlanetaDrawer();
+      atualizarResourceBar(mundo);
+      atualizarBuildPanel(mundo);
+      if (isMobileRuntime()) {
+        atualizarMobileShipPanel(mundo);
+        atualizarMobileColonizerPanel(mundo);
+      } else {
+        atualizarShipPanel(mundo);
+        atualizarColonizerPanel(mundo);
+      }
+      atualizarColonyModal(mundo);
+      atualizarDebugMenu();
+      atualizarHudBannerErro();
+    }
 
     const estado = getEstadoJogo();
     if (estado === 'vitoria' && !_fimTocado) {
@@ -807,6 +854,7 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
   if (planetaJogador) setCameraPos(planetaJogador.x, planetaJogador.y);
   setZoom(1.0);
   configurarCamera(app, mundo);
+  criarZoomControls();
 
   if (!_hudInstalled) {
     _hudInstalled = true;
@@ -820,13 +868,20 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
       criarChatLog();
       criarSidebar();
     }
+    // Hamburger that opens the pause menu directly on narrow/touch screens.
+    criarMobileMenuBtn();
     // The side planet-panel is superseded by the new planet-modal
     // (opened on planet click). Kept in code but not instantiated —
     // flip PLANET_PANEL_HABILITADO to restore.
     if (PLANET_PANEL_HABILITADO) criarPlanetPanel();
     criarBuildPanel();
-    criarShipPanel();
-    criarColonizerPanel();
+    if (isMobileRuntime()) {
+      criarMobileShipPanel();
+      criarMobileColonizerPanel();
+    } else {
+      criarShipPanel();
+      criarColonizerPanel();
+    }
     criarColonyModal();
     criarConfirmDialog();
 
@@ -1036,14 +1091,9 @@ async function carregarMundo(nome: string): Promise<void> {
       setZoom(dto.camera.zoom);
     }
     if (typeof dto.gameSpeed === 'number') setGameSpeed(dto.gameSpeed);
-    if (dto.selecaoUI?.planetaId) {
-      const p = mundo.planetas.find((x) => x.id === dto.selecaoUI!.planetaId);
-      if (p) p.dados.selecionado = true;
-    }
-    if (dto.selecaoUI?.naveId) {
-      const n = mundo.naves.find((x) => x.id === dto.selecaoUI!.naveId);
-      if (n) n.selecionado = true;
-    }
+    // Don't restore the previous UI selection — re-opening a save with a
+    // planet still "selected" auto-pops the build-panel on entry, which
+    // is unwanted noise. Player can re-select what they need.
   } catch (err) {
     _transitioning = false;
     await esconderCarregando();
@@ -1143,8 +1193,11 @@ async function voltarAoMenu(): Promise<void> {
     destruirChatLog();
     destruirPlanetPanel();
     destruirPlanetaDrawer();
+    destruirMobilePlanetaDrawer();
     destruirBuildPanel();
     destruirShipPanel();
+    destruirMobileShipPanel();
+    destruirMobileColonizerPanel();
     destruirColonizerPanel();
     destruirColonyModal();
     destruirConfirmDialog();

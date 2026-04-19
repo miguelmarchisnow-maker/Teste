@@ -30,10 +30,18 @@ function injectStyles(): void {
       inset: 0;
       background: rgba(0,0,0,0.6);
       backdrop-filter: blur(3px);
-      z-index: 210;
-      display: none;
+      z-index: 960;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 180ms ease, visibility 0s linear 200ms;
     }
-    .colony-backdrop.visible { display: block; }
+    .colony-backdrop.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: opacity 180ms ease, visibility 0s linear 0s;
+    }
 
     .colony-modal {
       position: fixed;
@@ -44,7 +52,7 @@ function injectStyles(): void {
       box-sizing: border-box;
       color: var(--hud-text);
       font-family: var(--hud-font-body);
-      z-index: 211;
+      z-index: 961;
       display: none;
 
       background: var(--hud-bg);
@@ -183,11 +191,15 @@ function buildModal(): HTMLDivElement {
   const modal = document.createElement('div');
   modal.className = 'colony-modal';
   modal.setAttribute('data-ui', 'true');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'colony-modal-title');
   modal.style.pointerEvents = 'auto';
   modal.addEventListener('pointerdown', () => marcarInteracaoUi());
 
   const title = document.createElement('h2');
   title.className = 'colony-title';
+  title.id = 'colony-modal-title';
   title.textContent = t('colony_modal.titulo');
   modal.appendChild(title);
 
@@ -324,14 +336,14 @@ export function criarColonyModal(): void {
 
   const backdrop = document.createElement('div');
   backdrop.className = 'colony-backdrop';
-  // Clicking the backdrop treats it as "keep in orbit" — the player
-  // explicitly declined to colonize. Safer than a silent `hide()` that
-  // would leave the ship stuck in `aguardando_decisao` forever.
+  // Backdrop click no longer auto-resolves the decision (was firing
+  // `handleOutpost` on accidental taps near the modal edge — irreversible
+  // game state from a misclick). The player must press a button.
   backdrop.addEventListener('pointerdown', () => marcarInteracaoUi());
   backdrop.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (_pendingNave) handleOutpost();
+    // No-op — modal stays until Colonizar / Manter em órbita is pressed.
   });
   _backdrop = backdrop;
   document.body.appendChild(backdrop);

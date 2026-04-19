@@ -135,10 +135,14 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
 
   const card = document.createElement('div');
   card.className = 'nwm-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-labelledby', 'new-world-title');
   container.appendChild(card);
 
   const title = document.createElement('h2');
   title.className = 'nwm-title';
+  title.id = 'new-world-title';
   title.textContent = t('novo_mundo.titulo');
   card.appendChild(title);
 
@@ -242,9 +246,38 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
   });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); confirmar(); }
-    if (e.key === 'Escape') { e.preventDefault(); fechar(); opts.onCancel(); }
   });
   input.addEventListener('input', () => { erro.textContent = ''; });
+
+  // Global Escape — works regardless of which child has focus.
+  const onWindowKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      window.removeEventListener('keydown', onWindowKey, true);
+      fechar();
+      opts.onCancel();
+    }
+  };
+  window.addEventListener('keydown', onWindowKey, true);
+  // Focus trap inside the card.
+  card.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const focusables = Array.from(
+      card.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled])'
+      )
+    );
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
 
   document.body.appendChild(container);
   _container = container;

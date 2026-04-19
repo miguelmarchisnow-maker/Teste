@@ -287,13 +287,11 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'toast.save_experimental_on': { pt: 'Modo experimental ativado', en: 'Experimental mode enabled' },
   'toast.save_padrao_on': { pt: 'Modo padrão ativado', en: 'Default mode enabled' },
 
-  // Save corrupted prompt
-  'save.corrompido_prompt': { pt: 'Não foi possível carregar "{nome}".\n\nErro: {msg}\n\nDigite APAGAR pra remover o save, ou EXPORTAR pra baixar o JSON cru.', en: 'Could not load "{nome}".\n\nError: {msg}\n\nType APAGAR to remove the save, or EXPORTAR to download the raw JSON.' },
-
   // Notificações (naves)
   'notificacao.cargueira_descarregou': { pt: 'Cargueira descarregou {n} recursos.', en: 'Freighter unloaded {n} resources.' },
   'notificacao.survey_sem_alvo': { pt: 'Survey completo — sem alvo colonizável. Nave em órbita.', en: 'Survey complete — no colonizable target. Ship in orbit.' },
   'notificacao.colonizadora_outpost': { pt: 'Colonizadora mantida em órbita como posto de observação.', en: 'Colonizer kept in orbit as observation outpost.' },
+  'notificacao.nave_sucateada': { pt: 'Nave sucateada em {nome}. +{refund} comum devolvido.', en: 'Ship scrapped at {nome}. +{refund} common refunded.' },
   'notificacao.survey_cancelar_primeiro': { pt: 'Cancele o survey atual antes de redirecionar a colonizadora.', en: 'Cancel the current survey before redirecting the colonizer.' },
   'notificacao.ja_existe_colonizadora': { pt: 'Já existe uma colonizadora a caminho deste sistema.', en: 'A colonizer is already heading to this system.' },
   'notificacao.clique_alvo': { pt: 'Clique em um planeta ou estrela pra alvejar.', en: 'Click a planet or star to target.' },
@@ -367,6 +365,11 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'settings.row.save_experimental': { pt: 'Save experimental (IndexedDB)', en: 'Experimental save (IndexedDB)' },
   'settings.row.confirmar_destrutivo': { pt: 'Confirmar ações destrutivas', en: 'Confirm destructive actions' },
   'settings.row.edge_scroll': { pt: 'Edge-scroll', en: 'Edge-scroll' },
+  'settings.row.touch_mode': { pt: 'Modo toque', en: 'Touch mode' },
+  'settings.touch_mode.auto': { pt: 'Automático', en: 'Automatic' },
+  'settings.touch_mode.on': { pt: 'Sempre ligado', en: 'Always on' },
+  'settings.touch_mode.off': { pt: 'Sempre desligado', en: 'Always off' },
+  'tooltips.touchMode': { pt: 'Ativa gestos de toque (arrastar, pinça, duplo-toque) e HUD adaptada. "Automático" detecta pelo dispositivo.', en: 'Enables touch gestures (drag, pinch, double-tap) and adaptive HUD. "Automatic" detects by device.' },
 
   // Settings — audio categories
   'settings.audio.master': { pt: 'Master', en: 'Master' },

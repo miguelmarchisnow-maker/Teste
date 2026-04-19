@@ -61,7 +61,7 @@ function injectStyles(): void {
       letter-spacing: 0.15em;
       text-transform: uppercase;
       border-bottom: 2px solid transparent;
-      transition: all 150ms ease;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
       line-height: 1;
       user-select: none;
     }

@@ -43,7 +43,9 @@ function injectStyles(): void {
 
     .pm-card {
       background: var(--hud-bg);
-      backdrop-filter: blur(8px);
+      /* The outer .pause-menu backdrop already blurs the canvas behind;
+         blurring a second time on top of a flat backdrop is pure GPU cost
+         and causes compositor fallback on older iOS. */
       border: 1px solid var(--hud-border);
       border-radius: var(--hud-radius);
       padding: calc(var(--hud-unit) * 2) calc(var(--hud-unit) * 2.5);
@@ -141,13 +143,35 @@ export function abrirPauseMenu(): void {
 
   const card = document.createElement('div');
   card.className = 'pm-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-labelledby', 'pause-menu-title');
   overlay.appendChild(card);
 
   // Title
   const title = document.createElement('div');
   title.className = 'pm-title';
+  title.id = 'pause-menu-title';
   title.textContent = t('pause.titulo');
   card.appendChild(title);
+
+  // Tab focus trap inside the card.
+  card.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const focusables = Array.from(
+      card.querySelectorAll<HTMLElement>('button:not([disabled])')
+    ).filter((el) => el.offsetParent !== null);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
 
   // Resume
   const btnResume = criarBotao(t('pause.continuar'), () => fecharPauseMenu());
@@ -167,7 +191,9 @@ export function abrirPauseMenu(): void {
 
   const btnConfig = criarBotao(t('pause.configuracoes'), () => {
     fecharPauseMenu();
-    abrirSettings();
+    // Re-open the pause menu after settings closes — preserves the
+    // mental model of being in a "paused" state during config changes.
+    abrirSettings({ onClose: () => abrirPauseMenu() });
   });
   card.appendChild(btnConfig);
 

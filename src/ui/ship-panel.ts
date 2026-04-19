@@ -1,5 +1,7 @@
 import type { Mundo, Nave } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
+import { injectBottomSheetStyles } from './bottom-sheet.css';
+import { pulseElement } from './animations.css';
 import {
   obterNaveSelecionada,
   capacidadeCargaCargueira,
@@ -31,12 +33,12 @@ const SPRITE_CELL = 96;
 
 // ─── Shared spritesheet loader ──────────────────────────────────────────────
 
-function loadShipsSheet(): void {
+export function loadShipsSheet(): void {
   if (getSpritesheetImage('ships')) return;
   carregarSpritesheet('ships').then(() => redrawPortrait());
 }
 
-function drawShipSprite(canvas: HTMLCanvasElement, row: number, col: number): void {
+export function drawShipSprite(canvas: HTMLCanvasElement, row: number, col: number): void {
   const img = getSpritesheetImage('ships');
   if (!img) return;
   const cssSize = canvas.clientWidth || parseInt(getComputedStyle(canvas).width, 10) || 64;
@@ -61,7 +63,7 @@ function redrawPortrait(): void {
   drawShipSprite(_portraitCanvas, cell.row, cell.col);
 }
 
-function spriteCellForShip(nave: Nave): { row: number; col: number } {
+export function spriteCellForShip(nave: Nave): { row: number; col: number } {
   const row = SHIP_SPRITE_ROW[nave.tipo] ?? 0;
   const col = Math.max(0, Math.min(4, (nave.tier || 1) - 1));
   return { row, col };
@@ -87,17 +89,17 @@ let _statsKey = '';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function nomeTipoNave(tipo: string): string {
+export function nomeTipoNave(tipo: string): string {
   const key = NOME_TIPO_KEY[tipo];
   return key ? t(key) : tipo;
 }
 
-function shipLabel(nave: Nave): string {
+export function shipLabel(nave: Nave): string {
   if (nave.tipo === 'colonizadora') return t('nave.colonizadora');
   return `${nomeTipoNave(nave.tipo)} ${ROMAN[nave.tier] ?? nave.tier}`;
 }
 
-function estadoLabel(estado: string): string {
+export function estadoLabel(estado: string): string {
   switch (estado) {
     case 'orbitando': return t('nave.estado.orbitando');
     case 'viajando': return t('nave.estado.viajando');
@@ -106,7 +108,7 @@ function estadoLabel(estado: string): string {
   }
 }
 
-function alvoLabel(nave: Nave): string {
+export function alvoLabel(nave: Nave): string {
   const alvo = nave.alvo;
   if (!alvo) return '—';
   if (alvo._tipoAlvo === 'planeta') return (alvo as { dados: { nome?: string } }).dados.nome ?? t('ship_panel.alvo_planeta_fallback');
@@ -115,18 +117,18 @@ function alvoLabel(nave: Nave): string {
   return '—';
 }
 
-function cargaAtual(nave: Nave): number {
+export function cargaAtual(nave: Nave): number {
   return nave.carga.comum + nave.carga.raro + nave.carga.combustivel;
 }
 
-function getCargoFillPercent(nave: Nave): number {
+export function getCargoFillPercent(nave: Nave): number {
   if (nave.tipo !== 'cargueira') return 100;
   const cap = capacidadeCargaCargueira(nave.tier);
   if (!cap) return 0;
   return Math.max(0, Math.min(100, (cargaAtual(nave) / cap) * 100));
 }
 
-function getCargoLabel(nave: Nave): string {
+export function getCargoLabel(nave: Nave): string {
   if (nave.tipo !== 'cargueira') return '';
   const cap = capacidadeCargaCargueira(nave.tier);
   return `${Math.floor(cargaAtual(nave))} / ${cap}`;
@@ -361,32 +363,32 @@ function svgIcon(d: string): SVGSVGElement {
 }
 
 // 4-way arrow / move
-function iconMove(): SVGSVGElement {
+export function iconMove(): SVGSVGElement {
   return svgIcon('M12 2l4 4h-3v4h4V7l4 4-4 4v-3h-4v4h3l-4 4-4-4h3v-4H7v3l-4-4 4-4v3h4V6H8l4-4z');
 }
 
 // X / cancel
-function iconCancel(): SVGSVGElement {
+export function iconCancel(): SVGSVGElement {
   return svgIcon('M6 5l6 6 6-6 1 1-6 6 6 6-1 1-6-6-6 6-1-1 6-6-6-6 1-1z');
 }
 
 // Target / destination (concentric ring)
-function iconTarget(): SVGSVGElement {
+export function iconTarget(): SVGSVGElement {
   return svgIcon('M12 2a10 10 0 110 20 10 10 0 010-20zm0 3a7 7 0 100 14 7 7 0 000-14zm0 3a4 4 0 110 8 4 4 0 010-8z');
 }
 
 // Source / origin pin
-function iconOrigin(): SVGSVGElement {
+export function iconOrigin(): SVGSVGElement {
   return svgIcon('M12 2a7 7 0 017 7c0 5-7 13-7 13s-7-8-7-13a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z');
 }
 
 // Loop / repeat
-function iconLoop(): SVGSVGElement {
+export function iconLoop(): SVGSVGElement {
   return svgIcon('M7 7h8V4l5 5-5 5V11H9v4h4l-5 5-5-5h2V7z');
 }
 
 // Close / deselect (X square)
-function iconClose(): SVGSVGElement {
+export function iconClose(): SVGSVGElement {
   return svgIcon('M4 4h16v16H4V4zm4 3l-1 1 4 4-4 4 1 1 4-4 4 4 1-1-4-4 4-4-1-1-4 4-4-4z');
 }
 
@@ -465,6 +467,7 @@ function renderActions(nave: Nave): void {
       marcarInteracaoUi();
       if (!isEnabled || !_mundoRef) return;
       action.onClick(nave, _mundoRef);
+      pulseElement(btn);
     });
     _buttonsEl.appendChild(btn);
   }
@@ -534,10 +537,11 @@ function getStatsKey(nave: Nave): string {
 export function criarShipPanel(): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
+  injectBottomSheetStyles();
   loadShipsSheet();
 
   const panel = document.createElement('div');
-  panel.className = 'ship-panel';
+  panel.className = 'ship-panel bottom-sheet-capable';
   panel.setAttribute('data-ui', 'true');
   panel.style.pointerEvents = 'auto';
   panel.addEventListener('pointerdown', () => marcarInteracaoUi());

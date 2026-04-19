@@ -62,6 +62,8 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 let _container: HTMLDivElement | null = null;
+let _hamburger: HTMLButtonElement | null = null;
+let _backdrop: HTMLDivElement | null = null;
 let _activeId = '';
 let _onNavigate: ((id: string) => void) | null = null;
 let _styleInjected = false;
@@ -112,7 +114,11 @@ function injectStyles(): void {
       border-radius: 6px;
       cursor: pointer;
       color: var(--hud-text-dim);
-      transition: all 120ms ease;
+      transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease,
+        transform 120ms ease;
       outline: none;
       width: 100%;
       font-family: inherit;
@@ -173,6 +179,93 @@ function injectStyles(): void {
       transition: opacity 120ms ease;
     }
     .sidebar-btn:hover .sidebar-icon-img { opacity: 1; }
+
+    /* Hide full sidebar on desktop when it's only serving as the mobile
+       drawer container (nav items aren't functional yet with the new
+       legacy-gated flow). Mobile breakpoints re-show it as a drawer. */
+    body:not(.size-sm):not(.portrait.size-md) .sidebar.drawer-only {
+      display: none !important;
+    }
+
+    /* Mobile drawer behavior */
+    .sidebar-hamburger {
+      display: none;
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--hud-border, rgba(255,255,255,0.35));
+      background: rgba(10,20,35,0.75);
+      color: var(--hud-text, #e8f2ff);
+      z-index: 501;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-family: "Silkscreen", "VT323", monospace;
+      touch-action: manipulation;
+    }
+    body.size-sm .sidebar-hamburger,
+    body.portrait.size-md .sidebar-hamburger {
+      display: flex;
+    }
+
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 499;
+    }
+    body.size-sm.sidebar-open .sidebar-backdrop,
+    body.portrait.size-md.sidebar-open .sidebar-backdrop {
+      display: block;
+    }
+
+    body.size-sm .sidebar,
+    body.portrait.size-md .sidebar {
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      transform: translateX(-100%) !important;
+      height: 100dvh;
+      padding-top: calc(72px + var(--safe-top, 0px)) !important;
+      padding-bottom: calc(24px + var(--safe-bottom, 0px)) !important;
+      width: min(78vw, 300px);
+      background: rgba(6,12,20,0.96);
+      border-right: 1px solid var(--hud-border, rgba(255,255,255,0.2));
+      transition: transform 220ms ease;
+      z-index: 500;
+      padding: 72px 16px 24px 16px;
+      justify-content: flex-start;
+      gap: 4px;
+      /* Drawer items need bigger text than the floating sidebar tokens. */
+      --sb-icon: 24px;
+      --sb-label: 13px;
+      --sb-pad-v: 12px;
+      --sb-pad-h: 14px;
+    }
+    body.size-sm .sidebar .sidebar-btn,
+    body.portrait.size-md .sidebar .sidebar-btn {
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 14px;
+      min-height: 48px;
+      width: 100%;
+      padding: 10px 14px;
+    }
+    body.size-sm .sidebar .sidebar-label,
+    body.portrait.size-md .sidebar .sidebar-label {
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+    body.size-sm.sidebar-open .sidebar,
+    body.portrait.size-md.sidebar-open .sidebar {
+      transform: translateX(0) !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -209,17 +302,19 @@ function updateActive(): void {
   });
 }
 
-export function criarSidebar(): HTMLDivElement {
+export function criarSidebar(opts: { drawerOnly?: boolean } = {}): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
 
   const sidebar = document.createElement('div');
-  sidebar.className = 'hud-panel sidebar';
+  sidebar.className = 'hud-panel sidebar' + (opts.drawerOnly ? ' drawer-only' : '');
   sidebar.setAttribute('data-ui', 'true');
   sidebar.style.pointerEvents = 'auto';
 
-  for (const item of NAV_ITEMS) {
-    sidebar.appendChild(createNavButton(item));
+  if (!opts.drawerOnly) {
+    for (const item of NAV_ITEMS) {
+      sidebar.appendChild(createNavButton(item));
+    }
   }
 
   // ── Menu button (icon + label) ──
@@ -244,6 +339,35 @@ export function criarSidebar(): HTMLDivElement {
   _container = sidebar;
   document.body.appendChild(sidebar);
   registerSidebar(sidebar);
+
+  const hamburger = document.createElement('button');
+  hamburger.type = 'button';
+  hamburger.className = 'sidebar-hamburger';
+  hamburger.setAttribute('data-ui', 'true');
+  hamburger.setAttribute('aria-label', 'menu');
+  hamburger.textContent = '\u2630';
+  hamburger.addEventListener('click', () => {
+    document.body.classList.toggle('sidebar-open');
+  });
+  document.body.appendChild(hamburger);
+  _hamburger = hamburger;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sidebar-backdrop';
+  backdrop.setAttribute('data-ui', 'true');
+  backdrop.addEventListener('click', () => {
+    document.body.classList.remove('sidebar-open');
+  });
+  document.body.appendChild(backdrop);
+  _backdrop = backdrop;
+
+  sidebar.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.sidebar-btn')) {
+      document.body.classList.remove('sidebar-open');
+    }
+  });
+
   updateActive();
 
   _refreshTextos = () => {
@@ -270,6 +394,11 @@ export function destruirSidebar(): void {
     _container.remove();
     _container = null;
   }
+  _hamburger?.remove();
+  _hamburger = null;
+  _backdrop?.remove();
+  _backdrop = null;
+  document.body.classList.remove('sidebar-open');
   _unsubConfig?.();
   _unsubConfig = null;
   _unsubLayout?.();

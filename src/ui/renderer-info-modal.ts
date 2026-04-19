@@ -227,15 +227,20 @@ export function abrirRendererInfoModal(app: Application): void {
 
   const card = document.createElement('div');
   card.className = 'renderer-info-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-labelledby', 'renderer-info-title');
   overlay.appendChild(card);
 
   const header = document.createElement('div');
   header.className = 'renderer-info-header';
   const title = document.createElement('h2');
   title.className = 'renderer-info-title';
+  title.id = 'renderer-info-title';
   title.textContent = t('renderer_info.titulo');
   const closeX = document.createElement('button');
   closeX.className = 'renderer-info-close-x';
+  closeX.setAttribute('aria-label', 'Fechar');
   closeX.textContent = '✕';
   closeX.addEventListener('click', () => fecharRendererInfoModal());
   header.append(title, closeX);

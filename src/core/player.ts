@@ -5,6 +5,10 @@ import type { Mundo, Camera, Nave, Planeta, Sol } from '../types';
 import { consumirInteracaoUi } from '../ui/interacao-ui';
 import { getConfig } from './config';
 import {
+  distance, midpoint, isTap, isDoubleTap,
+  type TapRecord,
+} from './input/pointer-gestures';
+import {
   cancelarMovimentoNave,
   definirRotaManualNave,
   definirPlanetaRotaCargueira,
@@ -21,6 +25,8 @@ import {
 import { mostrarNotificacao } from '../ui/notificacao';
 import { t } from './i18n/t';
 import { abrirPlanetaDrawer, fecharPlanetaDrawer } from '../ui/planet-drawer';
+import { abrirMobilePlanetaDrawer, fecharMobilePlanetaDrawer } from '../ui/mobile-planet-drawer';
+import { isTouchMode } from './ui-mode';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -76,24 +82,69 @@ export function getZoom(): number {
  * Zoom the camera while keeping a specific screen point anchored in place.
  * If `sx`/`sy` are omitted the anchor defaults to the center of the viewport
  * (matching what the user expects from keyboard/minimap zoom buttons).
+ *
+ * Smooth by default: starts a short tween that `atualizarCamera` advances
+ * each frame. Pass `immediate=true` for pinch gestures where the user's
+ * fingers are already driving the motion in real time.
  */
-function aplicarZoom(novoZoom: number, sx?: number, sy?: number): void {
+let _zoomTween: {
+  fromZoom: number; toZoom: number;
+  fromX: number; toX: number;
+  fromY: number; toY: number;
+  startMs: number; durationMs: number;
+} | null = null;
+
+function aplicarZoom(novoZoom: number, sx?: number, sy?: number, immediate = false): void {
   const app = _appRef;
+  const target = Math.max(0.3, Math.min(2.0, novoZoom));
   if (!app) {
-    camera.zoom = Math.max(0.3, Math.min(2.0, novoZoom));
+    camera.zoom = target;
     return;
   }
   const screenW = app.screen.width;
   const screenH = app.screen.height;
   const anchorSx = sx ?? screenW / 2;
   const anchorSy = sy ?? screenH / 2;
-  // World point currently under the anchor, before zoom.
+  // World point currently under the anchor, before the zoom change.
   const worldX = (anchorSx - screenW / 2) / camera.zoom + camera.x;
   const worldY = (anchorSy - screenH / 2) / camera.zoom + camera.y;
-  camera.zoom = Math.max(0.3, Math.min(2.0, novoZoom));
-  // Re-derive camera so the same world point stays under the anchor.
-  camera.x = worldX - (anchorSx - screenW / 2) / camera.zoom;
-  camera.y = worldY - (anchorSy - screenH / 2) / camera.zoom;
+  // Camera position that keeps that world point under the anchor AT target zoom.
+  const newCamX = worldX - (anchorSx - screenW / 2) / target;
+  const newCamY = worldY - (anchorSy - screenH / 2) / target;
+  if (immediate) {
+    camera.zoom = target;
+    camera.x = newCamX;
+    camera.y = newCamY;
+    _zoomTween = null;
+    return;
+  }
+  _zoomTween = {
+    fromZoom: camera.zoom, toZoom: target,
+    fromX: camera.x, toX: newCamX,
+    fromY: camera.y, toY: newCamY,
+    startMs: performance.now(), durationMs: 180,
+  };
+}
+
+function cancelarZoomTween(): void {
+  _zoomTween = null;
+}
+
+function avancarZoomTween(): void {
+  if (!_zoomTween) return;
+  const t = (performance.now() - _zoomTween.startMs) / _zoomTween.durationMs;
+  if (t >= 1) {
+    camera.zoom = _zoomTween.toZoom;
+    camera.x = _zoomTween.toX;
+    camera.y = _zoomTween.toY;
+    _zoomTween = null;
+    return;
+  }
+  // Ease-out cubic.
+  const e = 1 - Math.pow(1 - t, 3);
+  camera.zoom = _zoomTween.fromZoom + (_zoomTween.toZoom - _zoomTween.fromZoom) * e;
+  camera.x = _zoomTween.fromX + (_zoomTween.toX - _zoomTween.fromX) * e;
+  camera.y = _zoomTween.fromY + (_zoomTween.toY - _zoomTween.fromY) * e;
 }
 
 export function zoomIn(factor: number = 1.15): void {
@@ -111,6 +162,9 @@ export function setZoom(zoom: number): void {
 export function setCameraPos(x: number, y: number): void {
   camera.x = x;
   camera.y = y;
+  // Cancel any in-flight zoom tween — otherwise the next frame's lerp
+  // overwrites the explicit position (e.g. F-focus firing mid-tween).
+  cancelarZoomTween();
 }
 
 export function iniciarComandoNave(tipo: ComandoTipo, nave: Nave | null): void {
@@ -194,6 +248,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
   const signal = _cameraAbort.signal;
 
   const canvas = app.canvas;
+  canvas.style.touchAction = 'none';
   _appRef = app;
   if (!comandoPreviewGfx) {
     comandoPreviewGfx = new Graphics();
@@ -203,57 +258,163 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
 
   canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault(), { signal });
 
-  canvas.addEventListener('mousedown', (e: MouseEvent) => {
-    if (e.button === 0) {
-      const world = screenToWorld(e.clientX, e.clientY, app);
-      clickInfo = {
-        nave: encontrarNaveNoPonto(world.x, world.y, mundo),
-        planeta: encontrarPlanetaNoPonto(world.x, world.y, mundo, true),
-        sol: encontrarSolNoPonto(world.x, world.y, mundo, true),
-      };
-      clickStartScreen.x = e.clientX;
-      clickStartScreen.y = e.clientY;
+  type PointerInfo = { x: number; y: number; startX: number; startY: number; startTime: number; button: number };
+  const activePointers = new Map<number, PointerInfo>();
+  let pinch: { initialDist: number; initialZoom: number; anchorSx: number; anchorSy: number } | null = null;
+  let lastTap: TapRecord | null = null;
 
-      if (!clickInfo.nave && !clickInfo.planeta && !clickInfo.sol) {
+  const getWorldHit = (sx: number, sy: number) => {
+    const world = screenToWorld(sx, sy, app);
+    return {
+      nave: encontrarNaveNoPonto(world.x, world.y, mundo),
+      planeta: encontrarPlanetaNoPonto(world.x, world.y, mundo, true),
+      sol: encontrarSolNoPonto(world.x, world.y, mundo, true),
+    };
+  };
+
+  canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
+
+    const info: PointerInfo = {
+      x: e.clientX, y: e.clientY,
+      startX: e.clientX, startY: e.clientY,
+      startTime: performance.now(),
+      button: e.button,
+    };
+    activePointers.set(e.pointerId, info);
+
+    if (activePointers.size === 1) {
+      if (e.button === 0) {
+        const hit = getWorldHit(e.clientX, e.clientY);
+        clickInfo = hit;
+        clickStartScreen.x = e.clientX;
+        clickStartScreen.y = e.clientY;
+        if (!hit.nave && !hit.planeta && !hit.sol) {
+          cameraDragging = true;
+          cameraLastMouse.x = e.clientX;
+          cameraLastMouse.y = e.clientY;
+        }
+      } else if (e.button === 1 || e.button === 2) {
         cameraDragging = true;
         cameraLastMouse.x = e.clientX;
         cameraLastMouse.y = e.clientY;
       }
+    } else if (activePointers.size === 2) {
+      // Second pointer: start pinch. Cancel any in-progress drag and
+      // wipe clickInfo so that when BOTH fingers lift, neither pointerup
+      // can run click-arbitration on stale hit data from the first touch.
+      cameraDragging = false;
+      clickInfo = null;
+      const [a, b] = Array.from(activePointers.values());
+      const mid = midpoint(a, b);
+      pinch = {
+        initialDist: distance(a, b),
+        initialZoom: camera.zoom,
+        anchorSx: mid.x,
+        anchorSy: mid.y,
+      };
+      // Mark both pointers so their eventual up/cancel won't count as taps.
+      a.button = -1;
+      b.button = -1;
+    }
+  }, { signal });
+
+  canvas.addEventListener('pointermove', (e: PointerEvent) => {
+    const info = activePointers.get(e.pointerId);
+    if (!info) return;
+    info.x = e.clientX;
+    info.y = e.clientY;
+
+    if (pinch && activePointers.size >= 2) {
+      const pts = Array.from(activePointers.values()).slice(0, 2) as [PointerInfo, PointerInfo];
+      const d = distance(pts[0], pts[1]);
+      const newMid = midpoint(pts[0], pts[1]);
+      // Treat the midpoint drift as a pan, so the world stays anchored to
+      // the fingers instead of drifting when the user naturally translates
+      // while pinching.
+      const panDx = newMid.x - pinch.anchorSx;
+      const panDy = newMid.y - pinch.anchorSy;
+      if (panDx !== 0 || panDy !== 0) {
+        camera.x -= panDx / camera.zoom;
+        camera.y -= panDy / camera.zoom;
+        cancelarZoomTween();
+      }
+      pinch.anchorSx = newMid.x;
+      pinch.anchorSy = newMid.y;
+      if (d > 0 && pinch.initialDist > 0) {
+        const ratio = d / pinch.initialDist;
+        aplicarZoom(pinch.initialZoom * ratio, pinch.anchorSx, pinch.anchorSy, true);
+      }
       return;
     }
 
-    if (e.button === 1 || e.button === 2) {
-      cameraDragging = true;
+    if (cameraDragging && activePointers.size === 1) {
+      const dx = e.clientX - cameraLastMouse.x;
+      const dy = e.clientY - cameraLastMouse.y;
+      camera.x -= dx / camera.zoom;
+      camera.y -= dy / camera.zoom;
       cameraLastMouse.x = e.clientX;
       cameraLastMouse.y = e.clientY;
+      // Pan overrides any in-flight zoom tween — otherwise the tween snaps
+      // the camera back to its pre-pan target on the next frame.
+      cancelarZoomTween();
     }
   }, { signal });
 
-  canvas.addEventListener('mousemove', (e: MouseEvent) => {
-    if (!cameraDragging) return;
+  const finalizePointer = (e: PointerEvent, cancelled: boolean) => {
+    const info = activePointers.get(e.pointerId);
+    if (!info) return;
+    activePointers.delete(e.pointerId);
+    try { canvas.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
 
-    const dx = e.clientX - cameraLastMouse.x;
-    const dy = e.clientY - cameraLastMouse.y;
-    camera.x -= dx / camera.zoom;
-    camera.y -= dy / camera.zoom;
-    cameraLastMouse.x = e.clientX;
-    cameraLastMouse.y = e.clientY;
-  }, { signal });
+    if (pinch && activePointers.size < 2) {
+      pinch = null;
+      if (activePointers.size === 0) cameraDragging = false;
+      return;
+    }
 
-  window.addEventListener('mouseup', (e: MouseEvent) => {
-    if (cameraDragging) {
+    if (cameraDragging && activePointers.size === 0) {
       cameraDragging = false;
     }
 
-    if (e.button !== 0) return;
+    if (cancelled) {
+      clickInfo = null;
+      return;
+    }
+
+    if (info.button !== 0) {
+      clickInfo = null;
+      return;
+    }
+    if (activePointers.size > 0) {
+      clickInfo = null;
+      return;
+    }
     if (consumirInteracaoUi()) {
       clickInfo = null;
       return;
     }
 
-    const movedX = e.clientX - clickStartScreen.x;
-    const movedY = e.clientY - clickStartScreen.y;
+    const movedX = e.clientX - info.startX;
+    const movedY = e.clientY - info.startY;
     const movedDist = Math.hypot(movedX, movedY);
+    const duration = performance.now() - info.startTime;
+    const tap = isTap({ dist: movedDist, duration });
+
+    // Double-tap zoom: anchor at the release point so the tapped spot stays in view.
+    if (tap) {
+      const now = performance.now();
+      const currentTap: TapRecord = { time: now, x: e.clientX, y: e.clientY };
+      if (isDoubleTap(lastTap, currentTap)) {
+        const rect = canvas.getBoundingClientRect();
+        aplicarZoom(camera.zoom * 1.5, e.clientX - rect.left, e.clientY - rect.top);
+        lastTap = null;
+        clickInfo = null;
+        return;
+      }
+      lastTap = currentTap;
+    }
 
     if (movedDist < 5) {
       const naveSelecionada = obterNaveSelecionada(mundo);
@@ -267,8 +428,6 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       //   5. 'mover' mode + empty space      → add waypoint
       //   6. Click on a planet                → select that planet
       //   7. Click on empty space             → clear selection
-
-      // (1) Colonizadora targeting: consume the click to dispatch.
       if (
         naveSelecionada
         && comandoNave?.nave === naveSelecionada
@@ -276,16 +435,10 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       ) {
         if (clickInfo?.planeta) {
           const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.planeta);
-          if (ok) {
-            cancelarComandoNave();
-            somClique();
-          }
+          if (ok) { cancelarComandoNave(); somClique(); }
         } else if (clickInfo?.sol) {
           const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.sol);
-          if (ok) {
-            cancelarComandoNave();
-            somClique();
-          }
+          if (ok) { cancelarComandoNave(); somClique(); }
         } else {
           mostrarNotificacao(t('notificacao.clique_alvo'), '#ffcc66');
         }
@@ -293,7 +446,6 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         return;
       }
 
-      // (2) Colonizadora free move: any click becomes the destination.
       if (
         naveSelecionada
         && comandoNave?.nave === naveSelecionada
@@ -341,20 +493,29 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         cancelarComandoNave();
         selecionarPlaneta(mundo, clickInfo.planeta);
         somClique();
-        // Open the rich planet side panel — replaces the legacy
-        // planet-panel as the primary surface for planet info.
-        void abrirPlanetaDrawer(clickInfo.planeta, mundo);
+        if (isTouchMode()) {
+          void abrirMobilePlanetaDrawer(clickInfo.planeta, mundo);
+        } else {
+          void abrirPlanetaDrawer(clickInfo.planeta, mundo);
+        }
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);
-        // Clicking empty space deselects — also close the planet drawer
-        // if it's open, matching the user's expectation.
-        fecharPlanetaDrawer();
+        if (isTouchMode()) fecharMobilePlanetaDrawer();
+        else fecharPlanetaDrawer();
+        // Click-to-go: tap on empty space recenters the camera at that
+        // world position. Drag-pan still works (drags engage cameraDragging
+        // before reaching this branch — only taps under the movement
+        // threshold land here).
+        setCameraPos(destinoMapa.x, destinoMapa.y);
       }
     }
 
     clickInfo = null;
-  }, { signal });
+  };
+
+  canvas.addEventListener('pointerup', (e: PointerEvent) => finalizePointer(e, false), { signal });
+  canvas.addEventListener('pointercancel', (e: PointerEvent) => finalizePointer(e, true), { signal });
 
   canvas.addEventListener('wheel', (e: WheelEvent) => {
     e.preventDefault();
@@ -377,6 +538,7 @@ export function cancelarRotaNaveSelecionada(mundo: Mundo): void {
 }
 
 export function atualizarCamera(mundo: Mundo, app: Application): void {
+  avancarZoomTween();
   atualizarPreviewComandoNave();
   mundo.container.scale.set(camera.zoom);
   mundo.container.x = -camera.x * camera.zoom + app.screen.width / 2;

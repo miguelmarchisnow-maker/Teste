@@ -49,6 +49,10 @@ export interface OrbitalConfig {
     bindings: Record<string, string[]>;
   };
 
+  ui: {
+    touchMode: 'auto' | 'on' | 'off';
+  };
+
   language: 'pt' | 'en';
 }
 
@@ -92,6 +96,10 @@ export const DEFAULTS: OrbitalConfig = {
 
   input: {
     bindings: {},
+  },
+
+  ui: {
+    touchMode: 'auto',
   },
 
   language: 'pt',
