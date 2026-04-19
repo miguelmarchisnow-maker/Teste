@@ -129,9 +129,69 @@ export function injectMobileStyles(): void {
       font-size: 14px !important;
     }
 
+    /* ── Planeta drawer tabs (mobile only). ───────────────────────── */
+    .planeta-drawer-tabs {
+      display: none;
+    }
+    body.size-sm .planeta-drawer-tabs,
+    body.portrait.size-md .planeta-drawer-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 8px 12px 4px;
+      background: transparent;
+    }
+    .planeta-drawer-tab {
+      appearance: none;
+      border: 1px solid var(--hud-border, rgba(255,255,255,0.25));
+      background: rgba(10,20,35,0.5);
+      color: var(--hud-text-dim, rgba(255,255,255,0.55));
+      font-family: "Silkscreen", "VT323", monospace;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      min-height: 44px;
+    }
+    .planeta-drawer-tab.active {
+      background: rgba(40,80,130,0.75);
+      color: #fff;
+      border-color: rgba(255,255,255,0.7);
+    }
+    .planeta-drawer-build {
+      padding: 0 8px 16px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .build-panel.embedded {
+      position: static !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: none !important;
+      left: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      top: auto !important;
+      transform: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+      background: transparent !important;
+      animation: none !important;
+    }
+    /* Hide the standalone build-panel on mobile — lives inside drawer now */
+    body.size-sm .build-panel:not(.embedded),
+    body.portrait.size-md .build-panel:not(.embedded) {
+      display: none !important;
+    }
+
     /* ── Planet drawer text + pills. */
     body.size-sm .planeta-drawer {
       font-size: 15px !important;
+      display: flex !important;
+      flex-direction: column !important;
     }
     body.size-sm .planeta-drawer button,
     body.size-sm .planeta-drawer .drawer-pill {

@@ -16,6 +16,7 @@
 import type { Mundo, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
 import { injectBottomSheetStyles } from './bottom-sheet.css';
+import { getBuildPanelElement, restoreBuildPanelParent } from './build-panel';
 import { nomeTipoPlaneta, getTierMax } from '../world/mundo';
 import { getPersonalidades } from '../world/ia-decisao';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
@@ -555,10 +556,49 @@ export function abrirPlanetaDrawer(planeta: Planeta, mundo: Mundo): Promise<void
 
   removeAllChildren(_modal);
   _modal.appendChild(buildHeader(planeta));
+
+  // Tabs (only visible on mobile via CSS). Tab 1 = Planeta, Tab 2 = Construir.
+  const tabs = document.createElement('div');
+  tabs.className = 'planeta-drawer-tabs';
+  const tPlanet = document.createElement('button');
+  tPlanet.type = 'button';
+  tPlanet.className = 'planeta-drawer-tab active';
+  tPlanet.textContent = 'Planeta';
+  const tBuild = document.createElement('button');
+  tBuild.type = 'button';
+  tBuild.className = 'planeta-drawer-tab';
+  tBuild.textContent = 'Construir';
+  tabs.append(tPlanet, tBuild);
+  _modal.appendChild(tabs);
+
   const body = document.createElement('div');
   body.className = 'planeta-drawer-body';
   _bodyEl = body;
   _modal.appendChild(body);
+
+  const buildWrap = document.createElement('div');
+  buildWrap.className = 'planeta-drawer-build';
+  buildWrap.style.display = 'none';
+  _modal.appendChild(buildWrap);
+
+  const setTab = (which: 'planeta' | 'construir') => {
+    tPlanet.classList.toggle('active', which === 'planeta');
+    tBuild.classList.toggle('active', which === 'construir');
+    body.style.display = which === 'planeta' ? '' : 'none';
+    buildWrap.style.display = which === 'construir' ? '' : 'none';
+    if (which === 'construir') {
+      const bp = getBuildPanelElement();
+      if (bp && bp.parentElement !== buildWrap) {
+        bp.classList.add('embedded');
+        buildWrap.appendChild(bp);
+      }
+    } else {
+      restoreBuildPanelParent();
+    }
+  };
+  tPlanet.addEventListener('click', (e) => { e.stopPropagation(); marcarInteracaoUi(); setTab('planeta'); });
+  tBuild.addEventListener('click', (e) => { e.stopPropagation(); marcarInteracaoUi(); setTab('construir'); });
+
   rebuildBody(planeta, mundo);
   const actions = buildActions(planeta, mundo);
   if (actions) _modal.appendChild(actions);
@@ -596,12 +636,13 @@ export function isPlanetaDrawerAberto(): boolean {
 
 function close(): void {
   _modal?.classList.remove('visible');
+  // Return build-panel to document.body so it's still reachable
+  // outside the drawer context.
+  restoreBuildPanelParent();
   _currentPlaneta = null;
   _currentMundo = null;
   _portraitCanvas = null;
   _lastPortraitRefreshMs = 0;
-  // Release the Pixi resources cached for the portrait shader render.
-  // Keeping them around while the drawer is closed is pure dead weight.
   liberarPortraitPlaneta();
   const r = _closeResolver;
   _closeResolver = null;

@@ -729,6 +729,22 @@ export function atualizarBuildPanel(mundo: Mundo): void {
   }
 }
 
+/**
+ * Return the build-panel element so callers (eg. the mobile planet
+ * drawer) can reparent it into a tabbed layout. Caller is responsible
+ * for calling `restoreBuildPanelParent()` when done.
+ */
+export function getBuildPanelElement(): HTMLDivElement | null {
+  return _container;
+}
+
+export function restoreBuildPanelParent(): void {
+  if (_container && _container.parentElement !== document.body) {
+    document.body.appendChild(_container);
+    _container.classList.remove('embedded');
+  }
+}
+
 export function destruirBuildPanel(): void {
   if (_container) {
     _container.remove();
