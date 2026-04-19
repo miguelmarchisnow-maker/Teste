@@ -5,7 +5,7 @@ export function injectBottomSheetStyles(): void {
   _injected = true;
   const style = document.createElement('style');
   style.textContent = `
-    body.touch.size-sm.portrait .bottom-sheet-capable {
+    body.size-sm.portrait .bottom-sheet-capable {
       position: fixed !important;
       left: 0 !important;
       right: 0 !important;

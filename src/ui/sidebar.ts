@@ -196,8 +196,8 @@ function injectStyles(): void {
       font-family: "Silkscreen", "VT323", monospace;
       touch-action: manipulation;
     }
-    body.touch.size-sm .sidebar-hamburger,
-    body.touch.portrait.size-md .sidebar-hamburger {
+    body.size-sm .sidebar-hamburger,
+    body.portrait.size-md .sidebar-hamburger {
       display: flex;
     }
 
@@ -208,13 +208,13 @@ function injectStyles(): void {
       background: rgba(0,0,0,0.45);
       z-index: 499;
     }
-    body.touch.size-sm.sidebar-open .sidebar-backdrop,
-    body.touch.portrait.size-md.sidebar-open .sidebar-backdrop {
+    body.size-sm.sidebar-open .sidebar-backdrop,
+    body.portrait.size-md.sidebar-open .sidebar-backdrop {
       display: block;
     }
 
-    body.touch.size-sm .sidebar,
-    body.touch.portrait.size-md .sidebar {
+    body.size-sm .sidebar,
+    body.portrait.size-md .sidebar {
       top: 0 !important;
       bottom: 0 !important;
       left: 0 !important;
@@ -234,8 +234,8 @@ function injectStyles(): void {
       --sb-pad-v: 12px;
       --sb-pad-h: 14px;
     }
-    body.touch.size-sm .sidebar .sidebar-btn,
-    body.touch.portrait.size-md .sidebar .sidebar-btn {
+    body.size-sm .sidebar .sidebar-btn,
+    body.portrait.size-md .sidebar .sidebar-btn {
       flex-direction: row;
       align-items: center;
       justify-content: flex-start;
@@ -244,13 +244,13 @@ function injectStyles(): void {
       width: 100%;
       padding: 10px 14px;
     }
-    body.touch.size-sm .sidebar .sidebar-label,
-    body.touch.portrait.size-md .sidebar .sidebar-label {
+    body.size-sm .sidebar .sidebar-label,
+    body.portrait.size-md .sidebar .sidebar-label {
       font-size: 13px;
       letter-spacing: 0.5px;
     }
-    body.touch.size-sm.sidebar-open .sidebar,
-    body.touch.portrait.size-md.sidebar-open .sidebar {
+    body.size-sm.sidebar-open .sidebar,
+    body.portrait.size-md.sidebar-open .sidebar {
       transform: translateX(0) !important;
     }
   `;

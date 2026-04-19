@@ -77,8 +77,8 @@ export function injectAnimations(): void {
     }
     /* Only applies when NOT in bottom-sheet mode (bottom-sheet has its
        own slide-up keyframe in bottom-sheet.css). */
-    body:not(.touch.size-sm.portrait) .bottom-sheet-capable,
-    body:not(.touch.size-sm.portrait) .planeta-drawer {
+    body:not(.size-sm.portrait) .bottom-sheet-capable,
+    body:not(.size-sm.portrait) .planeta-drawer {
       animation: orbital-slide-in-right 220ms cubic-bezier(0.2, 0, 0, 1);
     }
 
