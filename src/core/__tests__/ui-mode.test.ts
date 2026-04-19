@@ -1,4 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+
+// Node test env has no localStorage; config.ts touches it during persist.
+const fakeStorage: Record<string, string> = {};
+(global as any).localStorage = (global as any).localStorage ?? {
+  getItem: (k: string) => fakeStorage[k] ?? null,
+  setItem: (k: string, v: string) => { fakeStorage[k] = v; },
+  removeItem: (k: string) => { delete fakeStorage[k]; },
+  clear: () => { for (const k of Object.keys(fakeStorage)) delete fakeStorage[k]; },
+};
+
 import { computeUiMode } from '../ui-mode';
 import { resetConfigForTest, setConfigDuranteBoot } from '../config';
 
