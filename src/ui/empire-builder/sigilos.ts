@@ -131,7 +131,17 @@ type Frame =
   | 'triangulo-inv-frame'
   | 'estrela-frame-6'
   | 'laurel'
-  | 'circulo-pontilhado';
+  | 'circulo-pontilhado'
+  | 'scutum'
+  | 'brasao'
+  | 'coracao-frame'
+  | 'gota'
+  | 'rosetta'
+  | 'ovalado'
+  | 'cruz-frame'
+  | 'quadrado-aligned'
+  | 'anel-pontado'
+  | 'tri-circulo';
 
 /** Symmetry order a motif should harmonize with when drawn inside the
  *  given frame. 0 means "free" / any motif is fine. */
@@ -151,6 +161,16 @@ const FRAME_SIMETRIA: Record<Frame, number> = {
   'estrela-frame-6': 6,
   'laurel': 0,
   'circulo-pontilhado': 0,
+  'scutum': 0,
+  'brasao': 0,
+  'coracao-frame': 0,
+  'gota': 0,
+  'rosetta': 12,
+  'ovalado': 0,
+  'cruz-frame': 4,
+  'quadrado-aligned': 4,
+  'anel-pontado': 4,
+  'tri-circulo': 3,
 };
 
 /** Radial room the motif has inside the frame before colliding. */
@@ -170,6 +190,16 @@ const FRAME_INNER: Record<Frame, number> = {
   'estrela-frame-6': 11,
   'laurel': 13,
   'circulo-pontilhado': 15,
+  'scutum': 13,
+  'brasao': 12.5,
+  'coracao-frame': 12,
+  'gota': 11,
+  'rosetta': 12,
+  'ovalado': 13,
+  'cruz-frame': 10,
+  'quadrado-aligned': 13,
+  'anel-pontado': 14,
+  'tri-circulo': 10,
 };
 
 const FRAMES: readonly Frame[] = [
@@ -178,6 +208,9 @@ const FRAMES: readonly Frame[] = [
   'escudo', 'diamante', 'octogono', 'quadrado-rot',
   'pentagono', 'triangulo-frame', 'triangulo-inv-frame',
   'estrela-frame-6', 'laurel', 'circulo-pontilhado',
+  'scutum', 'brasao', 'coracao-frame', 'gota', 'rosetta',
+  'ovalado', 'cruz-frame', 'quadrado-aligned', 'anel-pontado',
+  'tri-circulo',
 ];
 
 function addFrame(svg: SVGSVGElement, kind: Frame, strokeWidth: number): void {
@@ -260,6 +293,98 @@ function addFrame(svg: SVGSVGElement, kind: Frame, strokeWidth: number): void {
       }
       return;
     }
+    case 'scutum':
+      // Roman tower-shield: tall rounded rectangle.
+      svg.appendChild(strokedPath(
+        `M10 6 Q10 4 12 4 L36 4 Q38 4 38 6 L38 42 Q38 44 36 44 L12 44 Q10 44 10 42 Z`,
+        strokeWidth,
+      ));
+      return;
+    case 'brasao':
+      // Heraldic escutcheon: flat top, curved V bottom.
+      svg.appendChild(strokedPath(
+        `M6 6 L42 6 L42 28 Q42 40 24 44 Q6 40 6 28 Z`,
+        strokeWidth,
+      ));
+      return;
+    case 'coracao-frame': {
+      // Heart shape scaled to the viewbox.
+      svg.appendChild(strokedPath(
+        `M24 43
+         C10 34 4 24 4 16
+         C4 9 10 5 15 5
+         Q20 5 24 11
+         Q28 5 33 5
+         C39 5 44 9 44 16
+         C44 24 38 34 24 43 Z`,
+        strokeWidth,
+      ));
+      return;
+    }
+    case 'gota':
+      // Teardrop with the point at top.
+      svg.appendChild(strokedPath(
+        `M24 4
+         Q38 22 38 30
+         A14 14 0 0 1 10 30
+         Q10 22 24 4 Z`,
+        strokeWidth,
+      ));
+      return;
+    case 'rosetta':
+      // Two overlapping hexagons → 12-point star.
+      svg.appendChild(strokedPath(regularPoly(24, 24, 19, 6, -Math.PI / 2), strokeWidth));
+      svg.appendChild(strokedPath(regularPoly(24, 24, 19, 6, 0), strokeWidth));
+      return;
+    case 'ovalado': {
+      const e = document.createElementNS(SVG_NS, 'ellipse');
+      e.setAttribute('cx', '24');
+      e.setAttribute('cy', '24');
+      e.setAttribute('rx', '16');
+      e.setAttribute('ry', '20');
+      e.setAttribute('fill', 'none');
+      e.setAttribute('stroke-width', strokeWidth.toFixed(2));
+      svg.appendChild(e);
+      return;
+    }
+    case 'cruz-frame':
+      // Plus-shaped outline (12-sided cross polygon).
+      svg.appendChild(strokedPath(
+        `M18 6 L30 6 L30 18 L42 18 L42 30 L30 30 L30 42 L18 42 L18 30 L6 30 L6 18 L18 18 Z`,
+        strokeWidth,
+      ));
+      return;
+    case 'quadrado-aligned':
+      svg.appendChild(strokedPath('M6 6 L42 6 L42 42 L6 42 Z', strokeWidth));
+      return;
+    case 'anel-pontado': {
+      // Ring with 4 outward spikes at N/E/S/W.
+      svg.appendChild(strokedCircle(24, 24, 17, strokeWidth));
+      const spike = (ang: number): void => {
+        const bx = 24 + Math.cos(ang) * 17;
+        const by = 24 + Math.sin(ang) * 17;
+        const tx = 24 + Math.cos(ang) * 22;
+        const ty = 24 + Math.sin(ang) * 22;
+        const nx = -Math.sin(ang);
+        const ny = Math.cos(ang);
+        const w = 2.2;
+        svg.appendChild(filledPath(
+          `M${(bx + nx * w).toFixed(2)} ${(by + ny * w).toFixed(2)} L${tx.toFixed(2)} ${ty.toFixed(2)} L${(bx - nx * w).toFixed(2)} ${(by - ny * w).toFixed(2)} Z`,
+        ));
+      };
+      for (let i = 0; i < 4; i++) spike((i / 4) * Math.PI * 2 - Math.PI / 2);
+      return;
+    }
+    case 'tri-circulo': {
+      // Three overlapping circles at 120° intervals (triquetra base).
+      const rr = 11;
+      const off = 7;
+      for (let i = 0; i < 3; i++) {
+        const a = -Math.PI / 2 + (i / 3) * Math.PI * 2;
+        svg.appendChild(strokedCircle(24 + Math.cos(a) * off, 24 + Math.sin(a) * off, rr, strokeWidth));
+      }
+      return;
+    }
   }
 }
 
@@ -303,7 +428,17 @@ type MotifKind =
   | 'hex-cheio'
   | 'roda-raios'
   | 'vesica'
-  | 'garra';
+  | 'garra'
+  | 'cetro'
+  | 'ancora'
+  | 'chave'
+  | 'martelo'
+  | 'rosa-vento'
+  | 'escala'
+  | 'pena'
+  | 'arvore'
+  | 'torre'
+  | 'elmo';
 
 /** Natural symmetry order of each motif (0 = free / no strong order). */
 const MOTIF_SIM: Record<MotifKind, number> = {
@@ -344,6 +479,16 @@ const MOTIF_SIM: Record<MotifKind, number> = {
   'roda-raios': 8,
   'vesica': 2,
   'garra': 0,
+  'cetro': 0,
+  'ancora': 0,
+  'chave': 0,
+  'martelo': 0,
+  'rosa-vento': 4,
+  'escala': 0,
+  'pena': 0,
+  'arvore': 0,
+  'torre': 0,
+  'elmo': 0,
 };
 
 const MOTIFS: readonly MotifKind[] = Object.keys(MOTIF_SIM) as MotifKind[];
@@ -889,6 +1034,256 @@ function addMotif(svg: SVGSVGElement, kind: MotifKind, r: number, strokeWidth: n
       }
       return;
     }
+    case 'cetro': {
+      const rr = r * 0.95;
+      // Orb on top
+      svg.appendChild(filledCircle(cx, cy - rr * 0.7, rr * 0.22));
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.12} ${cy - rr * 0.9} L${cx} ${cy - rr * 1.0} L${cx + rr * 0.12} ${cy - rr * 0.9}`,
+        strokeWidth * 0.9,
+      ));
+      // Shaft
+      svg.appendChild(strokedPath(
+        `M${cx} ${cy - rr * 0.48} L${cx} ${cy + rr * 0.9}`,
+        strokeWidth * 1.3,
+      ));
+      // Decorative collar
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.22} ${cy - rr * 0.15} L${cx + rr * 0.22} ${cy - rr * 0.15}`,
+        strokeWidth,
+      ));
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.22} ${cy + rr * 0.3} L${cx + rr * 0.22} ${cy + rr * 0.3}`,
+        strokeWidth,
+      ));
+      return;
+    }
+    case 'ancora': {
+      const rr = r * 0.95;
+      // Shank
+      svg.appendChild(strokedPath(
+        `M${cx} ${cy - rr * 0.85} L${cx} ${cy + rr * 0.7}`,
+        strokeWidth * 1.2,
+      ));
+      // Ring at top
+      svg.appendChild(strokedCircle(cx, cy - rr * 0.85, rr * 0.18, strokeWidth));
+      // Stock (crossbar)
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.45} ${cy - rr * 0.45} L${cx + rr * 0.45} ${cy - rr * 0.45}`,
+        strokeWidth * 1.1,
+      ));
+      // Arms curving outward at bottom
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.7} ${cy + rr * 0.2} Q${cx - rr * 0.75} ${cy + rr * 0.75} ${cx} ${cy + rr * 0.85}`,
+        strokeWidth * 1.1,
+      ));
+      svg.appendChild(strokedPath(
+        `M${cx + rr * 0.7} ${cy + rr * 0.2} Q${cx + rr * 0.75} ${cy + rr * 0.75} ${cx} ${cy + rr * 0.85}`,
+        strokeWidth * 1.1,
+      ));
+      return;
+    }
+    case 'chave': {
+      const rr = r * 0.95;
+      // Bow (ring at the top)
+      svg.appendChild(strokedCircle(cx - rr * 0.5, cy - rr * 0.35, rr * 0.32, strokeWidth));
+      // Shaft
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.2} ${cy - rr * 0.35} L${cx + rr * 0.9} ${cy - rr * 0.35}`,
+        strokeWidth * 1.2,
+      ));
+      // Bit (teeth)
+      svg.appendChild(strokedPath(
+        `M${cx + rr * 0.55} ${cy - rr * 0.35} L${cx + rr * 0.55} ${cy + rr * 0.1}`,
+        strokeWidth,
+      ));
+      svg.appendChild(strokedPath(
+        `M${cx + rr * 0.78} ${cy - rr * 0.35} L${cx + rr * 0.78} ${cy - rr * 0.05}`,
+        strokeWidth,
+      ));
+      return;
+    }
+    case 'martelo': {
+      const rr = r * 0.95;
+      // Head (rectangle, filled)
+      svg.appendChild(filledPath(
+        `M${cx - rr * 0.85} ${cy - rr * 0.65}
+         L${cx + rr * 0.85} ${cy - rr * 0.65}
+         L${cx + rr * 0.85} ${cy - rr * 0.1}
+         L${cx - rr * 0.85} ${cy - rr * 0.1} Z`,
+      ));
+      // Handle
+      svg.appendChild(strokedPath(
+        `M${cx} ${cy - rr * 0.1} L${cx} ${cy + rr * 0.95}`,
+        strokeWidth * 1.3,
+      ));
+      return;
+    }
+    case 'rosa-vento': {
+      const rr = r * 0.95;
+      // 4 arrowheads (N/E/S/W) each as a long slim triangle.
+      const arrow = (dx: number, dy: number, nx: number, ny: number): string => {
+        const tip = [cx + dx * rr, cy + dy * rr];
+        const base1 = [cx + dx * rr * 0.25 + nx * rr * 0.18, cy + dy * rr * 0.25 + ny * rr * 0.18];
+        const base2 = [cx + dx * rr * 0.25 - nx * rr * 0.18, cy + dy * rr * 0.25 - ny * rr * 0.18];
+        return `M${tip[0].toFixed(2)} ${tip[1].toFixed(2)} L${base1[0].toFixed(2)} ${base1[1].toFixed(2)} L${base2[0].toFixed(2)} ${base2[1].toFixed(2)} Z`;
+      };
+      svg.appendChild(filledPath(arrow(0, -1, 1, 0)));
+      svg.appendChild(filledPath(arrow(0, 1, 1, 0)));
+      svg.appendChild(filledPath(arrow(-1, 0, 0, 1)));
+      svg.appendChild(filledPath(arrow(1, 0, 0, 1)));
+      // Small inner diamond connecting the arrow bases
+      svg.appendChild(strokedPath(regularPoly(cx, cy, rr * 0.25, 4, Math.PI / 4), strokeWidth * 0.8));
+      return;
+    }
+    case 'escala': {
+      const rr = r * 0.95;
+      // Vertical central post
+      svg.appendChild(strokedPath(
+        `M${cx} ${cy - rr * 0.7} L${cx} ${cy + rr * 0.7}`,
+        strokeWidth * 1.2,
+      ));
+      // Top crossbar
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.85} ${cy - rr * 0.45} L${cx + rr * 0.85} ${cy - rr * 0.45}`,
+        strokeWidth * 1.1,
+      ));
+      // Strings holding pans
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.55} ${cy - rr * 0.45} L${cx - rr * 0.55} ${cy + rr * 0.15}`,
+        strokeWidth * 0.7,
+      ));
+      svg.appendChild(strokedPath(
+        `M${cx + rr * 0.55} ${cy - rr * 0.45} L${cx + rr * 0.55} ${cy + rr * 0.15}`,
+        strokeWidth * 0.7,
+      ));
+      // Pans (two arcs opening upward)
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.85} ${cy + rr * 0.15} Q${cx - rr * 0.55} ${cy + rr * 0.45} ${cx - rr * 0.25} ${cy + rr * 0.15}`,
+        strokeWidth,
+      ));
+      svg.appendChild(strokedPath(
+        `M${cx + rr * 0.25} ${cy + rr * 0.15} Q${cx + rr * 0.55} ${cy + rr * 0.45} ${cx + rr * 0.85} ${cy + rr * 0.15}`,
+        strokeWidth,
+      ));
+      // Base
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.35} ${cy + rr * 0.85} L${cx + rr * 0.35} ${cy + rr * 0.85}`,
+        strokeWidth,
+      ));
+      return;
+    }
+    case 'pena': {
+      const rr = r * 0.95;
+      // Outline of a feather
+      svg.appendChild(strokedPath(
+        `M${cx} ${cy - rr}
+         Q${cx + rr * 0.5} ${cy - rr * 0.2} ${cx + rr * 0.25} ${cy + rr * 0.6}
+         L${cx} ${cy + rr * 0.95}
+         L${cx - rr * 0.25} ${cy + rr * 0.6}
+         Q${cx - rr * 0.5} ${cy - rr * 0.2} ${cx} ${cy - rr} Z`,
+        strokeWidth,
+      ));
+      // Central spine
+      svg.appendChild(strokedPath(
+        `M${cx} ${cy - rr * 0.95} L${cx} ${cy + rr * 0.9}`,
+        strokeWidth * 0.85,
+      ));
+      // Barb strokes (4 on each side)
+      for (let i = 0; i < 4; i++) {
+        const y = cy - rr * 0.5 + i * rr * 0.35;
+        svg.appendChild(strokedPath(
+          `M${cx} ${y.toFixed(2)} L${(cx - rr * (0.4 - i * 0.04)).toFixed(2)} ${(y + rr * 0.08).toFixed(2)}`,
+          strokeWidth * 0.55,
+        ));
+        svg.appendChild(strokedPath(
+          `M${cx} ${y.toFixed(2)} L${(cx + rr * (0.4 - i * 0.04)).toFixed(2)} ${(y + rr * 0.08).toFixed(2)}`,
+          strokeWidth * 0.55,
+        ));
+      }
+      return;
+    }
+    case 'arvore': {
+      const rr = r * 0.95;
+      // Canopy as triangle/pentagon silhouette (3 stacked layers)
+      svg.appendChild(filledPath(
+        `M${cx} ${cy - rr * 0.95}
+         L${cx + rr * 0.65} ${cy - rr * 0.25}
+         L${cx + rr * 0.28} ${cy - rr * 0.25}
+         L${cx + rr * 0.78} ${cy + rr * 0.35}
+         L${cx - rr * 0.78} ${cy + rr * 0.35}
+         L${cx - rr * 0.28} ${cy - rr * 0.25}
+         L${cx - rr * 0.65} ${cy - rr * 0.25} Z`,
+      ));
+      // Trunk
+      svg.appendChild(filledPath(
+        `M${cx - rr * 0.15} ${cy + rr * 0.35}
+         L${cx + rr * 0.15} ${cy + rr * 0.35}
+         L${cx + rr * 0.15} ${cy + rr * 0.95}
+         L${cx - rr * 0.15} ${cy + rr * 0.95} Z`,
+      ));
+      return;
+    }
+    case 'torre': {
+      const rr = r * 0.95;
+      // Base + body
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.65} ${cy + rr * 0.95}
+         L${cx + rr * 0.65} ${cy + rr * 0.95}
+         L${cx + rr * 0.55} ${cy - rr * 0.35}
+         L${cx - rr * 0.55} ${cy - rr * 0.35} Z`,
+        strokeWidth,
+      ));
+      // Crenellations (battlements) at top
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.65} ${cy - rr * 0.35}
+         L${cx - rr * 0.65} ${cy - rr * 0.65}
+         L${cx - rr * 0.35} ${cy - rr * 0.65}
+         L${cx - rr * 0.35} ${cy - rr * 0.5}
+         L${cx - rr * 0.1} ${cy - rr * 0.5}
+         L${cx - rr * 0.1} ${cy - rr * 0.65}
+         L${cx + rr * 0.1} ${cy - rr * 0.65}
+         L${cx + rr * 0.1} ${cy - rr * 0.5}
+         L${cx + rr * 0.35} ${cy - rr * 0.5}
+         L${cx + rr * 0.35} ${cy - rr * 0.65}
+         L${cx + rr * 0.65} ${cy - rr * 0.65}
+         L${cx + rr * 0.65} ${cy - rr * 0.35} Z`,
+        strokeWidth,
+      ));
+      // Door
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.2} ${cy + rr * 0.95}
+         L${cx - rr * 0.2} ${cy + rr * 0.35}
+         Q${cx} ${cy + rr * 0.15} ${cx + rr * 0.2} ${cy + rr * 0.35}
+         L${cx + rr * 0.2} ${cy + rr * 0.95}`,
+        strokeWidth * 0.85,
+      ));
+      return;
+    }
+    case 'elmo': {
+      const rr = r * 0.95;
+      // Classic visored helmet silhouette
+      svg.appendChild(filledPath(
+        `M${cx - rr * 0.75} ${cy + rr * 0.55}
+         Q${cx - rr * 0.85} ${cy - rr * 0.35} ${cx - rr * 0.45} ${cy - rr * 0.85}
+         Q${cx} ${cy - rr * 1.0} ${cx + rr * 0.45} ${cy - rr * 0.85}
+         Q${cx + rr * 0.85} ${cy - rr * 0.35} ${cx + rr * 0.75} ${cy + rr * 0.55}
+         L${cx + rr * 0.6} ${cy + rr * 0.55}
+         L${cx + rr * 0.6} ${cy + rr * 0.9}
+         L${cx - rr * 0.6} ${cy + rr * 0.9}
+         L${cx - rr * 0.6} ${cy + rr * 0.55} Z`,
+      ));
+      // Visor slit (punched out as stroke line in accent color would be
+      // off-palette; use a white stroke that reads against the filled
+      // helmet by layering, then clip with a short horizontal bar of
+      // inverted fill — cheapest is just a dark stroke, but we're
+      // monochrome white, so draw two short ticks on the sides).
+      svg.appendChild(strokedPath(
+        `M${cx - rr * 0.35} ${cy - rr * 0.2} L${cx + rr * 0.35} ${cy - rr * 0.2}`,
+        strokeWidth * 0.6,
+      ));
+      return;
+    }
   }
 }
 
@@ -896,16 +1291,28 @@ function addMotif(svg: SVGSVGElement, kind: MotifKind, r: number, strokeWidth: n
 
 type Ornament =
   | 'nenhum'
-  | 'ticks-4' | 'ticks-6' | 'ticks-8' | 'ticks-12'
-  | 'pontos-6' | 'pontos-8' | 'pontos-12'
+  | 'ticks-4' | 'ticks-6' | 'ticks-8' | 'ticks-12' | 'ticks-16' | 'ticks-24'
+  | 'ticks-cardinais'
+  | 'pontos-6' | 'pontos-8' | 'pontos-12' | 'pontos-16'
+  | 'pontos-duplos'
   | 'cantos' | 'cantos-duplos'
-  | 'arcos-4';
+  | 'arcos-4' | 'arcos-8'
+  | 'dashes-8'
+  | 'anel-fino'
+  | 'chevrons-4'
+  | 'linhas-cardinais';
 const ORNAMENTS: readonly Ornament[] = [
   'nenhum',
-  'ticks-4', 'ticks-6', 'ticks-8', 'ticks-12',
-  'pontos-6', 'pontos-8', 'pontos-12',
+  'ticks-4', 'ticks-6', 'ticks-8', 'ticks-12', 'ticks-16', 'ticks-24',
+  'ticks-cardinais',
+  'pontos-6', 'pontos-8', 'pontos-12', 'pontos-16',
+  'pontos-duplos',
   'cantos', 'cantos-duplos',
-  'arcos-4',
+  'arcos-4', 'arcos-8',
+  'dashes-8',
+  'anel-fino',
+  'chevrons-4',
+  'linhas-cardinais',
 ];
 
 function addOrnament(svg: SVGSVGElement, kind: Ornament, strokeWidth: number): void {
@@ -916,25 +1323,59 @@ function addOrnament(svg: SVGSVGElement, kind: Ornament, strokeWidth: number): v
     case 'ticks-4':
     case 'ticks-6':
     case 'ticks-8':
-    case 'ticks-12': {
-      const n = kind === 'ticks-4' ? 4 : kind === 'ticks-6' ? 6 : kind === 'ticks-8' ? 8 : 12;
+    case 'ticks-12':
+    case 'ticks-16':
+    case 'ticks-24': {
+      const n = kind === 'ticks-4' ? 4
+        : kind === 'ticks-6' ? 6
+        : kind === 'ticks-8' ? 8
+        : kind === 'ticks-12' ? 12
+        : kind === 'ticks-16' ? 16
+        : 24;
+      const tickLen = n >= 16 ? 2 : 2.8;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
-        const x1 = cx + Math.cos(a) * 19.2;
-        const y1 = cy + Math.sin(a) * 19.2;
+        const x1 = cx + Math.cos(a) * (22 - tickLen);
+        const y1 = cy + Math.sin(a) * (22 - tickLen);
         const x2 = cx + Math.cos(a) * 22;
         const y2 = cy + Math.sin(a) * 22;
-        svg.appendChild(strokedPath(`M${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`, strokeWidth * 0.8));
+        svg.appendChild(strokedPath(`M${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`, strokeWidth * 0.75));
+      }
+      return;
+    }
+    case 'ticks-cardinais': {
+      // Just 4 longer ticks at N/E/S/W.
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        const x1 = cx + Math.cos(a) * 18.5;
+        const y1 = cy + Math.sin(a) * 18.5;
+        const x2 = cx + Math.cos(a) * 23;
+        const y2 = cy + Math.sin(a) * 23;
+        svg.appendChild(strokedPath(`M${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`, strokeWidth));
       }
       return;
     }
     case 'pontos-6':
     case 'pontos-8':
-    case 'pontos-12': {
-      const n = kind === 'pontos-6' ? 6 : kind === 'pontos-8' ? 8 : 12;
+    case 'pontos-12':
+    case 'pontos-16': {
+      const n = kind === 'pontos-6' ? 6
+        : kind === 'pontos-8' ? 8
+        : kind === 'pontos-12' ? 12
+        : 16;
+      const rad = n >= 12 ? 0.75 : 0.95;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + Math.PI / n;
-        svg.appendChild(filledCircle(cx + Math.cos(a) * 21, cy + Math.sin(a) * 21, 0.9));
+        svg.appendChild(filledCircle(cx + Math.cos(a) * 21, cy + Math.sin(a) * 21, rad));
+      }
+      return;
+    }
+    case 'pontos-duplos': {
+      // 8 pairs of concentric dots at 45° steps.
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        svg.appendChild(filledCircle(cx + Math.cos(a) * 21.5, cy + Math.sin(a) * 21.5, 0.9));
+        svg.appendChild(filledCircle(cx + Math.cos(a) * 18.5, cy + Math.sin(a) * 18.5, 0.65));
       }
       return;
     }
@@ -964,11 +1405,12 @@ function addOrnament(svg: SVGSVGElement, kind: Ornament, strokeWidth: number): v
       }
       return;
     }
-    case 'arcos-4': {
-      // 4 small arcs near the rim at 45° offsets.
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-        const half = 0.35;
+    case 'arcos-4':
+    case 'arcos-8': {
+      const n = kind === 'arcos-4' ? 4 : 8;
+      const half = n === 4 ? 0.35 : 0.18;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.PI / n;
         const x1 = cx + Math.cos(a - half) * 20;
         const y1 = cy + Math.sin(a - half) * 20;
         const x2 = cx + Math.cos(a + half) * 20;
@@ -978,6 +1420,52 @@ function addOrnament(svg: SVGSVGElement, kind: Ornament, strokeWidth: number): v
           strokeWidth * 0.75,
         ));
       }
+      return;
+    }
+    case 'dashes-8': {
+      // 8 arc segments alternating with gaps — dashed outer ring.
+      const n = 8;
+      const fill = 0.32;  // fraction of each 2π/n segment that's drawn
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * Math.PI * 2;
+        const a1 = a0 + (Math.PI * 2 / n) * fill;
+        const x1 = cx + Math.cos(a0) * 20;
+        const y1 = cy + Math.sin(a0) * 20;
+        const x2 = cx + Math.cos(a1) * 20;
+        const y2 = cy + Math.sin(a1) * 20;
+        svg.appendChild(strokedPath(
+          `M${x1.toFixed(2)} ${y1.toFixed(2)} A20 20 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`,
+          strokeWidth * 0.85,
+        ));
+      }
+      return;
+    }
+    case 'anel-fino':
+      // Just a thin outer ring. Good cap for any motif since it's quiet.
+      svg.appendChild(strokedCircle(cx, cy, 21, strokeWidth * 0.45));
+      return;
+    case 'chevrons-4': {
+      // 4 small chevrons at cardinal points, pointing outward.
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 - Math.PI / 2;
+        const tip = [cx + Math.cos(a) * 22, cy + Math.sin(a) * 22];
+        const half = 0.18;
+        const b1 = [cx + Math.cos(a - half) * 19, cy + Math.sin(a - half) * 19];
+        const b2 = [cx + Math.cos(a + half) * 19, cy + Math.sin(a + half) * 19];
+        svg.appendChild(strokedPath(
+          `M${b1[0].toFixed(2)} ${b1[1].toFixed(2)} L${tip[0].toFixed(2)} ${tip[1].toFixed(2)} L${b2[0].toFixed(2)} ${b2[1].toFixed(2)}`,
+          strokeWidth * 0.85,
+        ));
+      }
+      return;
+    }
+    case 'linhas-cardinais': {
+      // Short horizontal and vertical bars hugging the rim at cardinals.
+      const bar = 4;
+      svg.appendChild(strokedPath(`M${cx - bar} 4 L${cx + bar} 4`, strokeWidth * 0.8));
+      svg.appendChild(strokedPath(`M${cx - bar} 44 L${cx + bar} 44`, strokeWidth * 0.8));
+      svg.appendChild(strokedPath(`M4 ${cy - bar} L4 ${cy + bar}`, strokeWidth * 0.8));
+      svg.appendChild(strokedPath(`M44 ${cy - bar} L44 ${cy + bar}`, strokeWidth * 0.8));
       return;
     }
   }
@@ -1065,6 +1553,8 @@ export function gerarSigilo(seed: number): SVGSVGElement {
     'flor-lis', 'coroa', 'losango-duplo',
     'ankh', 'trident', 'espada', 'machado-x', 'saturno',
     'hex-cheio', 'roda-raios', 'vesica', 'garra', 'lua-fases',
+    'cetro', 'ancora', 'chave', 'martelo', 'rosa-vento',
+    'escala', 'pena', 'arvore', 'torre', 'elmo',
   ];
   if (!centerBusy.includes(motif) && rng() < 0.3) {
     if (rng() < 0.5) svg.appendChild(filledCircle(24, 24, 1.2));
