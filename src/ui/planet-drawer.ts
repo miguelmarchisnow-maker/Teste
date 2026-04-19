@@ -195,28 +195,69 @@ function injectStyles(): void {
       flex-shrink: 0;
     }
 
-    /* "Ver detalhes" button — full-width below the header metadata so
-       it reads as a primary CTA without fighting the compact focus
-       icon. Same token family as other drawer buttons. */
+    /* "Ver detalhes" button — monochrome primary CTA, full-width
+       below the header. Uses layered whites so it has visual weight
+       without introducing hue: solid white border at 55% for the
+       outline, low-alpha white bg for body, plus a pseudo-element
+       that draws a bright 1px top hairline so the button reads as
+       "pressable / primary" in the dark UI.
+
+       Hover state: full-white border, brighter bg, icon arrow slides
+       slightly right — tactile without flashing colour. */
     .planeta-drawer-details-btn {
       appearance: none;
-      margin: 0 calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.4);
-      padding: calc(var(--hud-unit) * 0.55) calc(var(--hud-unit) * 0.9);
-      background: rgba(140, 190, 255, 0.10);
-      border: 1px solid rgba(140, 190, 255, 0.35);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: calc(var(--hud-unit) * 0.45);
+      margin: calc(var(--hud-unit) * 0.1) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.5);
+      padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.95);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.5);
       color: var(--hud-text);
       font-family: var(--hud-font);
+      font-weight: 600;
       font-size: calc(var(--hud-unit) * 0.78);
-      letter-spacing: 0.12em;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
       cursor: pointer;
       border-radius: calc(var(--hud-radius) * 0.5);
-      transition: background 140ms ease, border-color 140ms ease;
+      overflow: hidden;
+      transition:
+        background 140ms ease,
+        border-color 140ms ease,
+        transform 120ms ease,
+        letter-spacing 140ms ease;
+    }
+    .planeta-drawer-details-btn::before {
+      /* Bright hairline across the top edge — reads as a HUD-style
+         primary affordance without using color. */
+      content: '';
+      position: absolute;
+      top: 0; left: 10%; right: 10%;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.6);
+      pointer-events: none;
+      transition: left 180ms ease, right 180ms ease, opacity 180ms ease;
     }
     .planeta-drawer-details-btn:hover {
-      background: rgba(140, 190, 255, 0.22);
-      border-color: rgba(140, 190, 255, 0.55);
+      background: rgba(255, 255, 255, 0.14);
+      border-color: #fff;
+      letter-spacing: 0.18em;
     }
+    .planeta-drawer-details-btn:hover::before {
+      left: 0; right: 0;
+      opacity: 1;
+    }
+    .planeta-drawer-details-btn:active { transform: translateY(1px); }
+    .planeta-drawer-details-btn svg {
+      width: calc(var(--hud-unit) * 0.75);
+      height: calc(var(--hud-unit) * 0.75);
+      transition: transform 180ms ease;
+      flex-shrink: 0;
+    }
+    .planeta-drawer-details-btn:hover svg { transform: translateX(3px); }
 
     .planeta-drawer-body {
       padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.7);
@@ -348,8 +389,14 @@ function injectStyles(): void {
       transition: background 120ms ease;
     }
     .planeta-drawer-btn:hover { background: rgba(255,255,255,0.08); }
-    .planeta-drawer-btn.primary { background: rgba(140, 190, 255, 0.12); border-color: rgba(140, 190, 255, 0.4); }
-    .planeta-drawer-btn.primary:hover { background: rgba(140, 190, 255, 0.22); }
+    .planeta-drawer-btn.primary {
+      background: rgba(255, 255, 255, 0.10);
+      border-color: rgba(255, 255, 255, 0.55);
+    }
+    .planeta-drawer-btn.primary:hover {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: #fff;
+    }
 
     .planeta-empty {
       color: var(--hud-text-dim);
@@ -376,12 +423,14 @@ function ownerLabel(dono: string): string {
   return ia?.nome ?? 'Desconhecido';
 }
 
+// Monochrome owner tone — the drawer is deliberately colorless so
+// owner identity is signalled through brightness + (elsewhere)
+// labels / tooltips instead of hue. Player = near-white, neutral =
+// mid-grey, AI = dim-grey so "mine" vs "not mine" still reads fast.
 function ownerColor(dono: string): string {
-  if (dono === 'jogador') return '#44aaff';
-  if (dono === 'neutro') return '#888888';
-  const ia = getPersonalidades().find((x) => x.id === dono);
-  if (ia) return `#${ia.cor.toString(16).padStart(6, '0')}`;
-  return '#888888';
+  if (dono === 'jogador') return 'rgba(255, 255, 255, 0.95)';
+  if (dono === 'neutro') return 'rgba(255, 255, 255, 0.45)';
+  return 'rgba(255, 255, 255, 0.65)';
 }
 
 // ─── Card builders ──────────────────────────────────────────────────
@@ -537,7 +586,22 @@ function buildDetailsButton(p: Planeta, mundo: Mundo): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'planeta-drawer-details-btn';
-  btn.textContent = 'Ver detalhes';
+  const label = document.createElement('span');
+  label.textContent = 'Ver detalhes';
+  btn.appendChild(label);
+  // Chevron — slides on hover thanks to the CSS transform. SVG
+  // inline so it inherits `color` and scales with the button font.
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M5 12h14M13 5l7 7-7 7');
+  svg.appendChild(path);
+  btn.appendChild(svg);
   btn.addEventListener('click', (ev) => {
     ev.stopPropagation();
     void abrirPlanetDetailsModal(p, mundo);
@@ -571,10 +635,13 @@ export function buildFocusIcon(): SVGSVGElement {
   return svg;
 }
 
+// Monochrome placeholder tone for the portrait while the live shader
+// warms up. Slight brightness differences per type keep the disc
+// feeling procedural without introducing hue.
 function tipoPlanetaCor(tipo: string): string {
-  if (tipo === 'marte') return '#c96a3a';
-  if (tipo === 'gasoso') return '#9a7fc2';
-  return '#4a9e6a';
+  if (tipo === 'marte')  return 'rgba(180, 180, 180, 0.35)';
+  if (tipo === 'gasoso') return 'rgba(210, 210, 210, 0.35)';
+  return 'rgba(160, 160, 160, 0.35)';
 }
 
 const PORTRAIT_REFRESH_MS = 500;
