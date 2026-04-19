@@ -238,8 +238,6 @@ function injectStyles(): void {
     }
     .estrela-planet-row:last-child { border-bottom: none; }
     .estrela-planet-row:hover { background: rgba(255,255,255,0.05); }
-    .estrela-planet-row.undiscovered { opacity: 0.5; cursor: default; }
-    .estrela-planet-row.undiscovered:hover { background: transparent; }
     .estrela-planet-dot {
       width: calc(var(--hud-unit) * 0.6);
       height: calc(var(--hud-unit) * 0.6);
@@ -345,16 +343,13 @@ function cardVisaoGeral(sol: Sol, sistema: Sistema | null): HTMLDivElement {
 
   const cls = classeEstrela(sol._cor);
   const raio = Math.round(sol._raio);
+  const descobertos = sistema ? sistema.planetas.filter((p) => p._descobertoAoJogador).length : 0;
   const rows: Array<[string, string]> = [
     ['Classe', cls.nome],
     ['Descrição', cls.descricao],
     ['Raio estelar', `${raio} u`],
-    ['Planetas', sistema ? String(sistema.planetas.length) : '—'],
+    ['Planetas descobertos', sistema ? String(descobertos) : '—'],
   ];
-  if (sistema) {
-    const descobertos = sistema.planetas.filter((p) => p._descobertoAoJogador).length;
-    rows.push(['Descobertos', `${descobertos} / ${sistema.planetas.length}`]);
-  }
   for (const [label, value] of rows) {
     const row = document.createElement('div');
     row.className = 'estrela-stats-row';
@@ -377,16 +372,18 @@ function cardVisaoGeral(sol: Sol, sistema: Sistema | null): HTMLDivElement {
  * owner row.
  */
 function cardControle(sistema: Sistema | null, mundo: Mundo | null): HTMLDivElement | null {
-  if (!sistema || sistema.planetas.length === 0) return null;
+  if (!sistema) return null;
+  const descobertos = sistema.planetas.filter((p) => p._descobertoAoJogador);
+  if (descobertos.length === 0) return null;
   const card = document.createElement('div');
-  card.className = 'estrela-card';
   const t = document.createElement('h3');
+  card.className = 'estrela-card';
   t.className = 'estrela-card-title';
   t.textContent = 'Controle do Sistema';
   card.appendChild(t);
 
   const counts = new Map<string, number>();
-  for (const p of sistema.planetas) {
+  for (const p of descobertos) {
     const dono = p.dados.dono;
     counts.set(dono, (counts.get(dono) ?? 0) + 1);
   }
@@ -453,50 +450,46 @@ function cardPlanetas(sistema: Sistema | null, mundo: Mundo | null): HTMLDivElem
   t.textContent = 'Planetas';
   card.appendChild(t);
 
-  if (!sistema || sistema.planetas.length === 0) {
+  const descobertos = sistema ? sistema.planetas.filter((p) => p._descobertoAoJogador) : [];
+  if (descobertos.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'estrela-empty';
-    empty.textContent = 'Nenhum planeta neste sistema.';
+    empty.textContent = 'Nenhum planeta descoberto neste sistema.';
     card.appendChild(empty);
     return card;
   }
 
-  for (const p of sistema.planetas) {
-    const descoberto = !!p._descobertoAoJogador;
+  for (const p of descobertos) {
     const row = document.createElement('div');
-    row.className = `estrela-planet-row${descoberto ? '' : ' undiscovered'}`;
+    row.className = 'estrela-planet-row';
 
     const dot = document.createElement('div');
     dot.className = 'estrela-planet-dot';
-    dot.style.background = descoberto ? ownerColor(p.dados.dono) : '#333';
+    dot.style.background = ownerColor(p.dados.dono);
     row.appendChild(dot);
 
     const info = document.createElement('div');
     info.className = 'estrela-planet-info';
     const name = document.createElement('span');
     name.className = 'estrela-planet-name';
-    name.textContent = descoberto ? p.dados.nome : 'Não explorado';
+    name.textContent = p.dados.nome;
     info.appendChild(name);
     const tipo = document.createElement('span');
     tipo.className = 'estrela-planet-tipo';
-    tipo.textContent = descoberto
-      ? `${nomeTipoPlaneta(p.dados.tipoPlaneta)} · ${ownerLabel(p.dados.dono)}`
-      : '— sem dados —';
+    tipo.textContent = `${nomeTipoPlaneta(p.dados.tipoPlaneta)} · ${ownerLabel(p.dados.dono)}`;
     info.appendChild(tipo);
     row.appendChild(info);
 
-    if (descoberto) {
-      const arrow = document.createElement('span');
-      arrow.className = 'estrela-planet-arrow';
-      arrow.textContent = '›';
-      row.appendChild(arrow);
-      row.title = `Abrir ${p.dados.nome}`;
-      row.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        if (!mundo) return;
-        openPlaneta(p, mundo);
-      });
-    }
+    const arrow = document.createElement('span');
+    arrow.className = 'estrela-planet-arrow';
+    arrow.textContent = '›';
+    row.appendChild(arrow);
+    row.title = `Abrir ${p.dados.nome}`;
+    row.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (!mundo) return;
+      openPlaneta(p, mundo);
+    });
     card.appendChild(row);
   }
   return card;
@@ -557,10 +550,13 @@ function buildHeader(sol: Sol, sistema: Sistema | null): HTMLDivElement {
   classe.className = 'estrela-drawer-classe';
   classe.textContent = classeEstrela(sol._cor).nome;
   meta.appendChild(classe);
+  const descobertos = sistema
+    ? sistema.planetas.filter((p) => p._descobertoAoJogador).length
+    : 0;
   const sub = document.createElement('div');
   sub.className = 'estrela-drawer-sub';
   sub.textContent = sistema
-    ? `${sistema.planetas.length} planeta${sistema.planetas.length === 1 ? '' : 's'}`
+    ? `${descobertos} planeta${descobertos === 1 ? '' : 's'} descoberto${descobertos === 1 ? '' : 's'}`
     : 'Sistema isolado';
   meta.appendChild(sub);
   head.appendChild(meta);
