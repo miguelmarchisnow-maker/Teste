@@ -416,13 +416,19 @@ function injectStyles(): void {
        card a pixel, thickens the accent and brightens text. */
     .nwm-preset-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(calc(var(--hud-unit) * 8.5), 1fr));
-      gap: calc(var(--hud-unit) * 0.45);
+      /* 5 presets fit in one row on standard modal width (~34u inside)
+         with minmax(5.6u) = ~28u worth of cards + 4×0.5u gap + slack.
+         Reflows to 3 then 2 columns on narrow viewports naturally. */
+      grid-template-columns: repeat(auto-fit, minmax(calc(var(--hud-unit) * 5.6), 1fr));
+      gap: calc(var(--hud-unit) * 0.5);
+      width: 100%;
     }
     .nwm-preset {
       position: relative;
+      box-sizing: border-box;
+      min-width: 0;
       text-align: left;
-      padding: calc(var(--hud-unit) * 0.75) calc(var(--hud-unit) * 0.7) calc(var(--hud-unit) * 0.6);
+      padding: calc(var(--hud-unit) * 0.75) calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.6);
       background: rgba(0, 0, 0, 0.35);
       border: 1px solid var(--hud-border);
       border-radius: calc(var(--hud-radius) * 0.6);
@@ -433,6 +439,7 @@ function injectStyles(): void {
       gap: calc(var(--hud-unit) * 0.25);
       transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
       font-family: inherit;
+      overflow: hidden;
     }
     .nwm-preset::before {
       content: '';
@@ -459,10 +466,14 @@ function injectStyles(): void {
     .nwm-preset.selected::before { opacity: 1; height: 3px; }
     .nwm-preset-title {
       font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 0.92);
-      letter-spacing: 0.1em;
+      font-size: calc(var(--hud-unit) * 0.82);
+      letter-spacing: 0.06em;
       text-transform: uppercase;
-      line-height: 1;
+      line-height: 1.1;
+      /* Long words like CONQUISTADOR have to fit 5.6u-wide cards, so
+         allow soft-wrap at letter boundaries if needed — reads better
+         than horizontal overflow. */
+      word-break: break-word;
     }
     .nwm-preset-desc {
       font-size: calc(var(--hud-unit) * 0.72);
