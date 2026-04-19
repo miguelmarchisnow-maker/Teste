@@ -95,7 +95,15 @@ export function serializarMundo(
     tipoJogador: serializarTipoJogador(mundo.tipoJogador),
     imperioJogador: mundo.imperioJogador ? {
       nome: mundo.imperioJogador.nome,
-      logo: { seed: mundo.imperioJogador.logo.seed },
+      logo: {
+        seed: mundo.imperioJogador.logo.seed,
+        manual: mundo.imperioJogador.logo.manual ? {
+          frame: mundo.imperioJogador.logo.manual.frame,
+          motif: mundo.imperioJogador.logo.manual.motif,
+          ornament: mundo.imperioJogador.logo.manual.ornament,
+          strokeWidth: mundo.imperioJogador.logo.manual.strokeWidth,
+        } : undefined,
+      },
       pesos: { ...mundo.imperioJogador.pesos },
       objetivo: mundo.imperioJogador.objetivo,
       lore: mundo.imperioJogador.lore ? JSON.parse(JSON.stringify(mundo.imperioJogador.lore)) : undefined,

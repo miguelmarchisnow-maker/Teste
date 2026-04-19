@@ -10,6 +10,7 @@
 
 import { gerarImperioLore, type ImperioLore } from './lore/imperio-lore';
 import type { Arquetipo, PersonalidadeIA } from './personalidade-ia';
+import type { SigiloManual } from '../ui/empire-builder/sigilos';
 
 export type ObjetivoImperio =
   | 'conquista'      // eliminate all empires
@@ -30,8 +31,11 @@ export interface PesosImperio {
 
 export interface ImperioJogador {
   nome: string;
-  /** Procedural sigil seed — fed to gerarSigilo() in sigilos.ts. */
-  logo: { seed: number };
+  /** Procedural sigil seed — fed to gerarSigilo() in sigilos.ts. When
+   *  `manual` is present it takes priority and the seed is ignored for
+   *  rendering (but kept so toggling back to procedural restores the
+   *  last browsed gallery base). */
+  logo: { seed: number; manual?: SigiloManual };
   pesos: PesosImperio;
   objetivo: ObjetivoImperio;
   lore?: ImperioLore;

@@ -136,7 +136,15 @@ export async function reconstruirMundo(
     tipoJogador: dto.tipoJogador,
     imperioJogador: dto.imperioJogador ? {
       nome: dto.imperioJogador.nome,
-      logo: { seed: dto.imperioJogador.logo.seed },
+      logo: {
+        seed: dto.imperioJogador.logo.seed,
+        manual: dto.imperioJogador.logo.manual ? {
+          frame: dto.imperioJogador.logo.manual.frame as import('../../ui/empire-builder/sigilos').Frame,
+          motif: dto.imperioJogador.logo.manual.motif as import('../../ui/empire-builder/sigilos').MotifKind,
+          ornament: dto.imperioJogador.logo.manual.ornament as import('../../ui/empire-builder/sigilos').Ornament,
+          strokeWidth: dto.imperioJogador.logo.manual.strokeWidth,
+        } : undefined,
+      },
       pesos: { ...dto.imperioJogador.pesos },
       objetivo: dto.imperioJogador.objetivo,
       lore: dto.imperioJogador.lore as import('../lore/imperio-lore').ImperioLore | undefined,

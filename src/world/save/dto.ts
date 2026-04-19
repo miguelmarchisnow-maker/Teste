@@ -196,7 +196,12 @@ export interface TipoJogadorDTO {
  */
 export interface ImperioJogadorDTO {
   nome: string;
-  logo: { seed: number };
+  logo: {
+    seed: number;
+    /** Author-selected composition override. When present the renderer
+     *  ignores `seed`. Stored as plain strings; sigilos.ts validates. */
+    manual?: { frame: string; motif: string; ornament: string; strokeWidth?: number };
+  };
   pesos: {
     agressao: number;
     expansao: number;

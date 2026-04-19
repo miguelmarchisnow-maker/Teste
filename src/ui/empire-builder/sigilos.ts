@@ -116,7 +116,7 @@ function starPoly(cx: number, cy: number, r: number, rInner: number, points: num
 
 // ─── Frames ─────────────────────────────────────────────────────────
 
-type Frame =
+export type Frame =
   | 'nenhum'
   | 'circulo'
   | 'duplo-circulo'
@@ -202,7 +202,7 @@ const FRAME_INNER: Record<Frame, number> = {
   'tri-circulo': 10,
 };
 
-const FRAMES: readonly Frame[] = [
+export const FRAMES: readonly Frame[] = [
   'nenhum', 'circulo', 'duplo-circulo',
   'hex-pontudo', 'hex-chato',
   'escudo', 'diamante', 'octogono', 'quadrado-rot',
@@ -390,7 +390,7 @@ function addFrame(svg: SVGSVGElement, kind: Frame, strokeWidth: number): void {
 
 // ─── Motifs ─────────────────────────────────────────────────────────
 
-type MotifKind =
+export type MotifKind =
   // radial, "symmetric N"
   | 'estrela-4' | 'estrela-5' | 'estrela-6' | 'estrela-7' | 'estrela-8' | 'estrela-12'
   | 'estrela-4-cheia' | 'estrela-5-cheia' | 'estrela-6-cheia'
@@ -491,7 +491,7 @@ const MOTIF_SIM: Record<MotifKind, number> = {
   'elmo': 0,
 };
 
-const MOTIFS: readonly MotifKind[] = Object.keys(MOTIF_SIM) as MotifKind[];
+export const MOTIFS: readonly MotifKind[] = Object.keys(MOTIF_SIM) as MotifKind[];
 
 function addMotif(svg: SVGSVGElement, kind: MotifKind, r: number, strokeWidth: number): void {
   const cx = 24, cy = 24;
@@ -1289,7 +1289,7 @@ function addMotif(svg: SVGSVGElement, kind: MotifKind, r: number, strokeWidth: n
 
 // ─── Ornaments ──────────────────────────────────────────────────────
 
-type Ornament =
+export type Ornament =
   | 'nenhum'
   | 'ticks-4' | 'ticks-6' | 'ticks-8' | 'ticks-12' | 'ticks-16' | 'ticks-24'
   | 'ticks-cardinais'
@@ -1301,7 +1301,7 @@ type Ornament =
   | 'anel-fino'
   | 'chevrons-4'
   | 'linhas-cardinais';
-const ORNAMENTS: readonly Ornament[] = [
+export const ORNAMENTS: readonly Ornament[] = [
   'nenhum',
   'ticks-4', 'ticks-6', 'ticks-8', 'ticks-12', 'ticks-16', 'ticks-24',
   'ticks-cardinais',
@@ -1573,3 +1573,103 @@ export function seedVariacoes(base: number, quantidade = 8): number[] {
 export function novaSeed(): number {
   return (Math.floor(Math.random() * 0xFFFFFFFF)) | 0;
 }
+
+// ─── Manual composition ─────────────────────────────────────────────
+
+export interface SigiloManual {
+  frame: Frame;
+  motif: MotifKind;
+  ornament: Ornament;
+  /** 1.2 .. 2.8 — same scale as the procedural stroke width. */
+  strokeWidth?: number;
+}
+
+/**
+ * Render a sigil from explicit user choices instead of a seed. Used by
+ * the "Faça sua logo" composer. No satellites, inner ring or center
+ * accent — those are procedural-only flourishes. Users who want those
+ * can fine-tune via the gallery.
+ */
+export function gerarSigiloManual(manual: SigiloManual): SVGSVGElement {
+  const svg = baseSvg();
+  const sw = manual.strokeWidth ?? 2.0;
+  addFrame(svg, manual.frame, sw);
+  const motifR = FRAME_INNER[manual.frame] * 0.82;
+  addMotif(svg, manual.motif, motifR, sw);
+  addOrnament(svg, manual.ornament, sw);
+  return svg;
+}
+
+/** Human-readable labels for UI pickers. */
+export const FRAME_LABEL: Record<Frame, string> = {
+  'nenhum': 'Nenhum',
+  'circulo': 'Círculo',
+  'duplo-circulo': 'Círculo duplo',
+  'hex-pontudo': 'Hex pontudo',
+  'hex-chato': 'Hex chato',
+  'escudo': 'Escudo',
+  'diamante': 'Diamante',
+  'octogono': 'Octógono',
+  'quadrado-rot': 'Quadrado rotado',
+  'pentagono': 'Pentágono',
+  'triangulo-frame': 'Triângulo',
+  'triangulo-inv-frame': 'Triângulo invertido',
+  'estrela-frame-6': 'Estrela (moldura)',
+  'laurel': 'Louros',
+  'circulo-pontilhado': 'Círculo pontilhado',
+  'scutum': 'Scutum',
+  'brasao': 'Brasão',
+  'coracao-frame': 'Coração',
+  'gota': 'Gota',
+  'rosetta': 'Rosetta',
+  'ovalado': 'Ovalado',
+  'cruz-frame': 'Cruz (moldura)',
+  'quadrado-aligned': 'Quadrado',
+  'anel-pontado': 'Anel pontado',
+  'tri-circulo': 'Tri-círculo',
+};
+
+export const MOTIF_LABEL: Record<MotifKind, string> = {
+  'estrela-4': 'Estrela 4', 'estrela-5': 'Estrela 5', 'estrela-6': 'Estrela 6',
+  'estrela-7': 'Estrela 7', 'estrela-8': 'Estrela 8', 'estrela-12': 'Estrela 12',
+  'estrela-4-cheia': 'Estrela 4 cheia', 'estrela-5-cheia': 'Estrela 5 cheia', 'estrela-6-cheia': 'Estrela 6 cheia',
+  'triangulo': 'Triângulo', 'triangulo-cheio': 'Triângulo cheio',
+  'hexagrama': 'Hexagrama', 'pentagrama': 'Pentagrama',
+  'cruz-larga': 'Cruz', 'cruz-pomada': 'Cruz pomada',
+  'cruz-celta': 'Cruz celta', 'cruz-mal': 'Cruz maltesa',
+  'anel': 'Anel', 'anel-duplo': 'Anel duplo', 'alvo': 'Alvo',
+  'orbe': 'Orbe', 'olho': 'Olho',
+  'atomo': 'Átomo', 'engrenagem': 'Engrenagem', 'sol-raiado': 'Sol raiado',
+  'crescente': 'Crescente', 'crescente-duplo': 'Crescente duplo',
+  'seta-para-cima': 'Seta', 'asa': 'Asa', 'chevron-triplo': 'Chevrons',
+  'disco': 'Disco',
+  'ampulheta': 'Ampulheta', 'chama': 'Chama',
+  'losango': 'Losango', 'losango-duplo': 'Losango duplo',
+  'quincunx': 'Quincunx', 'espiral': 'Espiral', 'raio': 'Raio',
+  'triangulo-olho': 'Triângulo c/ olho', 'flor-lis': 'Flor-de-lis',
+  'constelacao': 'Constelação', 'coroa': 'Coroa',
+  'ankh': 'Ankh', 'trident': 'Tridente', 'espada': 'Espada',
+  'machado-x': 'Machados X', 'lua-fases': 'Fases da Lua',
+  'saturno': 'Saturno', 'hex-cheio': 'Hexágono cheio',
+  'roda-raios': 'Roda', 'vesica': 'Vesica', 'garra': 'Garra',
+  'cetro': 'Cetro', 'ancora': 'Âncora', 'chave': 'Chave',
+  'martelo': 'Martelo', 'rosa-vento': 'Rosa-dos-ventos',
+  'escala': 'Balança', 'pena': 'Pena', 'arvore': 'Árvore',
+  'torre': 'Torre', 'elmo': 'Elmo',
+};
+
+export const ORNAMENT_LABEL: Record<Ornament, string> = {
+  'nenhum': 'Nenhum',
+  'ticks-4': 'Ticks 4', 'ticks-6': 'Ticks 6', 'ticks-8': 'Ticks 8',
+  'ticks-12': 'Ticks 12', 'ticks-16': 'Ticks 16', 'ticks-24': 'Ticks 24',
+  'ticks-cardinais': 'Ticks cardinais',
+  'pontos-6': 'Pontos 6', 'pontos-8': 'Pontos 8',
+  'pontos-12': 'Pontos 12', 'pontos-16': 'Pontos 16',
+  'pontos-duplos': 'Pontos duplos',
+  'cantos': 'Cantos', 'cantos-duplos': 'Cantos duplos',
+  'arcos-4': 'Arcos 4', 'arcos-8': 'Arcos 8',
+  'dashes-8': 'Tracejado',
+  'anel-fino': 'Anel fino',
+  'chevrons-4': 'Chevrons',
+  'linhas-cardinais': 'Linhas cardinais',
+};

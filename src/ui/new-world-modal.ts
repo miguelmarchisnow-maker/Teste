@@ -15,7 +15,12 @@ import {
   gerarLoreDoJogador,
   COR_JOGADOR_DEFAULT,
 } from '../world/imperio-jogador';
-import { gerarSigilo, seedVariacoes, novaSeed } from './empire-builder/sigilos';
+import {
+  gerarSigilo, gerarSigiloManual, seedVariacoes, novaSeed,
+  FRAMES, MOTIFS, ORNAMENTS,
+  FRAME_LABEL, MOTIF_LABEL, ORNAMENT_LABEL,
+  type Frame, type MotifKind, type Ornament,
+} from './empire-builder/sigilos';
 import type { ImperioLore } from '../world/lore/imperio-lore';
 
 interface NovoMundoResultado {
@@ -568,63 +573,161 @@ function mountStepImperio(body: HTMLDivElement, state: WizardState, onChange: ()
   });
   body.appendChild(input);
 
-  // Logo section: gallery of seed variations + regenerate button
+  // Logo section header with mode toggle
   const labelRow = document.createElement('div');
-  labelRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-top: calc(var(--hud-unit) * 0.3);';
+  labelRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: calc(var(--hud-unit) * 0.4); margin-top: calc(var(--hud-unit) * 0.3); flex-wrap: wrap;';
   const labelLogo = document.createElement('div');
   labelLogo.className = 'nwm-label';
   labelLogo.style.margin = '0';
-  labelLogo.textContent = 'Sigilo (procedural)';
-  const regen = document.createElement('button');
-  regen.type = 'button';
-  regen.className = 'nwm-btn ghost inline-sm';
-  regen.textContent = 'Regerar';
-  labelRow.append(labelLogo, regen);
+  const actionsRow = document.createElement('div');
+  actionsRow.style.cssText = 'display: flex; gap: calc(var(--hud-unit) * 0.3);';
+  const regenBtn = document.createElement('button');
+  regenBtn.type = 'button';
+  regenBtn.className = 'nwm-btn ghost inline-sm';
+  regenBtn.textContent = 'Regerar';
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'nwm-btn ghost inline-sm';
+  actionsRow.append(regenBtn, toggleBtn);
+  labelRow.append(labelLogo, actionsRow);
   body.appendChild(labelRow);
 
-  const grid = document.createElement('div');
-  grid.className = 'nwm-sigil-grid';
-  body.appendChild(grid);
+  // One container each; only the active mode's is visible.
+  const procContainer = document.createElement('div');
+  procContainer.className = 'nwm-sigil-grid';
+  body.appendChild(procContainer);
 
-  // Base seed for the 8 gallery slots. Stored on the state so Back/Next
-  // preserves the browsed set; regenerate rolls a new base.
+  const manualContainer = document.createElement('div');
+  manualContainer.style.cssText = 'display: flex; flex-direction: column; gap: calc(var(--hud-unit) * 0.4);';
+  body.appendChild(manualContainer);
+
   if (state.sigiloGalleryBase === 0) state.sigiloGalleryBase = novaSeed();
 
+  // ── Procedural gallery ─────────────────────────────────────────────
   function refreshGallery(): void {
-    grid.replaceChildren();
+    procContainer.replaceChildren();
     const seeds = seedVariacoes(state.sigiloGalleryBase, 8);
     for (const seed of seeds) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      const selected = state.imperio.logo.seed === seed;
+      const selected = !state.imperio.logo.manual && state.imperio.logo.seed === seed;
       btn.className = `nwm-sigil${selected ? ' selected' : ''}`;
       btn.appendChild(gerarSigilo(seed));
       btn.addEventListener('click', () => {
         state.imperio.logo.seed = seed;
+        // Choosing a gallery slot auto-exits manual mode.
+        delete state.imperio.logo.manual;
         refreshGallery();
         refreshEmpirePreview(preview, state);
         onChange();
       });
-      grid.appendChild(btn);
+      procContainer.appendChild(btn);
     }
   }
 
-  // If the current seed isn't in the first variation page, start the
-  // gallery there so the selected item is visible.
+  // If the current seed isn't in the first variation page, start there
   const inCurrentPage = seedVariacoes(state.sigiloGalleryBase, 8).includes(state.imperio.logo.seed);
   if (!inCurrentPage) state.sigiloGalleryBase = state.imperio.logo.seed;
 
-  regen.addEventListener('click', () => {
+  regenBtn.addEventListener('click', () => {
     state.sigiloGalleryBase = novaSeed();
-    // Snap selection to the first of the new batch so the preview is
-    // never stuck on a seed that isn't on screen.
     state.imperio.logo.seed = state.sigiloGalleryBase;
+    delete state.imperio.logo.manual;
+    refreshGallery();
+    refreshEmpirePreview(preview, state);
+    onChange();
+  });
+
+  // ── Manual composer ────────────────────────────────────────────────
+  function makeSelect<T extends string>(
+    current: T,
+    options: readonly T[],
+    labels: Record<T, string>,
+    onPick: (v: T) => void,
+  ): HTMLSelectElement {
+    const sel = document.createElement('select');
+    sel.className = 'nwm-input';
+    for (const opt of options) {
+      const o = document.createElement('option');
+      o.value = opt;
+      o.textContent = labels[opt];
+      if (opt === current) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => onPick(sel.value as T));
+    return sel;
+  }
+
+  function refreshManual(): void {
+    manualContainer.replaceChildren();
+    if (!state.imperio.logo.manual) return;
+    const manual = state.imperio.logo.manual;
+
+    const rows: Array<[string, HTMLSelectElement]> = [
+      ['Moldura', makeSelect<Frame>(
+        manual.frame, FRAMES, FRAME_LABEL,
+        (v) => { manual.frame = v; syncManual(); },
+      )],
+      ['Símbolo', makeSelect<MotifKind>(
+        manual.motif, MOTIFS, MOTIF_LABEL,
+        (v) => { manual.motif = v; syncManual(); },
+      )],
+      ['Ornamento', makeSelect<Ornament>(
+        manual.ornament, ORNAMENTS, ORNAMENT_LABEL,
+        (v) => { manual.ornament = v; syncManual(); },
+      )],
+    ];
+
+    for (const [label, sel] of rows) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display: flex; flex-direction: column; gap: calc(var(--hud-unit) * 0.15);';
+      const l = document.createElement('div');
+      l.className = 'nwm-label';
+      l.style.margin = '0';
+      l.textContent = label;
+      wrap.append(l, sel);
+      manualContainer.appendChild(wrap);
+    }
+  }
+
+  function syncManual(): void {
+    refreshEmpirePreview(preview, state);
+    refreshGallery();  // un-selects gallery items since we're in manual
+    onChange();
+  }
+
+  // ── Mode toggle ────────────────────────────────────────────────────
+  function refreshMode(): void {
+    const manual = !!state.imperio.logo.manual;
+    labelLogo.textContent = manual ? 'Sigilo (manual)' : 'Sigilo (procedural)';
+    procContainer.style.display = manual ? 'none' : '';
+    manualContainer.style.display = manual ? 'flex' : 'none';
+    regenBtn.style.display = manual ? 'none' : '';
+    toggleBtn.textContent = manual ? 'Voltar pra galeria' : 'Faça sua logo';
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (state.imperio.logo.manual) {
+      delete state.imperio.logo.manual;
+    } else {
+      // Seed a manual composition with sensible defaults.
+      state.imperio.logo.manual = {
+        frame: 'circulo',
+        motif: 'estrela-6',
+        ornament: 'nenhum',
+        strokeWidth: 2.0,
+      };
+    }
+    refreshMode();
+    refreshManual();
     refreshGallery();
     refreshEmpirePreview(preview, state);
     onChange();
   });
 
   refreshGallery();
+  refreshManual();
+  refreshMode();
 
   setTimeout(() => input.focus(), 0);
 }
@@ -826,10 +929,7 @@ function buildEmpirePreview(state: WizardState): HTMLDivElement {
 
   const disc = document.createElement('div');
   disc.className = 'nwm-empire-disc';
-  // The procedural sigil embeds its own seed-derived colors, so we
-  // don't tint via disc.style.color — that would force a single hue
-  // and wash out the composition.
-  disc.appendChild(gerarSigilo(state.imperio.logo.seed));
+  disc.appendChild(renderSigilCurrent(state));
   box.appendChild(disc);
 
   const text = document.createElement('div');
@@ -850,12 +950,19 @@ function buildEmpirePreview(state: WizardState): HTMLDivElement {
 function refreshEmpirePreview(el: HTMLDivElement, state: WizardState): void {
   const disc = el.querySelector<HTMLDivElement>('.nwm-empire-disc');
   if (disc) {
-    disc.replaceChildren(gerarSigilo(state.imperio.logo.seed));
+    disc.replaceChildren(renderSigilCurrent(state));
   }
   const name = el.querySelector<HTMLDivElement>('.nwm-empire-preview-name');
   if (name) name.textContent = state.imperio.nome || 'Império sem nome';
   const sub = el.querySelector<HTMLDivElement>('.nwm-empire-preview-sub');
   if (sub) sub.textContent = `Mundo: ${state.nomeMundo || '—'} · Dif.: ${t(`dificuldade.${state.dificuldade}`)}`;
+}
+
+/** Render the currently-selected sigil (manual takes priority). */
+function renderSigilCurrent(state: WizardState): SVGSVGElement {
+  return state.imperio.logo.manual
+    ? gerarSigiloManual(state.imperio.logo.manual)
+    : gerarSigilo(state.imperio.logo.seed);
 }
 
 
