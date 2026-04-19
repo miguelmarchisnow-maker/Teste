@@ -16,6 +16,7 @@ import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu }
 import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo } from './core/player';
 import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatcher';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
+import { criarMobileMenuBtn } from './ui/mobile-menu-btn';
 import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
 import { criarChatLog, destruirChatLog } from './ui/chat-log';
 import { criarResourceBar, destruirResourceBar, atualizarResourceBar } from './ui/resource-bar';
@@ -827,11 +828,9 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
     if (HUD_LEGACY_HABILITADO) {
       criarChatLog();
       criarSidebar();
-    } else {
-      // Mobile drawer needs the sidebar container + hamburger, even
-      // without the legacy nav items. CSS hides it on desktop.
-      criarSidebar({ drawerOnly: true });
     }
+    // Hamburger that opens the pause menu directly on narrow/touch screens.
+    criarMobileMenuBtn();
     // The side planet-panel is superseded by the new planet-modal
     // (opened on planet click). Kept in code but not instantiated —
     // flip PLANET_PANEL_HABILITADO to restore.

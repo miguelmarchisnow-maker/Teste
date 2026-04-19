@@ -10,61 +10,59 @@ export function injectMobileStyles(): void {
   _injected = true;
   const style = document.createElement('style');
   style.textContent = `
-    /* ── HUD base unit: bump minimum on narrow screens so derived text
-       (text-sm = 0.55× unit) isn't microscopic. ───────────────────── */
+    /* ── HUD base unit: aggressive bump so derived text is readable. */
     body.size-sm,
     body.portrait.size-md {
-      --hud-unit: clamp(16px, 2.6vmin, 22px) !important;
-      --hud-margin: clamp(12px, 2vmin, 22px) !important;
+      --hud-unit: clamp(20px, 4vmin, 28px) !important;
+      --hud-margin: clamp(12px, 2.4vmin, 22px) !important;
     }
 
-    /* ── Touch-only: interactive controls get 44px min hit area. ──── */
+    /* ── Hide minimap on small screens — not useful and steals space. */
+    body.size-sm .minimap {
+      display: none !important;
+    }
+
+    /* ── Generous touch targets on small or touch screens. */
+    body.size-sm button,
+    body.size-sm .settings-select-display,
     body.touch .sidebar-btn,
-    body.touch .sidebar-hamburger,
     body.touch .zoom-controls button,
     body.touch .menu-btn,
     body.touch .pm-btn,
     body.touch .nwm-btn,
     body.touch .confirm-btn,
     body.touch .settings-select-display {
-      min-height: 44px;
+      min-height: 48px;
     }
 
-    /* ── Top HUD on narrow+portrait: readable, not microscopic. ───── */
+    /* ── Top HUD: clearly readable on narrow portrait. */
     body.size-sm.portrait .resource-bar,
     body.size-sm.portrait .credits-bar,
     body.size-sm.portrait .empire-badge {
-      font-size: 13px !important;
-      padding: 6px 10px !important;
-      line-height: 1.2 !important;
+      font-size: 15px !important;
+      padding: 8px 12px !important;
+      line-height: 1.3 !important;
       max-width: calc(100vw - 24px) !important;
-    }
-    body.size-sm.portrait .empire-badge {
-      /* Shrink the crest + text so it fits left of the resource bar */
-      padding: 5px 8px !important;
     }
     body.size-sm.portrait .credits-clock,
     body.size-sm.portrait .credits-divider {
       display: none !important;
     }
 
-    /* ── Reserve top-left real estate for the hamburger drawer trigger
-       by nudging the resource-bar down on narrow screens. ────────── */
-    body.size-sm .resource-bar {
-      top: 60px !important;
+    /* Resource-bar icons visibly bigger so values aren't ambiguous. */
+    body.size-sm.portrait .resource-bar .resource-icon,
+    body.size-sm.portrait .resource-bar img {
+      width: 22px !important;
+      height: 22px !important;
     }
+
+    /* Nudge top HUD below the hamburger strip. */
+    body.size-sm .resource-bar,
     body.size-sm .empire-badge {
-      /* Badge starts below the hamburger row. */
-      top: 60px !important;
+      top: 76px !important;
     }
 
-    /* ── Minimap: stay legible. ──────────────────────────────────── */
-    body.size-sm .minimap {
-      transform: scale(0.82);
-      transform-origin: bottom left;
-    }
-
-    /* ── Modal cards: constrain but keep card feel, not full-screen slab. */
+    /* ── Modal cards: card feel, not fullscreen slab. */
     body.size-sm .settings-overlay,
     body.size-sm .main-menu,
     body.size-sm .pause-menu,
@@ -81,41 +79,73 @@ export function injectMobileStyles(): void {
     body.size-sm .pm-card,
     body.size-sm .nwm-card,
     body.size-sm .colony-modal {
-      width: min(94vw, 420px) !important;
+      width: min(94vw, 440px) !important;
       max-height: 90vh !important;
-      border-radius: 12px !important;
+      border-radius: 14px !important;
       overflow-y: auto;
+      font-size: 15px !important;
     }
     body.size-sm .settings-overlay > * {
-      width: min(96vw, 520px) !important;
+      width: min(96vw, 560px) !important;
       max-height: 94vh !important;
+      font-size: 15px !important;
     }
-
-    /* ── Zoom controls: shift up so they don't collide with bottom sheets. */
-    body.size-sm.portrait .zoom-controls {
-      bottom: calc(var(--hud-margin) + 90vh * 0 + 90px) !important;
-      right: 10px !important;
+    body.size-sm .settings-row {
+      font-size: 15px !important;
+      min-height: 52px !important;
     }
-    body.size-sm .zoom-controls button {
-      width: 44px !important;
-      height: 44px !important;
+    body.size-sm .pm-title,
+    body.size-sm .nwm-title,
+    body.size-sm .confirm-title,
+    body.size-sm .lore-modal-title {
       font-size: 20px !important;
     }
+    body.size-sm .pm-btn,
+    body.size-sm .nwm-btn,
+    body.size-sm .confirm-btn,
+    body.size-sm .menu-btn {
+      min-height: 52px !important;
+      font-size: 16px !important;
+      padding: 12px 18px !important;
+    }
 
-    /* ── Build panel cards: more finger-friendly. ────────────────── */
+    /* ── Zoom controls: larger and centered vertical on the right edge. */
+    body.size-sm .zoom-controls {
+      right: 12px !important;
+      bottom: 24vh !important;
+    }
+    body.size-sm .zoom-controls button {
+      width: 56px !important;
+      height: 56px !important;
+      font-size: 26px !important;
+      border-radius: 12px !important;
+    }
+
+    /* ── Build panel cards + tabs: finger-friendly. */
     body.size-sm .build-card {
-      min-height: 56px !important;
+      min-height: 72px !important;
+      min-width: 72px !important;
     }
     body.size-sm .build-panel .build-tab {
-      min-height: 40px !important;
-      padding: 8px 12px !important;
-      font-size: 13px !important;
+      min-height: 44px !important;
+      padding: 10px 14px !important;
+      font-size: 14px !important;
     }
 
-    /* ── Planet drawer resources pills: bump touch area. ─────────── */
+    /* ── Planet drawer text + pills. */
+    body.size-sm .planeta-drawer {
+      font-size: 15px !important;
+    }
     body.size-sm .planeta-drawer button,
     body.size-sm .planeta-drawer .drawer-pill {
-      min-height: 40px !important;
+      min-height: 44px !important;
+      font-size: 14px !important;
+    }
+
+    /* ── Ship panel action icons need bigger tap targets. */
+    body.size-sm .ship-panel-action {
+      min-width: 48px !important;
+      min-height: 48px !important;
     }
   `;
   document.head.appendChild(style);
