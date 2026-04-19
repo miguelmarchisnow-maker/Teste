@@ -10,27 +10,44 @@ export function injectMobileStyles(): void {
   _injected = true;
   const style = document.createElement('style');
   style.textContent = `
-    /* ── HUD base unit: 20px was too big — empire-badge ballooned to
-       108px tall and collided with resource-bar. Dial back and bump
-       specific text sizes in-place below. */
+    /* ── HUD base unit: bump back up so derived text (calc * 0.55/0.8/1.1)
+       stays legible across ALL panels. Components that ballooned
+       (empire-badge) get explicit size overrides below — don't punish
+       every other panel for one outlier. */
     body.size-sm,
     body.portrait.size-md {
-      --hud-unit: clamp(14px, 2.4vmin, 20px) !important;
-      --hud-margin: clamp(8px, 2vmin, 18px) !important;
+      --hud-unit: clamp(18px, 2.4vmin, 22px) !important;
+      --hud-margin: clamp(10px, 2vmin, 18px) !important;
     }
 
-    /* Empire badge shrinks to fit the top strip without overlapping. */
+    /* Empire badge is the only top-HUD piece that balloons when
+       --hud-unit grows — pin it to a fixed compact size. */
     body.size-sm .empire-badge {
-      min-height: 44px !important;
-      padding: 4px 10px !important;
-      font-size: 12px !important;
+      min-height: 46px !important;
+      padding: 6px 10px !important;
+      font-size: 13px !important;
+      gap: 8px !important;
     }
     body.size-sm .empire-badge .empire-crest {
-      width: 26px !important;
-      height: 26px !important;
+      width: 28px !important;
+      height: 28px !important;
+    }
+    body.size-sm .empire-badge .empire-name {
+      font-size: 13px !important;
     }
     body.size-sm .empire-badge .empire-level {
-      font-size: 10px !important;
+      font-size: 11px !important;
+    }
+
+    /* ── Global floor: nothing on mobile goes below 13px. Catches any
+       rogue .calc(--hud-unit * 0.55) = 9.9px text we missed. */
+    body.size-sm :where(span, div, label, p, button, h1, h2, h3, h4, h5, h6, li, td, th) {
+      font-size: max(13px, 1em);
+    }
+    body.size-sm input,
+    body.size-sm select,
+    body.size-sm textarea {
+      font-size: 16px;
     }
 
     /* ── Hide minimap + zoom controls on small/portrait screens — pinça/duplo-toque substituem. */
@@ -64,10 +81,22 @@ export function injectMobileStyles(): void {
     body.size-sm.portrait .resource-bar,
     body.size-sm.portrait .credits-bar,
     body.size-sm.portrait .empire-badge {
-      font-size: 15px !important;
-      padding: 8px 12px !important;
-      line-height: 1.3 !important;
+      font-size: 14px !important;
+      padding: 6px 10px !important;
+      line-height: 1.25 !important;
       max-width: calc(100vw - 24px) !important;
+    }
+    body.size-sm .resource-bar {
+      min-height: 46px !important;
+    }
+    body.size-sm .resource-bar .resource-value {
+      font-size: 15px !important;
+    }
+    body.size-sm .resource-bar .resource-text {
+      font-size: 13px !important;
+    }
+    body.size-sm .resource-bar .resource-rate {
+      font-size: 11px !important;
     }
     body.size-sm.portrait .credits-clock,
     body.size-sm.portrait .credits-divider {
