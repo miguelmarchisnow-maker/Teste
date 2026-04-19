@@ -1,13 +1,60 @@
 import { marcarInteracaoUi } from './interacao-ui';
-import { getTipos } from './selecao';
 import type { TipoJogador } from '../types';
 import { getBackendAtivo } from '../world/save';
 import { t } from '../core/i18n/t';
 import type { Dificuldade } from '../world/personalidade-ia';
+import {
+  type ImperioJogador,
+  type PesosImperio,
+  type ObjetivoImperio,
+  imperioJogadorDefault,
+  clampPeso,
+  PESOS_MIN,
+  PESOS_MAX,
+  derivarBonus,
+  gerarLoreDoJogador,
+  COR_JOGADOR_DEFAULT,
+} from '../world/imperio-jogador';
+import { SIGILOS, renderSigilo } from './empire-builder/sigilos';
+import type { ImperioLore } from '../world/lore/imperio-lore';
+
+interface NovoMundoResultado {
+  nome: string;
+  tipoJogador: TipoJogador;
+  dificuldade: Dificuldade;
+  imperio: ImperioJogador;
+}
 
 interface OpenOpts {
-  onConfirm: (nome: string, tipoJogador: TipoJogador, dificuldade: Dificuldade) => void;
+  onConfirm: (r: NovoMundoResultado) => void;
   onCancel: () => void;
+}
+
+type StepId = 'mundo' | 'imperio' | 'personalidade' | 'objetivo' | 'lore';
+
+const STEP_ORDER: readonly StepId[] = ['mundo', 'imperio', 'personalidade', 'objetivo', 'lore'];
+
+const STEP_LABEL: Record<StepId, string> = {
+  mundo: 'Mundo',
+  imperio: 'Império',
+  personalidade: 'Personalidade',
+  objetivo: 'Objetivo',
+  lore: 'Lore',
+};
+
+interface WizardState {
+  /** Current step index into STEP_ORDER. */
+  stepIdx: number;
+  // Step 1
+  nomeMundo: string;
+  dificuldade: Dificuldade;
+  // Steps 2-5
+  imperio: ImperioJogador;
+  // Step 5
+  loreSeed: number;
+  loreCache: ImperioLore | null;
+  // Errors
+  erroMundo: string;
 }
 
 let _container: HTMLDivElement | null = null;
@@ -31,14 +78,8 @@ function injectStyles(): void {
       color: var(--hud-text);
       animation: nwm-backdrop-in 200ms ease-out forwards;
     }
-    @keyframes nwm-backdrop-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    .new-world-modal.closing {
-      opacity: 0;
-      transition: opacity 200ms ease-out;
-    }
+    @keyframes nwm-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+    .new-world-modal.closing { opacity: 0; transition: opacity 200ms ease-out; }
     .new-world-modal.closing .nwm-card {
       transform: translateY(calc(var(--hud-unit) * 0.3)) scale(0.98);
       opacity: 0;
@@ -49,11 +90,12 @@ function injectStyles(): void {
       border: 1px solid var(--hud-border);
       border-radius: var(--hud-radius);
       backdrop-filter: blur(8px);
-      padding: calc(var(--hud-unit) * 2);
-      min-width: calc(var(--hud-unit) * 22);
+      padding: calc(var(--hud-unit) * 1.6) calc(var(--hud-unit) * 2);
+      width: clamp(calc(var(--hud-unit) * 24), 60vw, calc(var(--hud-unit) * 38));
+      max-height: 90vh;
       display: flex;
       flex-direction: column;
-      gap: calc(var(--hud-unit) * 1);
+      gap: calc(var(--hud-unit) * 0.9);
       box-shadow: 0 calc(var(--hud-unit) * 0.4) calc(var(--hud-unit) * 1.2) rgba(0, 0, 0, 0.6);
       animation: nwm-card-in 240ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
     }
@@ -63,22 +105,71 @@ function injectStyles(): void {
     }
     .nwm-title {
       font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 1.6);
+      font-size: calc(var(--hud-unit) * 1.4);
       letter-spacing: 0.12em;
       text-transform: uppercase;
       text-align: center;
-      margin: 0 0 calc(var(--hud-unit) * 0.8);
-      border-bottom: 1px solid var(--hud-line);
-      padding-bottom: calc(var(--hud-unit) * 0.8);
+      margin: 0;
     }
-    .nwm-label {
-      font-size: calc(var(--hud-unit) * 0.8);
+
+    /* ─ Stepper ─ */
+    .nwm-stepper {
+      display: flex;
+      gap: calc(var(--hud-unit) * 0.3);
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding-bottom: calc(var(--hud-unit) * 0.6);
+      border-bottom: 1px solid var(--hud-line);
+    }
+    .nwm-step-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.3);
+      padding: calc(var(--hud-unit) * 0.3) calc(var(--hud-unit) * 0.7);
+      border: 1px solid var(--hud-line);
+      border-radius: 999px;
+      font-size: calc(var(--hud-unit) * 0.72);
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--hud-text-dim);
-      margin-bottom: calc(var(--hud-unit) * 0.3);
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
     }
-    .nwm-input {
+    .nwm-step-pill .nwm-step-n {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.7;
+    }
+    .nwm-step-pill.current {
+      color: var(--hud-text);
+      border-color: #8ce0ff;
+      background: rgba(140, 224, 255, 0.1);
+    }
+    .nwm-step-pill.done {
+      color: var(--hud-text);
+      border-color: rgba(140, 224, 255, 0.4);
+    }
+
+    /* ─ Body slot ─ */
+    .nwm-body {
+      flex: 1;
+      min-height: calc(var(--hud-unit) * 14);
+      overflow-y: auto;
+      padding-right: calc(var(--hud-unit) * 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.7);
+    }
+    .nwm-body::-webkit-scrollbar { width: 8px; }
+    .nwm-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+    .nwm-label {
+      font-size: calc(var(--hud-unit) * 0.78);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--hud-text-dim);
+      margin-bottom: calc(var(--hud-unit) * 0.2);
+    }
+    .nwm-input, .nwm-input select, select.nwm-input {
       width: 100%;
       background: rgba(0, 0, 0, 0.4);
       border: 1px solid var(--hud-border);
@@ -89,19 +180,258 @@ function injectStyles(): void {
       font-size: calc(var(--hud-unit) * 0.95);
       outline: none;
       transition: border-color 140ms ease;
+      box-sizing: border-box;
     }
-    .nwm-input:focus {
-      border-color: #8ce0ff;
-    }
+    .nwm-input:focus, select.nwm-input:focus { border-color: #8ce0ff; }
     .nwm-error {
       color: #ff6b6b;
       font-size: calc(var(--hud-unit) * 0.75);
-      min-height: calc(var(--hud-unit) * 1);
+      min-height: calc(var(--hud-unit) * 0.9);
     }
-    .nwm-row {
+    .nwm-hint {
+      font-size: calc(var(--hud-unit) * 0.72);
+      color: var(--hud-text-dim);
+    }
+
+    /* ─ Sigil grid ─ */
+    .nwm-sigil-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: calc(var(--hud-unit) * 0.35);
+    }
+    @media (max-width: 520px) { .nwm-sigil-grid { grid-template-columns: repeat(4, 1fr); } }
+    .nwm-sigil {
+      aspect-ratio: 1;
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.6);
+      background: rgba(0,0,0,0.3);
+      color: #cfe7ff;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      padding: calc(var(--hud-unit) * 0.25);
+      transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
+    }
+    .nwm-sigil:hover { background: rgba(255,255,255,0.06); border-color: var(--hud-border); }
+    .nwm-sigil.selected {
+      background: rgba(140, 224, 255, 0.14);
+      border-color: #8ce0ff;
+    }
+    .nwm-sigil svg { width: 80%; height: 80%; display: block; }
+
+    /* ─ Empire preview disc ─ */
+    .nwm-empire-preview {
+      display: flex;
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.7);
+      padding: calc(var(--hud-unit) * 0.5) calc(var(--hud-unit) * 0.7);
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.7);
+      background: rgba(0,0,0,0.2);
+    }
+    .nwm-empire-disc {
+      width: calc(var(--hud-unit) * 3);
+      height: calc(var(--hud-unit) * 3);
+      border-radius: 50%;
+      border: 1px solid var(--hud-line);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      color: #fff;
+      background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.12), rgba(0,0,0,0.45));
+    }
+    .nwm-empire-disc svg { width: 70%; height: 70%; display: block; }
+    .nwm-empire-preview-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .nwm-empire-preview-name {
+      font-family: var(--hud-font-display);
+      font-size: calc(var(--hud-unit) * 1.05);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--hud-text);
+    }
+    .nwm-empire-preview-sub {
+      font-size: calc(var(--hud-unit) * 0.75);
+      color: var(--hud-text-dim);
+      letter-spacing: 0.05em;
+    }
+
+    /* ─ Sliders (personalidade) ─ */
+    .nwm-sliders {
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.55);
+    }
+    .nwm-slider-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: calc(var(--hud-unit) * 0.5);
+      align-items: center;
+    }
+    .nwm-slider-label {
+      min-width: calc(var(--hud-unit) * 5);
+      font-size: calc(var(--hud-unit) * 0.8);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--hud-text-dim);
+    }
+    .nwm-slider-value {
+      font-variant-numeric: tabular-nums;
+      font-size: calc(var(--hud-unit) * 0.85);
+      color: var(--hud-text);
+      min-width: calc(var(--hud-unit) * 1.8);
+      text-align: right;
+    }
+    .nwm-slider {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 100%;
+      height: calc(var(--hud-unit) * 0.35);
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      outline: none;
+    }
+    .nwm-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: calc(var(--hud-unit) * 0.9);
+      height: calc(var(--hud-unit) * 0.9);
+      border-radius: 50%;
+      background: #8ce0ff;
+      cursor: pointer;
+      border: none;
+    }
+    .nwm-slider::-moz-range-thumb {
+      width: calc(var(--hud-unit) * 0.9);
+      height: calc(var(--hud-unit) * 0.9);
+      border-radius: 50%;
+      background: #8ce0ff;
+      cursor: pointer;
+      border: none;
+    }
+    .nwm-slider-hint {
+      font-size: calc(var(--hud-unit) * 0.7);
+      color: var(--hud-text-dim);
+      margin-left: calc(var(--hud-unit) * 5.5);
+      margin-top: calc(var(--hud-unit) * -0.4);
+    }
+
+    /* ─ Objetivo cards ─ */
+    .nwm-objetivo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(calc(var(--hud-unit) * 10), 1fr));
+      gap: calc(var(--hud-unit) * 0.45);
+    }
+    .nwm-objetivo {
+      text-align: left;
+      padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.7);
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.6);
+      background: rgba(0,0,0,0.25);
+      color: var(--hud-text);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.2);
+      transition: background 120ms ease, border-color 120ms ease;
+      font-family: inherit;
+    }
+    .nwm-objetivo:hover { background: rgba(255,255,255,0.06); }
+    .nwm-objetivo.selected {
+      background: rgba(140, 224, 255, 0.12);
+      border-color: #8ce0ff;
+    }
+    .nwm-objetivo-title {
+      font-family: var(--hud-font-display);
+      font-size: calc(var(--hud-unit) * 0.95);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .nwm-objetivo-desc {
+      font-size: calc(var(--hud-unit) * 0.8);
+      color: var(--hud-text-dim);
+      line-height: 1.4;
+    }
+
+    /* ─ Lore preview ─ */
+    .nwm-lore {
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.5);
+    }
+    .nwm-lore-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: calc(var(--hud-unit) * 0.5);
+    }
+    .nwm-lore-title {
+      font-family: var(--hud-font-display);
+      font-size: calc(var(--hud-unit) * 1.2);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    .nwm-lore-sub {
+      font-size: calc(var(--hud-unit) * 0.85);
+      color: var(--hud-text-dim);
+      font-style: italic;
+    }
+    .nwm-lore-secao {
+      padding: calc(var(--hud-unit) * 0.5) 0;
+      border-top: 1px solid var(--hud-line);
+    }
+    .nwm-lore-secao h4 {
+      margin: 0 0 calc(var(--hud-unit) * 0.25);
+      font-family: var(--hud-font);
+      font-size: calc(var(--hud-unit) * 0.8);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--hud-text-dim);
+    }
+    .nwm-lore-secao p {
+      margin: 0 0 calc(var(--hud-unit) * 0.3);
+      font-size: calc(var(--hud-unit) * 0.88);
+      line-height: 1.5;
+    }
+    .nwm-lore-citacao {
+      font-style: italic;
+      color: var(--hud-text-dim);
+      border-left: 2px solid var(--hud-line);
+      padding-left: calc(var(--hud-unit) * 0.5);
+      margin-top: calc(var(--hud-unit) * 0.3);
+      font-size: calc(var(--hud-unit) * 0.82);
+    }
+    .nwm-lore-perfil {
+      display: flex;
+      flex-wrap: wrap;
+      gap: calc(var(--hud-unit) * 0.3);
+    }
+    .nwm-lore-badge {
+      padding: calc(var(--hud-unit) * 0.2) calc(var(--hud-unit) * 0.55);
+      font-size: calc(var(--hud-unit) * 0.7);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--hud-line);
+      border-radius: 999px;
+      color: var(--hud-text-dim);
+    }
+    .nwm-loading {
+      color: var(--hud-text-dim);
+      font-style: italic;
+      text-align: center;
+      padding: calc(var(--hud-unit) * 1);
+    }
+
+    /* ─ Footer ─ */
+    .nwm-footer {
       display: flex;
       gap: calc(var(--hud-unit) * 0.5);
-      margin-top: calc(var(--hud-unit) * 0.5);
+      padding-top: calc(var(--hud-unit) * 0.6);
+      border-top: 1px solid var(--hud-line);
     }
     .nwm-btn {
       flex: 1;
@@ -117,16 +447,433 @@ function injectStyles(): void {
       cursor: pointer;
       transition: background 140ms ease, letter-spacing 140ms ease;
     }
-    .nwm-btn:hover { background: rgba(255,255,255,0.08); letter-spacing: 0.18em; }
-    .nwm-btn:active { transform: translateY(1px); }
+    .nwm-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); letter-spacing: 0.18em; }
+    .nwm-btn:active:not(:disabled) { transform: translateY(1px); }
+    .nwm-btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .nwm-btn.primary { background: rgba(255,255,255,0.12); border-color: #fff; }
+    .nwm-btn.ghost { background: transparent; }
+    .nwm-btn.inline-sm {
+      flex: 0 0 auto;
+      height: calc(var(--hud-unit) * 1.6);
+      font-size: calc(var(--hud-unit) * 0.75);
+      padding: 0 calc(var(--hud-unit) * 0.8);
+    }
   `;
   document.head.appendChild(style);
 }
 
+// ─── Steps ───────────────────────────────────────────────────────────
+
+const DIFICULDADES: ReadonlyArray<[Dificuldade, string]> = [
+  ['pacifico', 'pacifico'],
+  ['facil',    'facil'],
+  ['normal',   'normal'],
+  ['dificil',  'dificil'],
+  ['brutal',   'brutal'],
+  ['infernal', 'infernal'],
+];
+
+const PESOS_METADATA: ReadonlyArray<{ key: keyof PesosImperio; label: string; hint: string }> = [
+  { key: 'agressao', label: 'Agressão',  hint: 'Inclinação a atacar primeiro.' },
+  { key: 'expansao', label: 'Expansão',  hint: 'Velocidade para colonizar.' },
+  { key: 'economia', label: 'Economia',  hint: 'Prioridade a fábricas e produção.' },
+  { key: 'ciencia',  label: 'Ciência',   hint: 'Ritmo de pesquisa tecnológica.' },
+  { key: 'defesa',   label: 'Defesa',    hint: 'Peso em torretas e infraestrutura.' },
+  { key: 'vinganca', label: 'Vingança',  hint: 'Persistência contra agressores.' },
+];
+
+const OBJETIVOS: ReadonlyArray<{ id: ObjetivoImperio; titulo: string; desc: string }> = [
+  { id: 'conquista',     titulo: 'Conquista Total',   desc: 'Eliminar todos os outros impérios.' },
+  { id: 'economia',      titulo: 'Domínio Econômico', desc: 'Acumular recursos e dominar o comércio.' },
+  { id: 'ciencia',       titulo: 'Supremacia Científica', desc: 'Completar todas as linhas de pesquisa.' },
+  { id: 'sobrevivencia', titulo: 'Sobrevivência',     desc: 'Resistir aos inimigos pelo maior tempo possível.' },
+  { id: 'exploracao',    titulo: 'Exploração',        desc: 'Descobrir todos os sistemas da galáxia.' },
+  { id: 'livre',         titulo: 'Livre',             desc: 'Sem condição de vitória; jogue como quiser.' },
+];
+
+function mountStepMundo(body: HTMLDivElement, state: WizardState, onChange: () => void): void {
+  const labelNome = document.createElement('div');
+  labelNome.className = 'nwm-label';
+  labelNome.textContent = t('novo_mundo.nome_label');
+  body.appendChild(labelNome);
+
+  const input = document.createElement('input');
+  input.className = 'nwm-input';
+  input.type = 'text';
+  input.maxLength = 40;
+  input.placeholder = t('novo_mundo.placeholder');
+  input.value = state.nomeMundo;
+  input.addEventListener('input', () => {
+    state.nomeMundo = input.value;
+    state.erroMundo = '';
+    erro.textContent = '';
+    onChange();
+  });
+  body.appendChild(input);
+
+  const erro = document.createElement('div');
+  erro.className = 'nwm-error';
+  erro.textContent = state.erroMundo;
+  body.appendChild(erro);
+
+  const labelDif = document.createElement('div');
+  labelDif.className = 'nwm-label';
+  labelDif.textContent = t('novo_mundo.dificuldade_label');
+  body.appendChild(labelDif);
+
+  const selectDif = document.createElement('select');
+  selectDif.className = 'nwm-input';
+  for (const [val, key] of DIFICULDADES) {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = t(`dificuldade.${key}`);
+    if (val === state.dificuldade) opt.selected = true;
+    selectDif.appendChild(opt);
+  }
+  selectDif.addEventListener('change', () => {
+    state.dificuldade = selectDif.value as Dificuldade;
+    hint.textContent = t(`dificuldade.hint_${state.dificuldade}`);
+    onChange();
+  });
+  body.appendChild(selectDif);
+
+  const hint = document.createElement('div');
+  hint.className = 'nwm-hint';
+  hint.textContent = t(`dificuldade.hint_${state.dificuldade}`);
+  body.appendChild(hint);
+
+  setTimeout(() => input.focus(), 0);
+}
+
+function mountStepImperio(body: HTMLDivElement, state: WizardState, onChange: () => void): void {
+  const preview = buildEmpirePreview(state);
+  body.appendChild(preview);
+
+  const labelNome = document.createElement('div');
+  labelNome.className = 'nwm-label';
+  labelNome.textContent = 'Nome do império';
+  body.appendChild(labelNome);
+
+  const input = document.createElement('input');
+  input.className = 'nwm-input';
+  input.type = 'text';
+  input.maxLength = 40;
+  input.placeholder = 'Ex: Ordem Solar';
+  input.value = state.imperio.nome;
+  input.addEventListener('input', () => {
+    state.imperio.nome = input.value;
+    onChange();
+  });
+  body.appendChild(input);
+
+  const labelLogo = document.createElement('div');
+  labelLogo.className = 'nwm-label';
+  labelLogo.style.marginTop = 'calc(var(--hud-unit) * 0.3)';
+  labelLogo.textContent = 'Sigilo';
+  body.appendChild(labelLogo);
+
+  const grid = document.createElement('div');
+  grid.className = 'nwm-sigil-grid';
+  for (const s of SIGILOS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `nwm-sigil${state.imperio.logo.sigilo === s.id ? ' selected' : ''}`;
+    btn.title = s.label;
+    btn.appendChild(s.render());
+    btn.addEventListener('click', () => {
+      state.imperio.logo.sigilo = s.id;
+      for (const b of Array.from(grid.children)) {
+        b.classList.remove('selected');
+      }
+      btn.classList.add('selected');
+      refreshEmpirePreview(preview, state);
+      onChange();
+    });
+    grid.appendChild(btn);
+  }
+  body.appendChild(grid);
+
+  setTimeout(() => input.focus(), 0);
+}
+
+function mountStepPersonalidade(body: HTMLDivElement, state: WizardState, onChange: () => void): void {
+  const preview = buildEmpirePreview(state);
+  body.appendChild(preview);
+
+  const intro = document.createElement('div');
+  intro.className = 'nwm-hint';
+  intro.textContent = `Valores entre ${PESOS_MIN.toFixed(1)} e ${PESOS_MAX.toFixed(1)}. Ajuste como prefere jogar — depois pode dar aleatório.`;
+  body.appendChild(intro);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'nwm-sliders';
+  body.appendChild(wrap);
+
+  for (const meta of PESOS_METADATA) {
+    const row = document.createElement('div');
+    row.className = 'nwm-slider-row';
+
+    const label = document.createElement('div');
+    label.className = 'nwm-slider-label';
+    label.textContent = meta.label;
+
+    const slider = document.createElement('input');
+    slider.className = 'nwm-slider';
+    slider.type = 'range';
+    slider.min = String(PESOS_MIN);
+    slider.max = String(PESOS_MAX);
+    slider.step = '0.05';
+    slider.value = String(state.imperio.pesos[meta.key]);
+
+    const value = document.createElement('div');
+    value.className = 'nwm-slider-value';
+    value.textContent = state.imperio.pesos[meta.key].toFixed(2);
+
+    slider.addEventListener('input', () => {
+      const v = clampPeso(parseFloat(slider.value));
+      state.imperio.pesos[meta.key] = v;
+      value.textContent = v.toFixed(2);
+      state.imperio.bonus = derivarBonus(state.imperio.pesos);
+      // Personality changes invalidate the lore cache — regen on lore step.
+      state.loreCache = null;
+      onChange();
+    });
+
+    row.append(label, slider, value);
+    wrap.appendChild(row);
+
+    const hint = document.createElement('div');
+    hint.className = 'nwm-slider-hint';
+    hint.textContent = meta.hint;
+    wrap.appendChild(hint);
+  }
+
+  const randomBtn = document.createElement('button');
+  randomBtn.type = 'button';
+  randomBtn.className = 'nwm-btn ghost inline-sm';
+  randomBtn.style.alignSelf = 'flex-end';
+  randomBtn.textContent = 'Aleatorizar';
+  randomBtn.addEventListener('click', () => {
+    for (const meta of PESOS_METADATA) {
+      state.imperio.pesos[meta.key] = clampPeso(Math.random() * PESOS_MAX);
+    }
+    state.imperio.bonus = derivarBonus(state.imperio.pesos);
+    state.loreCache = null;
+    // Rebuild the step to reflect new values.
+    body.replaceChildren();
+    mountStepPersonalidade(body, state, onChange);
+    onChange();
+  });
+  body.appendChild(randomBtn);
+}
+
+function mountStepObjetivo(body: HTMLDivElement, state: WizardState, onChange: () => void): void {
+  const intro = document.createElement('div');
+  intro.className = 'nwm-hint';
+  intro.textContent = 'Escolha o rumo do seu império. Por enquanto só entra na lore — condições de vitória vêm depois.';
+  body.appendChild(intro);
+
+  const grid = document.createElement('div');
+  grid.className = 'nwm-objetivo-grid';
+  for (const obj of OBJETIVOS) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `nwm-objetivo${state.imperio.objetivo === obj.id ? ' selected' : ''}`;
+    const title = document.createElement('div');
+    title.className = 'nwm-objetivo-title';
+    title.textContent = obj.titulo;
+    const desc = document.createElement('div');
+    desc.className = 'nwm-objetivo-desc';
+    desc.textContent = obj.desc;
+    card.append(title, desc);
+    card.addEventListener('click', () => {
+      state.imperio.objetivo = obj.id;
+      for (const c of Array.from(grid.children)) c.classList.remove('selected');
+      card.classList.add('selected');
+      onChange();
+    });
+    grid.appendChild(card);
+  }
+  body.appendChild(grid);
+}
+
+function mountStepLore(body: HTMLDivElement, state: WizardState, onChange: () => void): void {
+  const preview = buildEmpirePreview(state);
+  body.appendChild(preview);
+
+  const head = document.createElement('div');
+  head.className = 'nwm-lore-head';
+  const title = document.createElement('h3');
+  title.className = 'nwm-lore-title';
+  const sub = document.createElement('div');
+  sub.className = 'nwm-lore-sub';
+  const regenBtn = document.createElement('button');
+  regenBtn.type = 'button';
+  regenBtn.className = 'nwm-btn ghost inline-sm';
+  regenBtn.textContent = 'Regerar';
+  regenBtn.addEventListener('click', () => {
+    state.loreSeed = Math.floor(Math.random() * 2147483647);
+    state.loreCache = null;
+    body.replaceChildren();
+    mountStepLore(body, state, onChange);
+    onChange();
+  });
+  head.append(title, regenBtn);
+  body.appendChild(head);
+  body.appendChild(sub);
+
+  const perfil = document.createElement('div');
+  perfil.className = 'nwm-lore-perfil';
+  body.appendChild(perfil);
+
+  const secoesWrap = document.createElement('div');
+  body.appendChild(secoesWrap);
+
+  const proverbios = document.createElement('div');
+  body.appendChild(proverbios);
+
+  // Generate (cached across re-entries unless personality or seed changed).
+  if (!state.loreCache) {
+    state.loreCache = gerarLoreDoJogador(state.imperio, state.loreSeed);
+    state.imperio.lore = state.loreCache;
+  }
+  const lore = state.loreCache;
+
+  title.textContent = lore.titulo;
+  sub.textContent = lore.subtitulo;
+
+  for (const [k, v] of Object.entries(lore.perfil)) {
+    const b = document.createElement('span');
+    b.className = 'nwm-lore-badge';
+    b.textContent = `${k}: ${v}`;
+    perfil.appendChild(b);
+  }
+
+  for (const secao of lore.secoes) {
+    const sec = document.createElement('div');
+    sec.className = 'nwm-lore-secao';
+    const h = document.createElement('h4');
+    h.textContent = secao.titulo;
+    sec.appendChild(h);
+    for (const par of secao.paragrafos) {
+      const p = document.createElement('p');
+      p.textContent = par;
+      sec.appendChild(p);
+    }
+    if (secao.citacao) {
+      const c = document.createElement('div');
+      c.className = 'nwm-lore-citacao';
+      c.textContent = `"${secao.citacao}"`;
+      sec.appendChild(c);
+    }
+    secoesWrap.appendChild(sec);
+  }
+
+  if (lore.proverbios.length) {
+    const sec = document.createElement('div');
+    sec.className = 'nwm-lore-secao';
+    const h = document.createElement('h4');
+    h.textContent = 'Provérbios';
+    sec.appendChild(h);
+    for (const pv of lore.proverbios) {
+      const c = document.createElement('div');
+      c.className = 'nwm-lore-citacao';
+      c.textContent = `"${pv}"`;
+      sec.appendChild(c);
+    }
+    proverbios.appendChild(sec);
+  }
+}
+
+// ─── Empire preview ─────────────────────────────────────────────────
+
+function buildEmpirePreview(state: WizardState): HTMLDivElement {
+  const box = document.createElement('div');
+  box.className = 'nwm-empire-preview';
+
+  const disc = document.createElement('div');
+  disc.className = 'nwm-empire-disc';
+  disc.style.color = hexColor(COR_JOGADOR_DEFAULT);
+  disc.appendChild(renderSigilo(state.imperio.logo.sigilo));
+  box.appendChild(disc);
+
+  const text = document.createElement('div');
+  text.className = 'nwm-empire-preview-text';
+  const name = document.createElement('div');
+  name.className = 'nwm-empire-preview-name';
+  name.textContent = state.imperio.nome || 'Império sem nome';
+  const sub = document.createElement('div');
+  sub.className = 'nwm-empire-preview-sub';
+  sub.textContent = `Mundo: ${state.nomeMundo || '—'} · Dif.: ${t(`dificuldade.${state.dificuldade}`)}`;
+  text.append(name, sub);
+  box.appendChild(text);
+
+  box.dataset.preview = 'empire';
+  return box;
+}
+
+function refreshEmpirePreview(el: HTMLDivElement, state: WizardState): void {
+  const disc = el.querySelector<HTMLDivElement>('.nwm-empire-disc');
+  if (disc) {
+    disc.replaceChildren(renderSigilo(state.imperio.logo.sigilo));
+  }
+  const name = el.querySelector<HTMLDivElement>('.nwm-empire-preview-name');
+  if (name) name.textContent = state.imperio.nome || 'Império sem nome';
+  const sub = el.querySelector<HTMLDivElement>('.nwm-empire-preview-sub');
+  if (sub) sub.textContent = `Mundo: ${state.nomeMundo || '—'} · Dif.: ${t(`dificuldade.${state.dificuldade}`)}`;
+}
+
+function hexColor(n: number): string {
+  return '#' + n.toString(16).padStart(6, '0');
+}
+
+// ─── Validation & step dispatch ─────────────────────────────────────
+
+function validarStep(state: WizardState): string | null {
+  const stepId = STEP_ORDER[state.stepIdx];
+  if (stepId === 'mundo') {
+    const trimmed = state.nomeMundo.trim();
+    if (trimmed.length < 1) return t('novo_mundo.erro_vazio');
+    if (trimmed.length > 40) return t('novo_mundo.erro_longo');
+    const backend = getBackendAtivo();
+    const existe = backend.existe(trimmed);
+    if (!(existe instanceof Promise) && existe) return t('novo_mundo.erro_duplicado');
+  }
+  if (stepId === 'imperio') {
+    const trimmed = state.imperio.nome.trim();
+    if (trimmed.length < 1) return 'Nome do império é obrigatório';
+    if (trimmed.length > 40) return 'Máximo 40 caracteres';
+  }
+  return null;
+}
+
+function mountStep(body: HTMLDivElement, state: WizardState, onChange: () => void): void {
+  body.replaceChildren();
+  const id = STEP_ORDER[state.stepIdx];
+  switch (id) {
+    case 'mundo':         return mountStepMundo(body, state, onChange);
+    case 'imperio':       return mountStepImperio(body, state, onChange);
+    case 'personalidade': return mountStepPersonalidade(body, state, onChange);
+    case 'objetivo':      return mountStepObjetivo(body, state, onChange);
+    case 'lore':          return mountStepLore(body, state, onChange);
+  }
+}
+
+// ─── Public entry ───────────────────────────────────────────────────
+
 export function abrirNewWorldModal(opts: OpenOpts): void {
   injectStyles();
   fechar();
+
+  const state: WizardState = {
+    stepIdx: 0,
+    nomeMundo: '',
+    dificuldade: 'normal',
+    imperio: imperioJogadorDefault(),
+    loreSeed: Math.floor(Math.random() * 2147483647),
+    loreCache: null,
+    erroMundo: '',
+  };
 
   const container = document.createElement('div');
   container.className = 'new-world-modal';
@@ -146,110 +893,135 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
   title.textContent = t('novo_mundo.titulo');
   card.appendChild(title);
 
-  const labelNome = document.createElement('div');
-  labelNome.className = 'nwm-label';
-  labelNome.textContent = t('novo_mundo.nome_label');
-  card.appendChild(labelNome);
+  // Stepper
+  const stepper = document.createElement('div');
+  stepper.className = 'nwm-stepper';
+  card.appendChild(stepper);
 
-  const input = document.createElement('input');
-  input.className = 'nwm-input';
-  input.type = 'text';
-  input.maxLength = 40;
-  input.placeholder = t('novo_mundo.placeholder');
-  card.appendChild(input);
+  // Body slot
+  const body = document.createElement('div');
+  body.className = 'nwm-body';
+  card.appendChild(body);
 
-  // ── Difficulty selector ──
-  const labelDif = document.createElement('div');
-  labelDif.className = 'nwm-label';
-  labelDif.textContent = t('novo_mundo.dificuldade_label');
-  labelDif.style.marginTop = 'calc(var(--hud-unit) * 0.4)';
-  card.appendChild(labelDif);
-
-  const selectDif = document.createElement('select');
-  selectDif.className = 'nwm-input';
-  const dificuldades: Array<[Dificuldade, string]> = [
-    ['pacifico', t('dificuldade.pacifico')],
-    ['facil',    t('dificuldade.facil')],
-    ['normal',   t('dificuldade.normal')],
-    ['dificil',  t('dificuldade.dificil')],
-    ['brutal',   t('dificuldade.brutal')],
-    ['infernal', t('dificuldade.infernal')],
-  ];
-  for (const [val, label] of dificuldades) {
-    const opt = document.createElement('option');
-    opt.value = val;
-    opt.textContent = label;
-    if (val === 'normal') opt.selected = true;
-    selectDif.appendChild(opt);
-  }
-  card.appendChild(selectDif);
-
-  const difHint = document.createElement('div');
-  difHint.className = 'nwm-hint';
-  difHint.style.cssText = 'font-size: calc(var(--hud-unit) * 0.7); color: var(--hud-text-dim); margin-top: calc(var(--hud-unit) * 0.2);';
-  difHint.textContent = t('dificuldade.hint_normal');
-  card.appendChild(difHint);
-
-  selectDif.addEventListener('change', () => {
-    difHint.textContent = t(`dificuldade.hint_${selectDif.value}`);
-  });
-
-  const erro = document.createElement('div');
-  erro.className = 'nwm-error';
-  card.appendChild(erro);
-
-  const row = document.createElement('div');
-  row.className = 'nwm-row';
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'nwm-footer';
   const btnCancel = document.createElement('button');
   btnCancel.type = 'button';
-  btnCancel.className = 'nwm-btn';
+  btnCancel.className = 'nwm-btn ghost';
   btnCancel.textContent = t('novo_mundo.cancelar');
-  const btnOk = document.createElement('button');
-  btnOk.type = 'button';
-  btnOk.className = 'nwm-btn primary';
-  btnOk.textContent = t('novo_mundo.criar');
-  row.appendChild(btnCancel);
-  row.appendChild(btnOk);
-  card.appendChild(row);
+  const btnBack = document.createElement('button');
+  btnBack.type = 'button';
+  btnBack.className = 'nwm-btn';
+  btnBack.textContent = 'Voltar';
+  const btnNext = document.createElement('button');
+  btnNext.type = 'button';
+  btnNext.className = 'nwm-btn primary';
+  btnNext.textContent = 'Próximo';
+  footer.append(btnCancel, btnBack, btnNext);
+  card.appendChild(footer);
 
-  function validar(nome: string): string | null {
-    const trimmed = nome.trim();
-    if (trimmed.length < 1) return t('novo_mundo.erro_vazio');
-    if (trimmed.length > 40) return t('novo_mundo.erro_longo');
-    const backend = getBackendAtivo();
-    const existe = backend.existe(trimmed);
-    if (existe instanceof Promise) return null;
-    if (existe) return t('novo_mundo.erro_duplicado');
-    return null;
+  const erroGeral = document.createElement('div');
+  erroGeral.className = 'nwm-error';
+  erroGeral.style.textAlign = 'center';
+  card.appendChild(erroGeral);
+
+  function refreshStepper(): void {
+    stepper.replaceChildren();
+    STEP_ORDER.forEach((id, i) => {
+      const pill = document.createElement('div');
+      let cls = 'nwm-step-pill';
+      if (i === state.stepIdx) cls += ' current';
+      else if (i < state.stepIdx) cls += ' done';
+      pill.className = cls;
+      const n = document.createElement('span');
+      n.className = 'nwm-step-n';
+      n.textContent = String(i + 1);
+      const lab = document.createElement('span');
+      lab.textContent = STEP_LABEL[id];
+      pill.append(n, lab);
+      stepper.appendChild(pill);
+    });
+  }
+
+  function refreshFooter(): void {
+    btnBack.disabled = state.stepIdx === 0;
+    const last = state.stepIdx === STEP_ORDER.length - 1;
+    btnNext.textContent = last ? 'Começar' : 'Próximo';
+  }
+
+  function refreshAll(): void {
+    refreshStepper();
+    refreshFooter();
+  }
+
+  function goToStep(idx: number): void {
+    state.stepIdx = Math.max(0, Math.min(STEP_ORDER.length - 1, idx));
+    mountStep(body, state, () => {});
+    refreshAll();
+    body.scrollTop = 0;
+  }
+
+  function avancar(): void {
+    const err = validarStep(state);
+    if (err) {
+      erroGeral.textContent = err;
+      return;
+    }
+    erroGeral.textContent = '';
+    if (state.stepIdx < STEP_ORDER.length - 1) {
+      goToStep(state.stepIdx + 1);
+    } else {
+      confirmar();
+    }
+  }
+
+  function voltar(): void {
+    erroGeral.textContent = '';
+    if (state.stepIdx > 0) goToStep(state.stepIdx - 1);
   }
 
   function confirmar(): void {
-    const nome = input.value.trim();
-    const err = validar(nome);
-    if (err) {
-      erro.textContent = err;
-      return;
+    // Ensure lore is materialized even if the user skipped the preview.
+    if (!state.imperio.lore) {
+      state.imperio.lore = gerarLoreDoJogador(state.imperio, state.loreSeed);
     }
+    state.imperio.bonus = derivarBonus(state.imperio.pesos);
     marcarInteracaoUi();
     fechar();
-    const tipoJogador = getTipos()[0];
-    const dificuldade = selectDif.value as Dificuldade;
-    opts.onConfirm(nome, tipoJogador, dificuldade);
+    // Legacy TipoJogador carrier — keep the shape existing code (save,
+    // mundo.ts bonuses) reads. Values come from the empire state.
+    const tipoJogador: TipoJogador = {
+      nome: state.imperio.nome,
+      desc: '',
+      cor: COR_JOGADOR_DEFAULT,
+      bonus: { ...state.imperio.bonus },
+    };
+    opts.onConfirm({
+      nome: state.nomeMundo.trim(),
+      tipoJogador,
+      dificuldade: state.dificuldade,
+      imperio: state.imperio,
+    });
   }
 
-  btnOk.addEventListener('click', (e) => { e.preventDefault(); confirmar(); });
   btnCancel.addEventListener('click', (e) => {
     e.preventDefault();
     marcarInteracaoUi();
     fechar();
     opts.onCancel();
   });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); confirmar(); }
-  });
-  input.addEventListener('input', () => { erro.textContent = ''; });
+  btnBack.addEventListener('click', (e) => { e.preventDefault(); voltar(); });
+  btnNext.addEventListener('click', (e) => { e.preventDefault(); avancar(); });
 
-  // Global Escape — works regardless of which child has focus.
+  // Enter advances (but don't trigger while typing in multiline or select).
+  card.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
+      e.preventDefault();
+      avancar();
+    }
+  });
+
   const onWindowKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -259,29 +1031,11 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
     }
   };
   window.addEventListener('keydown', onWindowKey, true);
-  // Focus trap inside the card.
-  card.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key !== 'Tab') return;
-    const focusables = Array.from(
-      card.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled])'
-      )
-    );
-    if (!focusables.length) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  });
 
   document.body.appendChild(container);
   _container = container;
-  setTimeout(() => input.focus(), 0);
+
+  goToStep(0);
 }
 
 function fechar(): void {

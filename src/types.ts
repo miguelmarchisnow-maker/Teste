@@ -186,6 +186,9 @@ export interface Mundo {
   navesContainer: Container;
   rotasContainer: Container;
   tipoJogador: TipoJogador;
+  /** Full authored player empire — name, sigil, personality, objective,
+   *  lore. Optional so older saves without this field still load. */
+  imperioJogador?: import('./world/imperio-jogador').ImperioJogador;
   ultimoTickMs: number;
   visaoContainer: Container;
   orbitasContainer: Container;

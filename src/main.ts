@@ -9,6 +9,7 @@ import { getAiMemoryBytes } from './world/ia-memoria';
 import { getLastSeenMemoryBytes } from './world/last-seen';
 import { getCombateMemoryBytes } from './world/combate-resolucao';
 import type { Dificuldade, PersonalidadeIA } from './world/personalidade-ia';
+import type { ImperioJogador } from './world/imperio-jogador';
 import { gerarPersonalidades, PRESETS_DIFICULDADE } from './world/personalidade-ia';
 import { setPersonalidadesParaMundoCarregado } from './world/ia-decisao';
 import { gerarLoreFaccao } from './world/lore-faccao';
@@ -687,7 +688,7 @@ async function bootstrap(): Promise<void> {
   criarMainMenu({
     onNewGame: () => {
       abrirNewWorldModal({
-        onConfirm: (nome, tipoJogador, dificuldade) => { void iniciarJogoNovo(nome, tipoJogador, dificuldade); },
+        onConfirm: (r) => { void iniciarJogoNovo(r.nome, r.tipoJogador, r.dificuldade, r.imperio); },
         onCancel: () => {},
       });
     },
@@ -906,7 +907,7 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
   await esconderCarregando();
 }
 
-async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador, dificuldade: Dificuldade = 'normal'): Promise<void> {
+async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador, dificuldade: Dificuldade = 'normal', imperio?: ImperioJogador): Promise<void> {
   if (!_app || _gameStarted || _transitioning) return;
   _transitioning = true;
   const app = _app;
@@ -920,6 +921,7 @@ async function iniciarJogoNovo(nome: string, tipoJogador: TipoJogador, dificulda
   const mundo = await criarMundo(app, tipoJogador, async (label) => {
     await setLoadingFase(label);
   }) as unknown as Mundo;
+  if (imperio) mundo.imperioJogador = imperio;
   await entrarNoJogo(mundo, nome, Date.now(), 0);
 }
 

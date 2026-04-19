@@ -13,6 +13,9 @@ export interface MundoDTO {
   tempoJogadoMs: number;
   tamanho: number;
   tipoJogador: TipoJogadorDTO;
+  /** Authored player empire. Optional — absent in v2-or-earlier saves;
+   *  reconciler fills from tipoJogador on load. */
+  imperioJogador?: ImperioJogadorDTO;
   sistemas: SistemaDTO[];
   sois: SolDTO[];
   planetas: PlanetaDTO[];
@@ -179,6 +182,32 @@ export interface TipoJogadorDTO {
   nome: string;
   desc: string;
   cor: number;
+  bonus: {
+    producao?: number;
+    fabricasIniciais?: number;
+    infraestruturaInicial?: number;
+  };
+}
+
+/**
+ * Author-defined player empire. Saved alongside the legacy
+ * tipoJogador for back-compat — when a v2-era save without this field
+ * is loaded, the reconciler fabricates a default from tipoJogador.
+ */
+export interface ImperioJogadorDTO {
+  nome: string;
+  logo: { sigilo: string };
+  pesos: {
+    agressao: number;
+    expansao: number;
+    economia: number;
+    ciencia: number;
+    defesa: number;
+    vinganca: number;
+  };
+  objetivo: 'conquista' | 'economia' | 'ciencia' | 'sobrevivencia' | 'exploracao' | 'livre';
+  /** Pre-rendered lore. Stored verbatim so regeneration on load stays stable. */
+  lore?: unknown;
   bonus: {
     producao?: number;
     fabricasIniciais?: number;
