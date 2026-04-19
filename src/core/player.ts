@@ -5,6 +5,10 @@ import type { Mundo, Camera, Nave, Planeta, Sol } from '../types';
 import { consumirInteracaoUi } from '../ui/interacao-ui';
 import { getConfig } from './config';
 import {
+  distance, midpoint, isTap, isDoubleTap,
+  type TapRecord,
+} from './input/pointer-gestures';
+import {
   cancelarMovimentoNave,
   definirRotaManualNave,
   definirPlanetaRotaCargueira,
@@ -194,6 +198,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
   const signal = _cameraAbort.signal;
 
   const canvas = app.canvas;
+  canvas.style.touchAction = 'none';
   _appRef = app;
   if (!comandoPreviewGfx) {
     comandoPreviewGfx = new Graphics();
@@ -203,57 +208,141 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
 
   canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault(), { signal });
 
-  canvas.addEventListener('mousedown', (e: MouseEvent) => {
-    if (e.button === 0) {
-      const world = screenToWorld(e.clientX, e.clientY, app);
-      clickInfo = {
-        nave: encontrarNaveNoPonto(world.x, world.y, mundo),
-        planeta: encontrarPlanetaNoPonto(world.x, world.y, mundo, true),
-        sol: encontrarSolNoPonto(world.x, world.y, mundo, true),
-      };
-      clickStartScreen.x = e.clientX;
-      clickStartScreen.y = e.clientY;
+  type PointerInfo = { x: number; y: number; startX: number; startY: number; startTime: number; button: number };
+  const activePointers = new Map<number, PointerInfo>();
+  let pinch: { initialDist: number; initialZoom: number; anchorSx: number; anchorSy: number } | null = null;
+  let lastTap: TapRecord | null = null;
 
-      if (!clickInfo.nave && !clickInfo.planeta && !clickInfo.sol) {
+  const getWorldHit = (sx: number, sy: number) => {
+    const world = screenToWorld(sx, sy, app);
+    return {
+      nave: encontrarNaveNoPonto(world.x, world.y, mundo),
+      planeta: encontrarPlanetaNoPonto(world.x, world.y, mundo, true),
+      sol: encontrarSolNoPonto(world.x, world.y, mundo, true),
+    };
+  };
+
+  canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
+
+    const info: PointerInfo = {
+      x: e.clientX, y: e.clientY,
+      startX: e.clientX, startY: e.clientY,
+      startTime: performance.now(),
+      button: e.button,
+    };
+    activePointers.set(e.pointerId, info);
+
+    if (activePointers.size === 1) {
+      if (e.button === 0) {
+        const hit = getWorldHit(e.clientX, e.clientY);
+        clickInfo = hit;
+        clickStartScreen.x = e.clientX;
+        clickStartScreen.y = e.clientY;
+        if (!hit.nave && !hit.planeta && !hit.sol) {
+          cameraDragging = true;
+          cameraLastMouse.x = e.clientX;
+          cameraLastMouse.y = e.clientY;
+        }
+      } else if (e.button === 1 || e.button === 2) {
         cameraDragging = true;
         cameraLastMouse.x = e.clientX;
         cameraLastMouse.y = e.clientY;
       }
+    } else if (activePointers.size === 2) {
+      // Second pointer: start pinch. Cancel any in-progress drag.
+      cameraDragging = false;
+      const [a, b] = Array.from(activePointers.values());
+      const mid = midpoint(a, b);
+      pinch = {
+        initialDist: distance(a, b),
+        initialZoom: camera.zoom,
+        anchorSx: mid.x,
+        anchorSy: mid.y,
+      };
+    }
+  }, { signal });
+
+  canvas.addEventListener('pointermove', (e: PointerEvent) => {
+    const info = activePointers.get(e.pointerId);
+    if (!info) return;
+    info.x = e.clientX;
+    info.y = e.clientY;
+
+    if (pinch && activePointers.size >= 2) {
+      const pts = Array.from(activePointers.values()).slice(0, 2) as [PointerInfo, PointerInfo];
+      const d = distance(pts[0], pts[1]);
+      if (d > 0 && pinch.initialDist > 0) {
+        const ratio = d / pinch.initialDist;
+        aplicarZoom(pinch.initialZoom * ratio, pinch.anchorSx, pinch.anchorSy);
+      }
       return;
     }
 
-    if (e.button === 1 || e.button === 2) {
-      cameraDragging = true;
+    if (cameraDragging && activePointers.size === 1) {
+      const dx = e.clientX - cameraLastMouse.x;
+      const dy = e.clientY - cameraLastMouse.y;
+      camera.x -= dx / camera.zoom;
+      camera.y -= dy / camera.zoom;
       cameraLastMouse.x = e.clientX;
       cameraLastMouse.y = e.clientY;
     }
   }, { signal });
 
-  canvas.addEventListener('mousemove', (e: MouseEvent) => {
-    if (!cameraDragging) return;
+  const finalizePointer = (e: PointerEvent, cancelled: boolean) => {
+    const info = activePointers.get(e.pointerId);
+    if (!info) return;
+    activePointers.delete(e.pointerId);
+    try { canvas.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
 
-    const dx = e.clientX - cameraLastMouse.x;
-    const dy = e.clientY - cameraLastMouse.y;
-    camera.x -= dx / camera.zoom;
-    camera.y -= dy / camera.zoom;
-    cameraLastMouse.x = e.clientX;
-    cameraLastMouse.y = e.clientY;
-  }, { signal });
+    if (pinch && activePointers.size < 2) {
+      pinch = null;
+      if (activePointers.size === 0) cameraDragging = false;
+      return;
+    }
 
-  window.addEventListener('mouseup', (e: MouseEvent) => {
-    if (cameraDragging) {
+    if (cameraDragging && activePointers.size === 0) {
       cameraDragging = false;
     }
 
-    if (e.button !== 0) return;
+    if (cancelled) {
+      clickInfo = null;
+      return;
+    }
+
+    if (info.button !== 0) {
+      clickInfo = null;
+      return;
+    }
+    if (activePointers.size > 0) {
+      clickInfo = null;
+      return;
+    }
     if (consumirInteracaoUi()) {
       clickInfo = null;
       return;
     }
 
-    const movedX = e.clientX - clickStartScreen.x;
-    const movedY = e.clientY - clickStartScreen.y;
+    const movedX = e.clientX - info.startX;
+    const movedY = e.clientY - info.startY;
     const movedDist = Math.hypot(movedX, movedY);
+    const duration = performance.now() - info.startTime;
+    const tap = isTap({ dist: movedDist, duration });
+
+    // Double-tap zoom: anchor at the release point so the tapped spot stays in view.
+    if (tap) {
+      const now = performance.now();
+      const currentTap: TapRecord = { time: now, x: e.clientX, y: e.clientY };
+      if (isDoubleTap(lastTap, currentTap)) {
+        const rect = canvas.getBoundingClientRect();
+        aplicarZoom(camera.zoom * 1.5, e.clientX - rect.left, e.clientY - rect.top);
+        lastTap = null;
+        clickInfo = null;
+        return;
+      }
+      lastTap = currentTap;
+    }
 
     if (movedDist < 5) {
       const naveSelecionada = obterNaveSelecionada(mundo);
@@ -267,8 +356,6 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       //   5. 'mover' mode + empty space      → add waypoint
       //   6. Click on a planet                → select that planet
       //   7. Click on empty space             → clear selection
-
-      // (1) Colonizadora targeting: consume the click to dispatch.
       if (
         naveSelecionada
         && comandoNave?.nave === naveSelecionada
@@ -276,16 +363,10 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       ) {
         if (clickInfo?.planeta) {
           const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.planeta);
-          if (ok) {
-            cancelarComandoNave();
-            somClique();
-          }
+          if (ok) { cancelarComandoNave(); somClique(); }
         } else if (clickInfo?.sol) {
           const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.sol);
-          if (ok) {
-            cancelarComandoNave();
-            somClique();
-          }
+          if (ok) { cancelarComandoNave(); somClique(); }
         } else {
           mostrarNotificacao(t('notificacao.clique_alvo'), '#ffcc66');
         }
@@ -293,7 +374,6 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         return;
       }
 
-      // (2) Colonizadora free move: any click becomes the destination.
       if (
         naveSelecionada
         && comandoNave?.nave === naveSelecionada
@@ -341,20 +421,19 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         cancelarComandoNave();
         selecionarPlaneta(mundo, clickInfo.planeta);
         somClique();
-        // Open the rich planet side panel — replaces the legacy
-        // planet-panel as the primary surface for planet info.
         void abrirPlanetaDrawer(clickInfo.planeta, mundo);
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);
-        // Clicking empty space deselects — also close the planet drawer
-        // if it's open, matching the user's expectation.
         fecharPlanetaDrawer();
       }
     }
 
     clickInfo = null;
-  }, { signal });
+  };
+
+  canvas.addEventListener('pointerup', (e: PointerEvent) => finalizePointer(e, false), { signal });
+  canvas.addEventListener('pointercancel', (e: PointerEvent) => finalizePointer(e, true), { signal });
 
   canvas.addEventListener('wheel', (e: WheelEvent) => {
     e.preventDefault();
