@@ -435,6 +435,14 @@ function injectStyles(): void {
     @media (max-width: 380px) {
       .nwm-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
+    /* Accent colour routed by data-attribute so the JS side doesn't
+       have to re-set an inline custom property on every render —
+       lets a purely-CSS state survive HMR / bundle staleness bugs. */
+    .nwm-preset[data-preset="balanceado"]   { --preset-accent: #cfe3ff; }
+    .nwm-preset[data-preset="conquistador"] { --preset-accent: #ff5566; }
+    .nwm-preset[data-preset="mercador"]     { --preset-accent: #8ee0b0; }
+    .nwm-preset[data-preset="erudito"]      { --preset-accent: #8ce0ff; }
+    .nwm-preset[data-preset="fortaleza"]    { --preset-accent: #ffcc66; }
     .nwm-preset {
       position: relative;
       box-sizing: border-box;
@@ -1023,6 +1031,9 @@ function mountStepPersonalidade(body: HTMLDivElement, state: WizardState, onChan
         Math.abs(currentEixos.foco    - p.eixos.foco)    < 0.08 &&
         Math.abs(currentEixos.ritmo   - p.eixos.ritmo)   < 0.08;
       btn.className = `nwm-preset${match ? ' selected' : ''}`;
+      btn.dataset.preset = p.id;
+      // Kept as a fallback for any preset id not covered by the
+      // attribute-selector table above.
       btn.style.setProperty('--preset-accent', PRESET_ACCENTS[p.id] ?? '#cfe3ff');
       const title = document.createElement('div');
       title.className = 'nwm-preset-title';
