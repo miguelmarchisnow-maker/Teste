@@ -19,6 +19,7 @@ import {
   gerarSigilo, gerarSigiloManual, seedVariacoes, novaSeed,
   FRAMES, MOTIFS, ORNAMENTS,
   FRAME_LABEL, MOTIF_LABEL, ORNAMENT_LABEL,
+  renderFramePreview, renderMotifPreview, renderOrnamentPreview,
   type Frame, type MotifKind, type Ornament,
 } from './empire-builder/sigilos';
 import type { ImperioLore } from '../world/lore/imperio-lore';
@@ -225,6 +226,89 @@ function injectStyles(): void {
       border-color: #8ce0ff;
     }
     .nwm-sigil svg { width: 80%; height: 80%; display: block; }
+
+    /* ─ Manual composer: tabs + thumb grid ─ */
+    .nwm-manual-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: calc(var(--hud-unit) * 0.35) calc(var(--hud-unit) * 0.5);
+      background: transparent;
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.5);
+      color: var(--hud-text-dim);
+      cursor: pointer;
+      text-align: left;
+      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+    .nwm-manual-tab:hover { background: rgba(255,255,255,0.05); color: var(--hud-text); }
+    .nwm-manual-tab.active {
+      background: rgba(140, 224, 255, 0.12);
+      border-color: #8ce0ff;
+      color: var(--hud-text);
+    }
+    .nwm-manual-tab-label {
+      font-size: calc(var(--hud-unit) * 0.72);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--hud-text-dim);
+    }
+    .nwm-manual-tab.active .nwm-manual-tab-label { color: #8ce0ff; }
+    .nwm-manual-tab-current {
+      font-size: calc(var(--hud-unit) * 0.85);
+      color: var(--hud-text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .nwm-manual-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(calc(var(--hud-unit) * 5), 1fr));
+      gap: calc(var(--hud-unit) * 0.35);
+      max-height: calc(var(--hud-unit) * 18);
+      overflow-y: auto;
+      padding: calc(var(--hud-unit) * 0.1);
+    }
+    .nwm-manual-grid::-webkit-scrollbar { width: 6px; }
+    .nwm-manual-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+    .nwm-manual-thumb {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.2);
+      padding: calc(var(--hud-unit) * 0.25);
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.5);
+      color: #cfe7ff;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+    .nwm-manual-thumb:hover { background: rgba(255,255,255,0.06); border-color: var(--hud-border); }
+    .nwm-manual-thumb.selected {
+      background: rgba(140, 224, 255, 0.14);
+      border-color: #8ce0ff;
+    }
+    .nwm-manual-thumb svg {
+      width: 100%;
+      aspect-ratio: 1;
+      height: auto;
+      display: block;
+    }
+    .nwm-manual-thumb-cap {
+      font-size: calc(var(--hud-unit) * 0.6);
+      letter-spacing: 0.05em;
+      color: var(--hud-text-dim);
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 100%;
+    }
+    .nwm-manual-thumb.selected .nwm-manual-thumb-cap { color: var(--hud-text); }
 
     /* ─ Empire preview disc ─ */
     .nwm-empire-preview {
@@ -638,61 +722,85 @@ function mountStepImperio(body: HTMLDivElement, state: WizardState, onChange: ()
     onChange();
   });
 
-  // ── Manual composer ────────────────────────────────────────────────
-  function makeSelect<T extends string>(
-    current: T,
-    options: readonly T[],
-    labels: Record<T, string>,
-    onPick: (v: T) => void,
-  ): HTMLSelectElement {
-    const sel = document.createElement('select');
-    sel.className = 'nwm-input';
-    for (const opt of options) {
-      const o = document.createElement('option');
-      o.value = opt;
-      o.textContent = labels[opt];
-      if (opt === current) o.selected = true;
-      sel.appendChild(o);
-    }
-    sel.addEventListener('change', () => onPick(sel.value as T));
-    return sel;
-  }
+  // ── Manual composer (visual, tabbed) ──────────────────────────────
+  type ManualTab = 'frame' | 'motif' | 'ornament';
+  let currentTab: ManualTab = 'frame';
 
   function refreshManual(): void {
     manualContainer.replaceChildren();
     if (!state.imperio.logo.manual) return;
     const manual = state.imperio.logo.manual;
 
-    const rows: Array<[string, HTMLSelectElement]> = [
-      ['Moldura', makeSelect<Frame>(
-        manual.frame, FRAMES, FRAME_LABEL,
-        (v) => { manual.frame = v; syncManual(); },
-      )],
-      ['Símbolo', makeSelect<MotifKind>(
-        manual.motif, MOTIFS, MOTIF_LABEL,
-        (v) => { manual.motif = v; syncManual(); },
-      )],
-      ['Ornamento', makeSelect<Ornament>(
-        manual.ornament, ORNAMENTS, ORNAMENT_LABEL,
-        (v) => { manual.ornament = v; syncManual(); },
-      )],
+    // Tab strip
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display: flex; gap: calc(var(--hud-unit) * 0.25); border-bottom: 1px solid var(--hud-line); padding-bottom: calc(var(--hud-unit) * 0.3);';
+    const tabDefs: Array<[ManualTab, string, string]> = [
+      ['frame', 'Moldura', FRAME_LABEL[manual.frame]],
+      ['motif', 'Símbolo', MOTIF_LABEL[manual.motif]],
+      ['ornament', 'Ornamento', ORNAMENT_LABEL[manual.ornament]],
     ];
-
-    for (const [label, sel] of rows) {
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'display: flex; flex-direction: column; gap: calc(var(--hud-unit) * 0.15);';
+    for (const [id, label, current] of tabDefs) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `nwm-manual-tab${currentTab === id ? ' active' : ''}`;
       const l = document.createElement('div');
-      l.className = 'nwm-label';
-      l.style.margin = '0';
+      l.className = 'nwm-manual-tab-label';
       l.textContent = label;
-      wrap.append(l, sel);
-      manualContainer.appendChild(wrap);
+      const c = document.createElement('div');
+      c.className = 'nwm-manual-tab-current';
+      c.textContent = current;
+      btn.append(l, c);
+      btn.addEventListener('click', () => {
+        currentTab = id;
+        refreshManual();
+      });
+      tabs.appendChild(btn);
+    }
+    manualContainer.appendChild(tabs);
+
+    // Grid of thumbnails for the active tab
+    const grid = document.createElement('div');
+    grid.className = 'nwm-manual-grid';
+    manualContainer.appendChild(grid);
+
+    function mountGrid<T extends string>(
+      options: readonly T[],
+      labels: Record<T, string>,
+      currentValue: T,
+      renderPreview: (v: T) => SVGSVGElement,
+      onPick: (v: T) => void,
+    ): void {
+      for (const opt of options) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `nwm-manual-thumb${opt === currentValue ? ' selected' : ''}`;
+        btn.title = labels[opt];
+        btn.appendChild(renderPreview(opt));
+        const cap = document.createElement('div');
+        cap.className = 'nwm-manual-thumb-cap';
+        cap.textContent = labels[opt];
+        btn.appendChild(cap);
+        btn.addEventListener('click', () => {
+          onPick(opt);
+          syncManual();
+        });
+        grid.appendChild(btn);
+      }
+    }
+
+    if (currentTab === 'frame') {
+      mountGrid<Frame>(FRAMES, FRAME_LABEL, manual.frame, renderFramePreview, (v) => { manual.frame = v; });
+    } else if (currentTab === 'motif') {
+      mountGrid<MotifKind>(MOTIFS, MOTIF_LABEL, manual.motif, renderMotifPreview, (v) => { manual.motif = v; });
+    } else {
+      mountGrid<Ornament>(ORNAMENTS, ORNAMENT_LABEL, manual.ornament, renderOrnamentPreview, (v) => { manual.ornament = v; });
     }
   }
 
   function syncManual(): void {
     refreshEmpirePreview(preview, state);
-    refreshGallery();  // un-selects gallery items since we're in manual
+    refreshGallery();
+    refreshManual();
     onChange();
   }
 

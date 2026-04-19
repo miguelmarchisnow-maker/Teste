@@ -1658,6 +1658,34 @@ export const MOTIF_LABEL: Record<MotifKind, string> = {
   'torre': 'Torre', 'elmo': 'Elmo',
 };
 
+/**
+ * Preview renderers for the UI picker grids. Each returns a small SVG
+ * showing a single component in isolation so the user can eyeball
+ * options instead of reading a dropdown.
+ */
+export function renderFramePreview(frame: Frame): SVGSVGElement {
+  const svg = baseSvg();
+  addFrame(svg, frame, 2.0);
+  return svg;
+}
+
+export function renderMotifPreview(motif: MotifKind): SVGSVGElement {
+  const svg = baseSvg();
+  addMotif(svg, motif, 15, 2.0);
+  return svg;
+}
+
+export function renderOrnamentPreview(ornament: Ornament): SVGSVGElement {
+  const svg = baseSvg();
+  // Faint outer circle gives the ornament a reference frame; otherwise
+  // rim-based ornaments float without context.
+  const ring = strokedCircle(24, 24, 15, 0.6);
+  ring.setAttribute('stroke', 'rgba(255,255,255,0.25)');
+  svg.appendChild(ring);
+  addOrnament(svg, ornament, 2.0);
+  return svg;
+}
+
 export const ORNAMENT_LABEL: Record<Ornament, string> = {
   'nenhum': 'Nenhum',
   'ticks-4': 'Ticks 4', 'ticks-6': 'Ticks 6', 'ticks-8': 'Ticks 8',
