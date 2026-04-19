@@ -1,6 +1,6 @@
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Nave, Mundo, Planeta, Sol, AlvoPonto, AcaoNaveParsed, Recursos } from '../types';
-import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, TEMPO_SURVEY_MS, formatarId } from './constantes';
+import { VELOCIDADE_NAVE, VELOCIDADE_ORBITA_NAVE, TEMPO_SURVEY_MS, CUSTO_NAVE_COMUM, formatarId } from './constantes';
 import { cheats } from '../ui/debug';
 import { notifColonizacao, mostrarNotificacao } from '../ui/notificacao';
 import { somConquista } from '../audio/som';
@@ -487,6 +487,14 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
       const stopDist = obterRaioAlvo(alvo);
       const velReal = VELOCIDADE_NAVE * (cheats.velocidadeNave ? 10 : 1);
       if (dist <= stopDist + velReal * deltaMs) {
+        // Scrap-on-arrival: ship was sent home to be scrapped. Refund
+        // 60% of build cost and destroy — takes precedence over any
+        // survey/orbit/cargo handling below.
+        if (nave._scrapAoChegar && nave.origem && alvo === nave.origem) {
+          aplicarRefundSucateamento(nave);
+          removerNave(mundo, nave);
+          continue;
+        }
         const proximoPontoManual = alvo._tipoAlvo === 'ponto' ? nave.rotaManual.shift() ?? null : null;
         // Colonizadora arrives at any orbit-capable target (planet or star) →
         // enter survey mode instead of colonizing / orbiting immediately.
@@ -663,11 +671,45 @@ export function recolherColonizadoraParaOrigem(mundo: Mundo, nave: Nave): boolea
   return true;
 }
 
-/** Scrap a colonizadora on demand (e.g. when the player gives up on a stuck outpost). */
+/** Scrap on demand — the ship returns to its origin planet and is destroyed
+ *  on arrival, refunding 60% of its build cost in comum resources. Gives the
+ *  player a way to recover half of a misplaced investment without just
+ *  deleting the ship in place. */
 export function sucatearNave(mundo: Mundo, nave: Nave): void {
   confirmarAcao(t('confirmar.sucatear_nave', { tipo: nave.tipo }), () => {
-    removerNave(mundo, nave);
+    if (!nave.origem) {
+      // No origin to return to — destroy in place, no refund.
+      removerNave(mundo, nave);
+      return;
+    }
+    // Already parked at origem? Refund + destroy immediately.
+    if (nave.alvo === nave.origem && nave.estado === 'orbitando') {
+      aplicarRefundSucateamento(nave);
+      removerNave(mundo, nave);
+      return;
+    }
+    // Otherwise flag + redirect home; refund lands on arrival.
+    nave._scrapAoChegar = true;
+    nave.surveyTempoRestanteMs = undefined;
+    nave.surveyTempoTotalMs = undefined;
+    nave.rotaManual = [];
+    nave.estado = 'viajando';
+    nave.alvo = nave.origem;
+    nave.orbita = null;
+    if (nave._ring) nave._ring.clear();
+    atualizarSelecaoNave(nave);
   });
+}
+
+/** Credits the origin planet with 60% of the ship's build cost. */
+function aplicarRefundSucateamento(nave: Nave): void {
+  if (!nave.origem) return;
+  const refund = Math.floor(CUSTO_NAVE_COMUM * 0.6);
+  nave.origem.dados.recursos.comum += refund;
+  mostrarNotificacao(
+    t('notificacao.nave_sucateada', { nome: nave.origem.dados.nome, refund }),
+    '#8ce0ff',
+  );
 }
 
 /** Called by the colony-modal UI when the player confirms colonization. */

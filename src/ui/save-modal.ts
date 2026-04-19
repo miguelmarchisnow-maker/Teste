@@ -277,6 +277,9 @@ function ensureModal(): void {
   const modal = document.createElement('div');
   modal.className = 'save-modal';
   modal.setAttribute('data-ui', 'true');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'save-modal-title');
   modal.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     marcarInteracaoUi();
@@ -292,6 +295,7 @@ function ensureModal(): void {
 
   const title = document.createElement('div');
   title.className = 'save-modal-title';
+  title.id = 'save-modal-title';
   _titleEl = title;
   header.appendChild(title);
 

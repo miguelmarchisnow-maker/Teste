@@ -15,8 +15,6 @@
 
 import type { Mundo, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
-import { injectBottomSheetStyles } from './bottom-sheet.css';
-import { getBuildPanelElement, restoreBuildPanelParent } from './build-panel';
 import { nomeTipoPlaneta, getTierMax } from '../world/mundo';
 import { getPersonalidades } from '../world/ia-decisao';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
@@ -444,19 +442,9 @@ function buildHeader(p: Planeta): HTMLDivElement {
   meta.appendChild(owner);
   head.appendChild(meta);
 
-  // Close button — required on mobile where the drawer covers the
-  // whole lower half and click-outside has no canvas target.
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'planeta-drawer-close';
-  closeBtn.setAttribute('aria-label', 'close');
-  closeBtn.textContent = '\u2715';
-  closeBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    marcarInteracaoUi();
-    close();
-  });
-  head.appendChild(closeBtn);
+  // Close button intentionally omitted — the drawer closes on
+  // click-outside (via fecharPlanetaDrawer wired in core/player.ts)
+  // and on ESC (keydown handler), so an explicit × is redundant.
 
   return head;
 }
@@ -528,9 +516,8 @@ function rebuildBody(p: Planeta, _mundo: Mundo): void {
 function ensureModal(): void {
   if (_modal) return;
   injectStyles();
-  injectBottomSheetStyles();
   const modal = document.createElement('div');
-  modal.className = 'planeta-drawer bottom-sheet-capable';
+  modal.className = 'planeta-drawer';
   modal.setAttribute('data-ui', 'true');
   modal.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -565,93 +552,11 @@ export function abrirPlanetaDrawer(planeta: Planeta, mundo: Mundo): Promise<void
   _lastRebuildMs = performance.now();
 
   removeAllChildren(_modal);
-
-  // Drag handle (visible only on mobile via CSS). Swipe-down to close.
-  const grabber = document.createElement('div');
-  grabber.className = 'planeta-drawer-grabber';
-  const grabberBar = document.createElement('span');
-  grabberBar.className = 'planeta-drawer-grabber-bar';
-  grabber.appendChild(grabberBar);
-  let grabStartY = 0;
-  let grabCurrentY = 0;
-  let grabbing = false;
-  grabber.addEventListener('pointerdown', (e) => {
-    grabbing = true;
-    grabStartY = e.clientY;
-    grabCurrentY = 0;
-    grabber.setPointerCapture?.(e.pointerId);
-    e.stopPropagation();
-  });
-  grabber.addEventListener('pointermove', (e) => {
-    if (!grabbing) return;
-    grabCurrentY = e.clientY - grabStartY;
-    if (grabCurrentY > 0 && _modal) {
-      _modal.style.transform = `translateY(${grabCurrentY}px)`;
-      _modal.style.transition = 'none';
-    }
-  });
-  const endGrab = () => {
-    if (!grabbing) return;
-    grabbing = false;
-    if (_modal) {
-      _modal.style.transform = '';
-      _modal.style.transition = '';
-    }
-    if (grabCurrentY > 80) close();
-    grabCurrentY = 0;
-  };
-  grabber.addEventListener('pointerup', endGrab);
-  grabber.addEventListener('pointercancel', endGrab);
-  _modal.appendChild(grabber);
   _modal.appendChild(buildHeader(planeta));
-
-  // Tabs (only visible on mobile via CSS). Tab 1 = Planeta, Tab 2 = Construir.
-  const tabs = document.createElement('div');
-  tabs.className = 'planeta-drawer-tabs';
-  const tPlanet = document.createElement('button');
-  tPlanet.type = 'button';
-  tPlanet.className = 'planeta-drawer-tab active';
-  tPlanet.textContent = 'Planeta';
-  const tBuild = document.createElement('button');
-  tBuild.type = 'button';
-  tBuild.className = 'planeta-drawer-tab';
-  tBuild.textContent = 'Construir';
-  tabs.append(tPlanet, tBuild);
-  _modal.appendChild(tabs);
-
   const body = document.createElement('div');
   body.className = 'planeta-drawer-body';
   _bodyEl = body;
   _modal.appendChild(body);
-
-  const buildWrap = document.createElement('div');
-  buildWrap.className = 'planeta-drawer-build';
-  buildWrap.style.display = 'none';
-  _modal.appendChild(buildWrap);
-
-  const setTab = (which: 'planeta' | 'construir') => {
-    tPlanet.classList.toggle('active', which === 'planeta');
-    tBuild.classList.toggle('active', which === 'construir');
-    body.style.display = which === 'planeta' ? '' : 'none';
-    buildWrap.style.display = which === 'construir' ? '' : 'none';
-    if (which === 'construir') {
-      const bp = getBuildPanelElement();
-      if (bp && bp.parentElement !== buildWrap) {
-        bp.classList.add('embedded');
-        buildWrap.appendChild(bp);
-      }
-    } else {
-      // Returning to Planeta tab — take the build-panel out of the
-      // drawer AND strip its .visible class so it doesn't pop up as
-      // a bottom-sheet on top of the drawer.
-      const bp = getBuildPanelElement();
-      restoreBuildPanelParent();
-      bp?.classList.remove('visible');
-    }
-  };
-  tPlanet.addEventListener('click', (e) => { e.stopPropagation(); marcarInteracaoUi(); setTab('planeta'); });
-  tBuild.addEventListener('click', (e) => { e.stopPropagation(); marcarInteracaoUi(); setTab('construir'); });
-
   rebuildBody(planeta, mundo);
   const actions = buildActions(planeta, mundo);
   if (actions) _modal.appendChild(actions);
@@ -689,15 +594,12 @@ export function isPlanetaDrawerAberto(): boolean {
 
 function close(): void {
   _modal?.classList.remove('visible');
-  // Return build-panel to document.body and strip .visible so it
-  // doesn't pop as a bottom-sheet the instant the drawer goes away.
-  const bp = getBuildPanelElement();
-  restoreBuildPanelParent();
-  bp?.classList.remove('visible');
   _currentPlaneta = null;
   _currentMundo = null;
   _portraitCanvas = null;
   _lastPortraitRefreshMs = 0;
+  // Release the Pixi resources cached for the portrait shader render.
+  // Keeping them around while the drawer is closed is pure dead weight.
   liberarPortraitPlaneta();
   const r = _closeResolver;
   _closeResolver = null;

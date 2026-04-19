@@ -20,7 +20,15 @@ export function computeUiMode(inputs: UiModeInputs): UiMode {
   let touch: boolean;
   if (mode === 'on') touch = true;
   else if (mode === 'off') touch = false;
-  else touch = inputs.coarsePointer && inputs.innerWidth <= 1024;
+  else {
+    // Coarse pointer without real hover = pure-touch device (iPad Pro in
+    // landscape reports 1366px width but has no mouse). The old
+    // `width <= 1024` gate mis-classified large tablets as desktop.
+    const hasHover = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(hover: hover)').matches;
+    touch = inputs.coarsePointer && !hasHover;
+  }
 
   const size: UiSize =
     inputs.innerWidth < 600 ? 'sm'
@@ -44,6 +52,21 @@ function readInputs(): UiModeInputs {
   };
 }
 
+// Cache UA check — runs once per session; UA doesn't change at runtime.
+let _isMobileUa: boolean | null = null;
+function detectMobileUa(): boolean {
+  if (_isMobileUa !== null) return _isMobileUa;
+  if (typeof navigator === 'undefined') return (_isMobileUa = false);
+  // iPadOS 13+ reports as Mac — also check `maxTouchPoints` to catch it.
+  const ua = navigator.userAgent || '';
+  const isMobileUa = /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isIpad = /Macintosh/.test(ua)
+    && typeof navigator.maxTouchPoints === 'number'
+    && navigator.maxTouchPoints > 1;
+  _isMobileUa = isMobileUa || isIpad;
+  return _isMobileUa;
+}
+
 function applyBodyClasses(m: UiMode): void {
   const b = document.body.classList;
   b.toggle('touch', m.touch);
@@ -52,6 +75,11 @@ function applyBodyClasses(m: UiMode): void {
   b.toggle('size-sm', m.size === 'sm');
   b.toggle('size-md', m.size === 'md');
   b.toggle('size-lg', m.size === 'lg');
+  // UA-based mobile flag — complements width/touch detection. Only
+  // applied when the viewport is ALSO non-large, otherwise a touch-
+  // capable MacBook/Mac reported as Macintosh+touchpoints gets the full
+  // mobile layout on a desktop display, which is wrong.
+  b.toggle('mobile-ua', detectMobileUa() && m.size !== 'lg');
 }
 
 export function getUiMode(): UiMode {
@@ -83,7 +111,12 @@ export function instalarUiMode(): void {
   _coarseMql.addEventListener('change', recompute);
   _portraitMql.addEventListener('change', recompute);
   window.addEventListener('resize', recompute);
-  window.addEventListener('orientationchange', recompute);
+  // iOS Safari fires orientationchange *before* innerWidth/innerHeight
+  // update — reading dimensions synchronously returns stale values.
+  // Delay the recompute so layout has committed the new orientation.
+  window.addEventListener('orientationchange', () => {
+    setTimeout(recompute, 100);
+  });
   onConfigChange(recompute);
   recompute();
 }

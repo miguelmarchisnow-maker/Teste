@@ -26,7 +26,7 @@ const SHIP_ROW_COLONIZADORA = 0;
 const SHIP_COL_COLONIZADORA = 0;
 
 // Panel "stages" — these are the visual modes the panel morphs between.
-type Stage =
+export type Stage =
   | 'idle'          // orbiting origem, no mission in progress
   | 'outpost'       // orbiting a non-origin target (post-survey outpost)
   | 'traveling'     // in transit to a target
@@ -34,7 +34,7 @@ type Stage =
   | 'surveying'    // fazendo_survey
   | 'deciding';    // aguardando_decisao
 
-function stageForNave(nave: Nave): Stage {
+export function stageForNave(nave: Nave): Stage {
   if (nave.estado === 'fazendo_survey') return 'surveying';
   if (nave.estado === 'aguardando_decisao') return 'deciding';
   if (nave.estado === 'viajando') return 'traveling';
@@ -68,7 +68,7 @@ let _renderKey = '';
 
 // ─── Sprite drawing (reuse the shared loader) ──────────────────────────────
 
-function drawPortrait(canvas: HTMLCanvasElement): void {
+export function drawPortrait(canvas: HTMLCanvasElement): void {
   const img = getSpritesheetImage('ships');
   if (!img) return;
   const cssSize = canvas.clientWidth || 64;
@@ -91,7 +91,7 @@ function drawPortrait(canvas: HTMLCanvasElement): void {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function stageLabel(stage: Stage): string {
+export function stageLabel(stage: Stage): string {
   switch (stage) {
     case 'idle': return t('colonizer_panel.stage_idle');
     case 'outpost': return t('colonizer_panel.stage_outpost');
@@ -102,7 +102,7 @@ function stageLabel(stage: Stage): string {
   }
 }
 
-function targetName(nave: Nave): string {
+export function targetName(nave: Nave): string {
   const a = nave.alvo;
   if (!a) return '—';
   if (a._tipoAlvo === 'planeta') return a.dados.nome ?? t('colonizer_panel.alvo_planeta_fallback');
@@ -110,7 +110,7 @@ function targetName(nave: Nave): string {
   return `(${Math.round(a.x)}, ${Math.round(a.y)})`;
 }
 
-function distanceToTarget(nave: Nave): number | null {
+export function distanceToTarget(nave: Nave): number | null {
   const a = nave.alvo;
   if (!a) return null;
   const dx = a.x - nave.x;
@@ -118,7 +118,7 @@ function distanceToTarget(nave: Nave): number | null {
   return Math.hypot(dx, dy);
 }
 
-function etaLabel(nave: Nave): string {
+export function etaLabel(nave: Nave): string {
   const dist = distanceToTarget(nave);
   if (dist == null || dist <= 0) return '—';
   const ms = dist / VELOCIDADE_NAVE;
@@ -128,14 +128,14 @@ function etaLabel(nave: Nave): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-function surveyProgress(nave: Nave): number {
+export function surveyProgress(nave: Nave): number {
   const total = nave.surveyTempoTotalMs ?? TEMPO_SURVEY_MS;
   const remaining = nave.surveyTempoRestanteMs ?? 0;
   if (total <= 0) return 0;
   return Math.max(0, Math.min(1, 1 - remaining / total));
 }
 
-function surveyCountdownLabel(nave: Nave): string {
+export function surveyCountdownLabel(nave: Nave): string {
   const remaining = Math.max(0, Math.ceil((nave.surveyTempoRestanteMs ?? 0) / 1000));
   return `${remaining}s`;
 }
@@ -504,9 +504,9 @@ function injectStyles(): void {
 
     .cp-dpad {
       display: grid;
-      grid-template-columns: repeat(3, calc(var(--hud-unit) * 1.6));
-      grid-template-rows: repeat(3, calc(var(--hud-unit) * 1.6));
-      gap: calc(var(--hud-unit) * 0.12);
+      grid-template-columns: repeat(3, max(44px, calc(var(--hud-unit) * 1.8)));
+      grid-template-rows: repeat(3, max(44px, calc(var(--hud-unit) * 1.8)));
+      gap: calc(var(--hud-unit) * 0.2);
     }
 
     .cp-dpad-btn {
@@ -520,7 +520,10 @@ function injectStyles(): void {
       justify-content: center;
       font-size: calc(var(--hud-unit) * 0.9);
       font-family: var(--hud-font);
-      transition: background 80ms ease;
+      min-width: 44px;
+      min-height: 44px;
+      touch-action: manipulation;
+      transition: background-color 80ms ease, border-color 80ms ease;
       user-select: none;
     }
 
@@ -1199,6 +1202,13 @@ export function colonizerPanelShouldHandleSelection(mundo: Mundo): boolean {
 export function destruirColonizerPanel(): void {
   _container?.remove();
   _container = null;
+  // Cockpit (joystick + d-pad) is a separate fixed-positioned element;
+  // must be torn down too, otherwise it's orphaned in the DOM across
+  // game cycles (visible on the main menu after a match).
+  _movePanelEl?.remove();
+  _movePanelEl = null;
+  _joystickNubEl = null;
+  _joystickMaxR = 0;
   _styleInjected = false;
   _portraitCanvas = null;
   _stageBadgeEl = null;

@@ -111,7 +111,7 @@ function injectStyles(): void {
       font-family: "Silkscreen", monospace;
       font-size: calc(var(--hud-unit) * 0.9);
       outline: none;
-      transition: all 120ms ease;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
       padding: 0;
       z-index: 101;
     }
@@ -263,7 +263,7 @@ function injectStyles(): void {
       border-radius: calc(var(--hud-unit) * 0.6);
       cursor: pointer;
       position: relative;
-      transition: all 150ms ease;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, left 150ms ease;
       flex-shrink: 0;
     }
 
@@ -276,7 +276,7 @@ function injectStyles(): void {
       height: calc(var(--hud-unit) * 0.9);
       background: rgba(255,255,255,0.6);
       border-radius: calc(var(--hud-unit) * 0.5);
-      transition: all 150ms ease;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, left 150ms ease;
     }
 
     .debug-toggle-sw.on {
@@ -329,7 +329,7 @@ function injectStyles(): void {
       outline: none;
       border-radius: 4px;
       margin-top: calc(var(--hud-unit) * 0.3);
-      transition: all 150ms ease;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, left 150ms ease;
     }
 
     .debug-action-btn:hover {

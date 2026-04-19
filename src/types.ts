@@ -127,6 +127,10 @@ export interface Nave {
   _tipoAlvo: 'nave';
   orbita: OrbitaNave | null;
   _selecaoAnterior?: boolean;
+  /** Scrap-on-arrival flag. Set by `sucatearNave` — when the ship reaches
+   *  its origin planet, it's destroyed and 60% of its build cost is
+   *  refunded in comum resources. */
+  _scrapAoChegar?: boolean;
   _sprite?: Sprite;
   _ring?: Graphics;
   _trail?: Graphics;

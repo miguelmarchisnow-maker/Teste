@@ -275,7 +275,10 @@ function injectStyles(): void {
       opacity: 0;
       transition: opacity 120ms ease, color 120ms ease;
     }
-    .menu-save-card:hover .menu-save-delete { opacity: 1; }
+    .menu-save-card:hover .menu-save-delete,
+    .menu-save-card:focus-within .menu-save-delete { opacity: 1; }
+    /* Touch devices have no hover — keep delete always visible. */
+    body.touch .menu-save-delete { opacity: 1 !important; padding: 6px; }
     .menu-save-delete:hover { color: #ff6b6b; }
 
     /* ── Footer ── */
@@ -388,6 +391,7 @@ function buildSettingsScreen(): HTMLDivElement {
   screen.appendChild(title);
 
   const settingsHost = document.createElement('div');
+  settingsHost.className = 'menu-settings-host';
   settingsHost.style.cssText = `
     background: var(--hud-bg);
     border: 1px solid var(--hud-border);
@@ -395,9 +399,11 @@ function buildSettingsScreen(): HTMLDivElement {
     box-shadow: 0 calc(var(--hud-unit) * 0.4) calc(var(--hud-unit) * 1.2) rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(8px);
     padding: calc(var(--hud-unit) * 1.2);
-    max-height: 60vh;
+    max-height: 60dvh;
     overflow-y: auto;
-    width: calc(var(--hud-unit) * 32);
+    overscroll-behavior: contain;
+    width: min(94vw, calc(var(--hud-unit) * 32));
+    box-sizing: border-box;
   `;
   screen.appendChild(settingsHost);
 

@@ -1,7 +1,5 @@
 import type { Mundo, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
-import { injectBottomSheetStyles } from './bottom-sheet.css';
-import { pulseElement } from './animations.css';
 import {
   calcularCustoTier,
   calcularTempoConstrucaoMs,
@@ -13,15 +11,15 @@ import { CUSTO_NAVE_COMUM } from '../world/constantes';
 import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
 import { t } from '../core/i18n/t';
 
-type AbaId = 'edificios' | 'naves' | 'pesquisa';
+export type AbaId = 'edificios' | 'naves' | 'pesquisa';
 
-interface SpriteCell {
+export interface SpriteCell {
   sheet: 'ships' | 'buildings';
   row: number;
   col: number;
 }
 
-interface CardSpec {
+export interface CardSpec {
   acao: string;
   nomeKey: string;
   // Given the resolved state, return which cell of which spritesheet to draw.
@@ -30,7 +28,7 @@ interface CardSpec {
   resolve: (planeta: Planeta) => CardState;
 }
 
-interface CardState {
+export interface CardState {
   enabled: boolean;
   tier: number | null;
   cost: number | null;
@@ -56,7 +54,7 @@ let _renderKey = '';
 
 const _cardSprites: { canvas: HTMLCanvasElement; cell: SpriteCell }[] = [];
 
-function loadSheet(name: 'ships' | 'buildings'): void {
+export function loadSheet(name: 'ships' | 'buildings'): void {
   if (getSpritesheetImage(name)) return;
   carregarSpritesheet(name).then(() => {
     for (const { canvas, cell } of _cardSprites) {
@@ -65,7 +63,7 @@ function loadSheet(name: 'ships' | 'buildings'): void {
   });
 }
 
-function drawSprite(canvas: HTMLCanvasElement, cell: SpriteCell): void {
+export function drawSprite(canvas: HTMLCanvasElement, cell: SpriteCell): void {
   const img = getSpritesheetImage(cell.sheet);
   if (!img) return;
   const cssSize = canvas.clientWidth || parseInt(getComputedStyle(canvas).width, 10) || 40;
@@ -91,7 +89,7 @@ function spriteColForTier(tier: number | null): number {
 
 // ─── SVG helper for the cost icon only (ship/building icons come from sprite) ───
 
-function iconCredit(): SVGSVGElement {
+export function iconCredit(): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'currentColor');
@@ -105,16 +103,16 @@ function iconCredit(): SVGSVGElement {
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
-function roman(n: number): string {
+export function roman(n: number): string {
   return ROMAN[n] ?? String(n);
 }
 
-function fmtCost(n: number): string {
+export function fmtCost(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
 }
 
-function getSelectedPlayerPlanet(mundo: Mundo): Planeta | null {
+export function getSelectedPlayerPlanet(mundo: Mundo): Planeta | null {
   const p = mundo.planetas.find((planeta) => planeta.dados.selecionado) ?? null;
   if (!p || p.dados.dono !== 'jogador') return null;
   return p;
@@ -291,7 +289,7 @@ const CARDS_PESQUISA: CardSpec[] = [
   pesquisaCard('fragata', 'build_panel.card_pesq_fragata', 4),
 ];
 
-function cardsForTab(tab: AbaId): CardSpec[] {
+export function cardsForTab(tab: AbaId): CardSpec[] {
   switch (tab) {
     case 'edificios': return CARDS_EDIFICIOS;
     case 'naves': return CARDS_NAVES;
@@ -301,7 +299,7 @@ function cardsForTab(tab: AbaId): CardSpec[] {
 
 // For tiered cards (ships and research), the actual action must include
 // the chosen tier suffix.
-function resolveAcao(spec: CardSpec, state: CardState): string {
+export function resolveAcao(spec: CardSpec, state: CardState): string {
   if (spec.acao === 'nave_colonizadora') return spec.acao;
   if (spec.acao.startsWith('nave_')) {
     return state.tier ? `${spec.acao}_${state.tier}` : spec.acao;
@@ -617,7 +615,6 @@ function createCard(spec: CardSpec, state: CardState): HTMLButtonElement {
     marcarInteracaoUi();
     if (!state.enabled || !_selectedPlanet || !_mundoRef) return;
     construirNoPlaneta(_mundoRef, _selectedPlanet, resolveAcao(spec, state));
-    pulseElement(card, 'orbital-toggle-flash');
     _renderKey = '';
   });
 
@@ -667,12 +664,11 @@ function getRenderKey(planeta: Planeta): string {
 export function criarBuildPanel(): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
-  injectBottomSheetStyles();
   loadSheet('ships');
   loadSheet('buildings');
 
   const panel = document.createElement('div');
-  panel.className = 'build-panel bottom-sheet-capable';
+  panel.className = 'build-panel';
   panel.setAttribute('data-ui', 'true');
   panel.style.pointerEvents = 'auto';
   panel.addEventListener('pointerdown', () => marcarInteracaoUi());
@@ -726,22 +722,6 @@ export function atualizarBuildPanel(mundo: Mundo): void {
   if (key !== _renderKey) {
     renderActiveTab();
     _renderKey = key;
-  }
-}
-
-/**
- * Return the build-panel element so callers (eg. the mobile planet
- * drawer) can reparent it into a tabbed layout. Caller is responsible
- * for calling `restoreBuildPanelParent()` when done.
- */
-export function getBuildPanelElement(): HTMLDivElement | null {
-  return _container;
-}
-
-export function restoreBuildPanelParent(): void {
-  if (_container && _container.parentElement !== document.body) {
-    document.body.appendChild(_container);
-    _container.classList.remove('embedded');
   }
 }
 

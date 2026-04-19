@@ -13,36 +13,39 @@ function injectStyles(): void {
     .mobile-menu-btn {
       display: none;
       position: fixed;
-      top: 14px;
-      left: 14px;
-      width: 64px;
-      height: 64px;
-      border-radius: 14px;
-      border: 1px solid var(--hud-border, rgba(255,255,255,0.45));
-      background: rgba(10,20,35,0.88);
-      color: var(--hud-text, #e8f2ff);
+      top: calc(12px + var(--safe-top, 0px));
+      left: calc(12px + var(--safe-left, 0px));
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.45);
+      background: transparent;
+      color: rgba(255,255,255,0.92);
       z-index: 501;
       cursor: pointer;
       align-items: center;
       justify-content: center;
-      font-size: 34px;
+      font-size: 22px;
       line-height: 1;
       font-family: "Silkscreen", "VT323", monospace;
       touch-action: manipulation;
       pointer-events: auto;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+      transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
     }
-    body.size-sm .mobile-menu-btn,
-    body.portrait.size-md .mobile-menu-btn {
+    body.touch .mobile-menu-btn {
       display: flex;
     }
     /* Hide while the main menu is showing — only relevant in-game. */
     body:has(.main-menu:not(.hidden)) .mobile-menu-btn {
       display: none !important;
     }
+    .mobile-menu-btn:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: #fff;
+    }
     .mobile-menu-btn:active {
       transform: scale(0.92);
-      background: rgba(30,60,100,0.95);
+      background: rgba(255,255,255,0.16);
     }
   `;
   document.head.appendChild(style);
@@ -55,7 +58,7 @@ export function criarMobileMenuBtn(): HTMLButtonElement {
   btn.type = 'button';
   btn.className = 'mobile-menu-btn';
   btn.setAttribute('data-ui', 'true');
-  btn.setAttribute('aria-label', 'menu');
+  btn.setAttribute('aria-label', 'Abrir menu');
   btn.textContent = '\u2630';
   btn.addEventListener('click', (e) => {
     e.preventDefault();

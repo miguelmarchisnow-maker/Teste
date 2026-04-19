@@ -17,11 +17,15 @@ export function injectBottomSheetStyles(): void {
       margin: 0 !important;
       width: 100vw !important;
       max-width: 100vw !important;
-      max-height: 85vh !important;
+      max-height: 85dvh !important;
       border-radius: 16px 16px 0 0 !important;
       transform: translateY(100%) !important;
       transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1) !important;
       overflow-y: auto;
+      overscroll-behavior: contain !important;
+      -webkit-overflow-scrolling: touch !important;
+      touch-action: pan-y !important;
+      padding-bottom: calc(var(--hud-unit, 18px) * 0.5 + var(--safe-bottom, 0px)) !important;
     }
     body.size-sm.portrait .bottom-sheet-capable:not(.planeta-drawer).visible,
     body.portrait.size-md .bottom-sheet-capable:not(.planeta-drawer).visible {

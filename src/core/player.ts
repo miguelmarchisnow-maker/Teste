@@ -25,6 +25,8 @@ import {
 import { mostrarNotificacao } from '../ui/notificacao';
 import { t } from './i18n/t';
 import { abrirPlanetaDrawer, fecharPlanetaDrawer } from '../ui/planet-drawer';
+import { abrirMobilePlanetaDrawer, fecharMobilePlanetaDrawer } from '../ui/mobile-planet-drawer';
+import { isTouchMode } from './ui-mode';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -327,6 +329,19 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     if (pinch && activePointers.size >= 2) {
       const pts = Array.from(activePointers.values()).slice(0, 2) as [PointerInfo, PointerInfo];
       const d = distance(pts[0], pts[1]);
+      const newMid = midpoint(pts[0], pts[1]);
+      // Treat the midpoint drift as a pan, so the world stays anchored to
+      // the fingers instead of drifting when the user naturally translates
+      // while pinching.
+      const panDx = newMid.x - pinch.anchorSx;
+      const panDy = newMid.y - pinch.anchorSy;
+      if (panDx !== 0 || panDy !== 0) {
+        camera.x -= panDx / camera.zoom;
+        camera.y -= panDy / camera.zoom;
+        cancelarZoomTween();
+      }
+      pinch.anchorSx = newMid.x;
+      pinch.anchorSy = newMid.y;
       if (d > 0 && pinch.initialDist > 0) {
         const ratio = d / pinch.initialDist;
         aplicarZoom(pinch.initialZoom * ratio, pinch.anchorSx, pinch.anchorSy, true);
@@ -478,11 +493,21 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         cancelarComandoNave();
         selecionarPlaneta(mundo, clickInfo.planeta);
         somClique();
-        void abrirPlanetaDrawer(clickInfo.planeta, mundo);
+        if (isTouchMode()) {
+          void abrirMobilePlanetaDrawer(clickInfo.planeta, mundo);
+        } else {
+          void abrirPlanetaDrawer(clickInfo.planeta, mundo);
+        }
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);
-        fecharPlanetaDrawer();
+        if (isTouchMode()) fecharMobilePlanetaDrawer();
+        else fecharPlanetaDrawer();
+        // Click-to-go: tap on empty space recenters the camera at that
+        // world position. Drag-pan still works (drags engage cameraDragging
+        // before reaching this branch — only taps under the movement
+        // threshold land here).
+        setCameraPos(destinoMapa.x, destinoMapa.y);
       }
     }
 

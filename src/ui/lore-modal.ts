@@ -253,13 +253,21 @@ function ensureModal(): void {
 
   const backdrop = document.createElement('div');
   backdrop.className = 'lore-modal-backdrop';
-  backdrop.addEventListener('click', () => close());
+  // Only dismiss if the click actually landed on the backdrop itself —
+  // bubbled clicks from inside the modal must not close it.
+  backdrop.addEventListener('click', (e) => {
+    if (e.target !== backdrop) return;
+    close();
+  });
   _backdrop = backdrop;
   document.body.appendChild(backdrop);
 
   const modal = document.createElement('div');
   modal.className = 'lore-modal';
   modal.setAttribute('data-ui', 'true');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'lore-modal-title');
   modal.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     marcarInteracaoUi();
@@ -286,6 +294,7 @@ function buildHeader(titulo: string): HTMLDivElement {
 
   const h = document.createElement('h2');
   h.className = 'lore-modal-title';
+  h.id = 'lore-modal-title';
   h.textContent = titulo;
   head.appendChild(h);
 

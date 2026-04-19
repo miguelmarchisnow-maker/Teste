@@ -114,7 +114,11 @@ function injectStyles(): void {
       border-radius: 6px;
       cursor: pointer;
       color: var(--hud-text-dim);
-      transition: all 120ms ease;
+      transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease,
+        transform 120ms ease;
       outline: none;
       width: 100%;
       font-family: inherit;
@@ -226,7 +230,9 @@ function injectStyles(): void {
       bottom: 0 !important;
       left: 0 !important;
       transform: translateX(-100%) !important;
-      height: 100vh;
+      height: 100dvh;
+      padding-top: calc(72px + var(--safe-top, 0px)) !important;
+      padding-bottom: calc(24px + var(--safe-bottom, 0px)) !important;
       width: min(78vw, 300px);
       background: rgba(6,12,20,0.96);
       border-right: 1px solid var(--hud-border, rgba(255,255,255,0.2));
