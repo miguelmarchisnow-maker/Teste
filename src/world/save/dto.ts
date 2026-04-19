@@ -196,7 +196,7 @@ export interface TipoJogadorDTO {
  */
 export interface ImperioJogadorDTO {
   nome: string;
-  logo: { sigilo: string };
+  logo: { seed: number };
   pesos: {
     agressao: number;
     expansao: number;

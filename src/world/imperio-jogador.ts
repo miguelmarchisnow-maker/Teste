@@ -30,8 +30,8 @@ export interface PesosImperio {
 
 export interface ImperioJogador {
   nome: string;
-  /** Sigil id — maps to an SVG builder in ui/empire-builder/sigilos.ts */
-  logo: { sigilo: string };
+  /** Procedural sigil seed — fed to gerarSigilo() in sigilos.ts. */
+  logo: { seed: number };
   pesos: PesosImperio;
   objetivo: ObjetivoImperio;
   lore?: ImperioLore;
@@ -47,7 +47,9 @@ export interface ImperioJogador {
  *  so auto-tinting logic can evolve without breaking save shape. */
 export const COR_JOGADOR_DEFAULT = 0x44aaff;
 
-export const SIGILO_DEFAULT = 'estrela';
+export function novoSigiloSeed(): number {
+  return (Math.floor(Math.random() * 0xFFFFFFFF)) | 0;
+}
 
 export const PESOS_DEFAULT: PesosImperio = {
   agressao: 1.0,
@@ -69,7 +71,7 @@ export function clampPeso(v: number): number {
 export function imperioJogadorDefault(): ImperioJogador {
   const imperio: ImperioJogador = {
     nome: 'Meu Império',
-    logo: { sigilo: SIGILO_DEFAULT },
+    logo: { seed: novoSigiloSeed() },
     pesos: { ...PESOS_DEFAULT },
     objetivo: 'livre',
     bonus: {},

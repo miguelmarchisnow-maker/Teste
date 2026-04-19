@@ -136,7 +136,7 @@ export async function reconstruirMundo(
     tipoJogador: dto.tipoJogador,
     imperioJogador: dto.imperioJogador ? {
       nome: dto.imperioJogador.nome,
-      logo: { sigilo: dto.imperioJogador.logo.sigilo },
+      logo: { seed: dto.imperioJogador.logo.seed },
       pesos: { ...dto.imperioJogador.pesos },
       objetivo: dto.imperioJogador.objetivo,
       lore: dto.imperioJogador.lore as import('../lore/imperio-lore').ImperioLore | undefined,

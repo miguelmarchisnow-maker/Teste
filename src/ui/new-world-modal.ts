@@ -15,7 +15,7 @@ import {
   gerarLoreDoJogador,
   COR_JOGADOR_DEFAULT,
 } from '../world/imperio-jogador';
-import { SIGILOS, renderSigilo } from './empire-builder/sigilos';
+import { gerarSigilo, seedVariacoes, novaSeed } from './empire-builder/sigilos';
 import type { ImperioLore } from '../world/lore/imperio-lore';
 
 interface NovoMundoResultado {
@@ -50,6 +50,8 @@ interface WizardState {
   dificuldade: Dificuldade;
   // Steps 2-5
   imperio: ImperioJogador;
+  // Step 2 — base seed for the sigil gallery (seed, seed+1, ..., seed+7)
+  sigiloGalleryBase: number;
   // Step 5
   loreSeed: number;
   loreCache: ImperioLore | null;
@@ -566,32 +568,63 @@ function mountStepImperio(body: HTMLDivElement, state: WizardState, onChange: ()
   });
   body.appendChild(input);
 
+  // Logo section: gallery of seed variations + regenerate button
+  const labelRow = document.createElement('div');
+  labelRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-top: calc(var(--hud-unit) * 0.3);';
   const labelLogo = document.createElement('div');
   labelLogo.className = 'nwm-label';
-  labelLogo.style.marginTop = 'calc(var(--hud-unit) * 0.3)';
-  labelLogo.textContent = 'Sigilo';
-  body.appendChild(labelLogo);
+  labelLogo.style.margin = '0';
+  labelLogo.textContent = 'Sigilo (procedural)';
+  const regen = document.createElement('button');
+  regen.type = 'button';
+  regen.className = 'nwm-btn ghost inline-sm';
+  regen.textContent = 'Regerar';
+  labelRow.append(labelLogo, regen);
+  body.appendChild(labelRow);
 
   const grid = document.createElement('div');
   grid.className = 'nwm-sigil-grid';
-  for (const s of SIGILOS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `nwm-sigil${state.imperio.logo.sigilo === s.id ? ' selected' : ''}`;
-    btn.title = s.label;
-    btn.appendChild(s.render());
-    btn.addEventListener('click', () => {
-      state.imperio.logo.sigilo = s.id;
-      for (const b of Array.from(grid.children)) {
-        b.classList.remove('selected');
-      }
-      btn.classList.add('selected');
-      refreshEmpirePreview(preview, state);
-      onChange();
-    });
-    grid.appendChild(btn);
-  }
   body.appendChild(grid);
+
+  // Base seed for the 8 gallery slots. Stored on the state so Back/Next
+  // preserves the browsed set; regenerate rolls a new base.
+  if (state.sigiloGalleryBase === 0) state.sigiloGalleryBase = novaSeed();
+
+  function refreshGallery(): void {
+    grid.replaceChildren();
+    const seeds = seedVariacoes(state.sigiloGalleryBase, 8);
+    for (const seed of seeds) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      const selected = state.imperio.logo.seed === seed;
+      btn.className = `nwm-sigil${selected ? ' selected' : ''}`;
+      btn.appendChild(gerarSigilo(seed));
+      btn.addEventListener('click', () => {
+        state.imperio.logo.seed = seed;
+        refreshGallery();
+        refreshEmpirePreview(preview, state);
+        onChange();
+      });
+      grid.appendChild(btn);
+    }
+  }
+
+  // If the current seed isn't in the first variation page, start the
+  // gallery there so the selected item is visible.
+  const inCurrentPage = seedVariacoes(state.sigiloGalleryBase, 8).includes(state.imperio.logo.seed);
+  if (!inCurrentPage) state.sigiloGalleryBase = state.imperio.logo.seed;
+
+  regen.addEventListener('click', () => {
+    state.sigiloGalleryBase = novaSeed();
+    // Snap selection to the first of the new batch so the preview is
+    // never stuck on a seed that isn't on screen.
+    state.imperio.logo.seed = state.sigiloGalleryBase;
+    refreshGallery();
+    refreshEmpirePreview(preview, state);
+    onChange();
+  });
+
+  refreshGallery();
 
   setTimeout(() => input.focus(), 0);
 }
@@ -793,8 +826,10 @@ function buildEmpirePreview(state: WizardState): HTMLDivElement {
 
   const disc = document.createElement('div');
   disc.className = 'nwm-empire-disc';
-  disc.style.color = hexColor(COR_JOGADOR_DEFAULT);
-  disc.appendChild(renderSigilo(state.imperio.logo.sigilo));
+  // The procedural sigil embeds its own seed-derived colors, so we
+  // don't tint via disc.style.color — that would force a single hue
+  // and wash out the composition.
+  disc.appendChild(gerarSigilo(state.imperio.logo.seed));
   box.appendChild(disc);
 
   const text = document.createElement('div');
@@ -815,7 +850,7 @@ function buildEmpirePreview(state: WizardState): HTMLDivElement {
 function refreshEmpirePreview(el: HTMLDivElement, state: WizardState): void {
   const disc = el.querySelector<HTMLDivElement>('.nwm-empire-disc');
   if (disc) {
-    disc.replaceChildren(renderSigilo(state.imperio.logo.sigilo));
+    disc.replaceChildren(gerarSigilo(state.imperio.logo.seed));
   }
   const name = el.querySelector<HTMLDivElement>('.nwm-empire-preview-name');
   if (name) name.textContent = state.imperio.nome || 'Império sem nome';
@@ -823,9 +858,6 @@ function refreshEmpirePreview(el: HTMLDivElement, state: WizardState): void {
   if (sub) sub.textContent = `Mundo: ${state.nomeMundo || '—'} · Dif.: ${t(`dificuldade.${state.dificuldade}`)}`;
 }
 
-function hexColor(n: number): string {
-  return '#' + n.toString(16).padStart(6, '0');
-}
 
 // ─── Validation & step dispatch ─────────────────────────────────────
 
@@ -870,6 +902,7 @@ export function abrirNewWorldModal(opts: OpenOpts): void {
     nomeMundo: '',
     dificuldade: 'normal',
     imperio: imperioJogadorDefault(),
+    sigiloGalleryBase: 0,
     loreSeed: Math.floor(Math.random() * 2147483647),
     loreCache: null,
     erroMundo: '',

@@ -95,7 +95,7 @@ export function serializarMundo(
     tipoJogador: serializarTipoJogador(mundo.tipoJogador),
     imperioJogador: mundo.imperioJogador ? {
       nome: mundo.imperioJogador.nome,
-      logo: { sigilo: mundo.imperioJogador.logo.sigilo },
+      logo: { seed: mundo.imperioJogador.logo.seed },
       pesos: { ...mundo.imperioJogador.pesos },
       objetivo: mundo.imperioJogador.objetivo,
       lore: mundo.imperioJogador.lore ? JSON.parse(JSON.stringify(mundo.imperioJogador.lore)) : undefined,
