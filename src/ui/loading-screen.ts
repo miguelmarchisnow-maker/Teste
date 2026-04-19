@@ -37,14 +37,6 @@ function injectStyles(): void {
       transition: opacity 260ms ease-out, visibility 0s linear 260ms;
     }
 
-    /* Pause all descendant CSS animations when loading screen is
-       hidden. Sem isso as 140 estrelas + scan + bar continuam girando
-       pra sempre no document.getAnimations() (cada uma é trabalho
-       ongoing pro compositor) — profiling mostrou 142 animações
-       permanentes mesmo com o loading screen fora de vista. */
-    .loading-screen:not(.visible) * {
-      animation-play-state: paused !important;
-    }
 
     /* Twinkling starfield layer (populated by JS at load time) */
     .loading-stars {
@@ -245,9 +237,35 @@ export function criarLoadingScreen(): HTMLDivElement {
 
 export function mostrarCarregando(label?: string): void {
   if (!_container) criarLoadingScreen();
+  // Se o container existe mas foi esvaziado (esconderCarregando limpa
+  // os filhos pra zerar as 143 animações permanentes), recria o conteúdo.
+  if (_container && !_labelEl) {
+    recriarConteudoLoading(_container);
+  }
   if (_labelEl && label) _labelEl.textContent = label;
   _container?.classList.add('visible');
   _visibleSince = performance.now();
+}
+
+function recriarConteudoLoading(container: HTMLDivElement): void {
+  const stars = document.createElement('div');
+  stars.className = 'loading-stars';
+  createStars(stars, 140);
+  container.appendChild(stars);
+  const scan = document.createElement('div');
+  scan.className = 'loading-scan';
+  container.appendChild(scan);
+  const card = document.createElement('div');
+  card.className = 'loading-card';
+  const label = document.createElement('span');
+  label.className = 'loading-label';
+  label.textContent = t('loading.criando');
+  _labelEl = label;
+  card.appendChild(label);
+  const bar = document.createElement('div');
+  bar.className = 'loading-bar';
+  card.appendChild(bar);
+  container.appendChild(card);
 }
 
 /**
@@ -282,7 +300,23 @@ export function esconderCarregando(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(() => {
       _container?.classList.remove('visible');
-      setTimeout(() => resolve(), FADE_OUT_MS);
+      setTimeout(() => {
+        // Depois da animação de fade, REMOVE os elementos animados
+        // (140 stars + scan + bar). Pausar via CSS não bastava porque
+        // document.getAnimations() conta animações paused também — o
+        // compositor já estava parado, mas o painel de profiling do
+        // browser seguia listando as 143 anims como ativas.
+        // Removendo o conteúdo interno, reduzimos pra zero. O
+        // container fica no DOM (com classe .visible removida) pra
+        // reaparecer rapido se precisar; quem criar de novo recria os
+        // filhos.
+        const container = _container;
+        if (container) {
+          while (container.firstChild) container.removeChild(container.firstChild);
+          _labelEl = null;
+        }
+        resolve();
+      }, FADE_OUT_MS);
     }, wait);
   });
 }

@@ -323,22 +323,16 @@ async function bootstrap(): Promise<void> {
     const { detectarRendererSoftware } = await import('./core/benchmark');
     const sw = detectarRendererSoftware(app);
     if (sw.isSoftware) {
-      const currentGfx = getConfig().graphics;
-      // Software detected → apply 'mínimo' preset once. The preset
-      // itself carries every software-friendly value (low render
-      // scale, aggressive fog throttle, 1 starfield layer, 2 planet
-      // octaves etc) so no renderer-specific overrides needed here.
-      if (!(currentGfx as any)._softwareDetectedOnce) {
-        const { aplicarPreset } = await import('./core/graphics-preset');
-        aplicarPreset('minimo');
-        setConfigDuranteBoot({
-          graphics: { ...getConfig().graphics, _softwareDetectedOnce: true } as any,
-        });
-      }
+      // Aviso ao usuário MAS sem mexer nas configurações gráficas. A
+      // versão anterior forçava o preset 'minimo' ao detectar software
+      // renderer; em alguns Androids a detecção disparava a cada boot
+      // (dependendo do que o Chrome retornava em WEBGL_debug_renderer_info)
+      // e sobrescrevia as preferências do usuário. Agora só avisa —
+      // quem decide o preset é o player.
       window.setTimeout(() => {
-        toast(`Renderizando via ${sw.friendlyName} — GPU do navegador está desabilitada. Jogo ajustado pro preset mínimo. Ative aceleração por hardware pra performance normal.`, 'err');
+        toast(`Renderizando via ${sw.friendlyName} — GPU do navegador está desabilitada. Se o jogo estiver lento, experimente um preset menor em Configurações.`, 'err');
       }, 1500);
-      console.warn(`[renderer] software detected: ${sw.friendlyName} (${sw.kind})`);
+      console.warn(`[renderer] software detected: ${sw.friendlyName} (${sw.kind}) — not auto-applying any preset`);
     }
   } catch (err) {
     console.warn('[renderer] software detection failed:', err);
