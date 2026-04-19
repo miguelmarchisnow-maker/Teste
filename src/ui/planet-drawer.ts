@@ -195,26 +195,21 @@ function injectStyles(): void {
       flex-shrink: 0;
     }
 
-    /* "Ver detalhes" button — monochrome primary CTA, full-width
-       below the header. Uses layered whites so it has visual weight
-       without introducing hue: solid white border at 55% for the
-       outline, low-alpha white bg for body, plus a pseudo-element
-       that draws a bright 1px top hairline so the button reads as
-       "pressable / primary" in the dark UI.
-
-       Hover state: full-white border, brighter bg, icon arrow slides
-       slightly right — tactile without flashing colour. */
+    /* "Ver detalhes" button — clean monochrome primary. Sits just
+       below the header border with a bit of breathing room so the
+       two lines (header bottom + button top-border) don't visually
+       stack into a weird double divider. Letter-spacing + chevron
+       slide carry the hover feedback. */
     .planeta-drawer-details-btn {
       appearance: none;
-      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: calc(var(--hud-unit) * 0.45);
-      margin: calc(var(--hud-unit) * 0.1) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.5);
+      gap: calc(var(--hud-unit) * 0.5);
+      margin: calc(var(--hud-unit) * 0.55) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.4);
       padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.95);
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.5);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.35);
       color: var(--hud-text);
       font-family: var(--hud-font);
       font-weight: 600;
@@ -223,41 +218,29 @@ function injectStyles(): void {
       text-transform: uppercase;
       cursor: pointer;
       border-radius: calc(var(--hud-radius) * 0.5);
-      overflow: hidden;
       transition:
         background 140ms ease,
         border-color 140ms ease,
         transform 120ms ease,
         letter-spacing 140ms ease;
     }
-    .planeta-drawer-details-btn::before {
-      /* Bright hairline across the top edge — reads as a HUD-style
-         primary affordance without using color. */
-      content: '';
-      position: absolute;
-      top: 0; left: 10%; right: 10%;
-      height: 1px;
-      background: rgba(255, 255, 255, 0.6);
-      pointer-events: none;
-      transition: left 180ms ease, right 180ms ease, opacity 180ms ease;
-    }
     .planeta-drawer-details-btn:hover {
-      background: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.12);
       border-color: #fff;
       letter-spacing: 0.18em;
     }
-    .planeta-drawer-details-btn:hover::before {
-      left: 0; right: 0;
-      opacity: 1;
-    }
     .planeta-drawer-details-btn:active { transform: translateY(1px); }
     .planeta-drawer-details-btn svg {
-      width: calc(var(--hud-unit) * 0.75);
-      height: calc(var(--hud-unit) * 0.75);
+      width: calc(var(--hud-unit) * 0.8);
+      height: calc(var(--hud-unit) * 0.8);
       transition: transform 180ms ease;
       flex-shrink: 0;
+      opacity: 0.7;
     }
-    .planeta-drawer-details-btn:hover svg { transform: translateX(3px); }
+    .planeta-drawer-details-btn:hover svg {
+      transform: translateX(3px);
+      opacity: 1;
+    }
 
     .planeta-drawer-body {
       padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.7);
@@ -355,7 +338,7 @@ function injectStyles(): void {
     }
     .planeta-progress-bar-fill {
       height: 100%;
-      background: #8ec6ff;
+      background: rgba(255, 255, 255, 0.75);
       transition: width 180ms ease;
     }
 
