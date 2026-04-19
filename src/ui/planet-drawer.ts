@@ -23,6 +23,26 @@ import { oreIcon, alloyIcon, fuelIcon } from './resource-bar';
 import { renderPlanetaParaCanvas, liberarPortraitPlaneta } from '../world/planeta-procedural';
 import { setCameraFollow } from '../core/player';
 import { abrirPlanetDetailsModal } from './planet-details-modal';
+import { parseAcaoNave } from '../world/naves';
+
+const LABEL_NAVE_DRAWER: Record<string, string> = {
+  colonizadora: 'Colonizadora',
+  cargueira: 'Cargueira',
+  batedora: 'Batedora',
+  torreta: 'Torreta',
+  fragata: 'Fragata',
+};
+
+function rotuloAcaoFilaDrawer(acao: string): string {
+  const parsed = parseAcaoNave(acao);
+  if (parsed) {
+    const nome = LABEL_NAVE_DRAWER[parsed.tipo] ?? parsed.tipo;
+    return parsed.tipo === 'colonizadora' ? nome : `${nome} T${parsed.tier}`;
+  }
+  if (acao === 'fabrica') return 'Fábrica';
+  if (acao === 'infraestrutura') return 'Infraestrutura';
+  return acao;
+}
 
 let _modal: HTMLDivElement | null = null;
 let _bodyEl: HTMLDivElement | null = null;
@@ -39,25 +59,38 @@ let _portraitCanvas: HTMLCanvasElement | null = null;
 let _lastPortraitRefreshMs = 0;
 
 function injectStyles(): void {
-  if (_styleInjected) return;
+  // HMR defence: remove any previous injection before re-adding so
+  // Vite hot reloads pick up CSS changes immediately instead of
+  // stacking stale rules on top that may win by source order.
+  if (_styleInjected) {
+    const old = document.head.querySelector('style[data-src="planet-drawer"]');
+    if (old) old.remove();
+  }
   _styleInjected = true;
   const style = document.createElement('style');
+  style.setAttribute('data-src', 'planet-drawer');
   style.textContent = `
     /* Side drawer — coexists with an interactive world, no backdrop.
        The entry/exit animation uses visibility + opacity + transform;
        display stays flex throughout so the CSS transition fires. */
     .planeta-drawer {
-      /* Compact side panel — anchored to the right edge, vertically
-         centered on the viewport. max-height prevents it from
-         overlapping the bottom build-panel on short screens. */
+      /* Compact side panel anchored to the right edge, vertically
+         centered via auto margins. NOT via translateY(-50%) — that
+         percentage resolves against the element's own height, which
+         is 0 on the first frame of the mount-time animation (before
+         children are laid out), so Y evaluated to 0 and the drawer
+         slid in from the bottom of the viewport. Auto margins on
+         top/bottom center the element against the viewport regardless
+         of its own height, so the animation only has to move X. */
       position: fixed;
-      top: 50%;
+      top: 0;
+      bottom: 0;
       left: auto;
       right: var(--hud-margin);
-      bottom: auto;
       width: clamp(280px, 24vw, 360px);
+      height: fit-content;
       max-height: calc(100vh - var(--hud-unit) * 16);
-      margin: 0;
+      margin: auto 0;
       box-sizing: border-box;
       background: var(--hud-bg);
       border: 1px solid var(--hud-border);
@@ -70,26 +103,41 @@ function injectStyles(): void {
       flex-direction: column;
       overflow: hidden;
 
-      /* Entry/exit state — fully off the right edge, kept vertically
-         centered with translateY(-50%). */
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-      transform: translate(calc(100% + var(--hud-margin) * 2), -50%);
-      transition:
-        opacity 220ms ease-out,
-        transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 320ms;
-    }
-    .planeta-drawer.visible {
       opacity: 1;
-      visibility: visible;
       pointer-events: auto;
-      transform: translate(0, -50%);
+      /* Mount: compound animation gives the drawer a tactile feel —
+         fade in fast (200ms) so content reads immediately, slide in
+         slower (340ms) with a tiny overshoot so it settles with
+         weight. Transform uses a cubic-bezier that ends slightly
+         past its target and eases back. */
+      animation:
+        pd-fade-in 200ms ease-out both,
+        pd-slide-in 340ms cubic-bezier(0.16, 0.84, 0.24, 1.03) both;
+      /* Exit uses transition instead of another animation so it
+         starts deterministically from the current rest state and
+         doesn't race against fill-mode of the mount animation. */
       transition:
-        opacity 220ms ease-out,
-        transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
-        visibility 0s linear 0s;
+        opacity 180ms ease-in,
+        transform 260ms cubic-bezier(0.5, 0, 0.75, 0);
+      will-change: transform, opacity;
+    }
+    @keyframes pd-slide-in {
+      from { transform: translateX(calc(100% + var(--hud-margin) * 2)); }
+      60%  { transform: translateX(-6px); }
+      to   { transform: translateX(0); }
+    }
+    @keyframes pd-fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* Exit: kill any running mount animation, let the transition
+       handle the slide-out to offscreen-right + fade. */
+    .planeta-drawer.closing {
+      animation: none;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(calc(100% + var(--hud-margin) * 2));
     }
 
     .planeta-drawer-head {
@@ -374,6 +422,65 @@ function injectStyles(): void {
        applied grid properties to a flex container — dead rules. If
        small-viewport adjustments are needed later, tune .planeta-drawer
        width directly instead of toggling a non-existent grid. */
+
+    /* ─ Fila (production queue) ─ */
+    .drawer-fila-list {
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--hud-unit) * 0.3);
+    }
+    .drawer-fila-item {
+      display: grid;
+      grid-template-columns: calc(var(--hud-unit) * 1.1) 1fr auto;
+      align-items: center;
+      gap: calc(var(--hud-unit) * 0.5);
+      padding: calc(var(--hud-unit) * 0.35) calc(var(--hud-unit) * 0.5);
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.55);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: calc(var(--hud-unit) * 0.78);
+    }
+    .drawer-fila-item.is-active {
+      border-color: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .drawer-fila-idx {
+      color: var(--hud-text-dim);
+      font-size: calc(var(--hud-unit) * 0.7);
+      letter-spacing: 0.08em;
+      text-align: right;
+    }
+    .drawer-fila-item.is-active .drawer-fila-idx { color: var(--hud-text); }
+    .drawer-fila-pct {
+      color: var(--hud-text-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: calc(var(--hud-unit) * 0.72);
+    }
+    .drawer-fila-item.is-active .drawer-fila-pct { color: var(--hud-text); }
+    .drawer-fila-bar {
+      grid-column: 1 / -1;
+      height: calc(var(--hud-unit) * 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: calc(var(--hud-unit) * 0.25);
+    }
+    .drawer-fila-bar-fill {
+      height: 100%;
+      background: rgba(255, 255, 255, 0.65);
+      border-radius: inherit;
+      transition: width 200ms linear;
+    }
+    .drawer-fila-footer {
+      display: flex;
+      justify-content: space-between;
+      margin-top: calc(var(--hud-unit) * 0.4);
+      font-size: calc(var(--hud-unit) * 0.7);
+      color: var(--hud-text-dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .drawer-fila-footer .on { color: var(--hud-text); }
   `;
   document.head.appendChild(style);
 }
@@ -459,6 +566,84 @@ function cardInfraestrutura(p: Planeta): HTMLDivElement {
     row.append(l, v);
     card.appendChild(row);
   }
+  return card;
+}
+
+function cardFila(p: Planeta): HTMLDivElement | null {
+  const d = p.dados;
+  const fila = d.filaProducao;
+  // Don't add noise to the drawer when nothing is queued and the
+  // player doesn't have the repeat flag set — no useful info to show.
+  if (fila.length === 0 && !d.repetirFilaProducao) return null;
+
+  const card = document.createElement('div');
+  card.className = 'planeta-card';
+  const t = document.createElement('h3');
+  t.className = 'planeta-card-title';
+  t.textContent = 'Fila de Produção';
+  card.appendChild(t);
+
+  if (fila.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'planeta-empty';
+    empty.textContent = 'Fila vazia';
+    card.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'drawer-fila-list';
+    fila.slice(0, 5).forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'drawer-fila-item';
+      const isHeadActive = idx === 0 && (d.construcaoAtual !== null || d.producaoNave !== null);
+      if (isHeadActive) row.classList.add('is-active');
+
+      const idxEl = document.createElement('div');
+      idxEl.className = 'drawer-fila-idx';
+      idxEl.textContent = isHeadActive ? '>>' : `${idx + 1}.`;
+
+      const nameEl = document.createElement('div');
+      nameEl.textContent = rotuloAcaoFilaDrawer(item.acao);
+
+      const pctEl = document.createElement('div');
+      pctEl.className = 'drawer-fila-pct';
+
+      let pct: number | null = null;
+      if (isHeadActive) {
+        const job = d.construcaoAtual ?? d.producaoNave;
+        if (job && job.tempoTotalMs > 0) {
+          pct = Math.max(0, Math.min(100, Math.round(
+            (1 - job.tempoRestanteMs / job.tempoTotalMs) * 100,
+          )));
+        }
+      }
+      pctEl.textContent = pct !== null ? `${pct}%` : '—';
+
+      row.append(idxEl, nameEl, pctEl);
+
+      if (isHeadActive && pct !== null) {
+        const bar = document.createElement('div');
+        bar.className = 'drawer-fila-bar';
+        const fill = document.createElement('div');
+        fill.className = 'drawer-fila-bar-fill';
+        fill.style.width = `${pct}%`;
+        bar.appendChild(fill);
+        row.appendChild(bar);
+      }
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'drawer-fila-footer';
+  const slots = document.createElement('span');
+  slots.textContent = `Slots ${fila.length}/5`;
+  const loop = document.createElement('span');
+  loop.textContent = `Loop: ${d.repetirFilaProducao ? 'ON' : 'OFF'}`;
+  if (d.repetirFilaProducao) loop.classList.add('on');
+  footer.append(slots, loop);
+  card.appendChild(footer);
+
   return card;
 }
 
@@ -649,19 +834,29 @@ function rebuildBody(p: Planeta, _mundo: Mundo): void {
   // "Ver arquivo planetário" button in the footer.
   _bodyEl.appendChild(cardRecursos(p));
   _bodyEl.appendChild(cardInfraestrutura(p));
+  if (p.dados.dono === 'jogador') {
+    const filaCard = cardFila(p);
+    if (filaCard) _bodyEl.appendChild(filaCard);
+  }
 }
 
 // ─── Public API ─────────────────────────────────────────────────────
 
-function ensureModal(): void {
-  if (_modal) return;
+/**
+ * Create a fresh drawer DOM element.
+ *
+ * Fresh-on-every-open is deliberate. Reusing a long-lived _modal led
+ * to CSS @keyframes only firing on the very first mount ever, so
+ * second and subsequent opens showed the drawer instantly without
+ * animation (plus a handful of related bugs around detached refs
+ * and state leaking between opens). Always creating anew trivially
+ * guarantees the mount-time animation runs every single open.
+ */
+function createModalElement(): HTMLDivElement {
   injectStyles();
   const modal = document.createElement('div');
   modal.className = 'planeta-drawer';
   modal.setAttribute('data-ui', 'true');
-  // ARIA wiring mirrors mobile-planet-drawer so screen readers
-  // announce the drawer's purpose on open. aria-labelledby points
-  // to the h2 we render inside buildHeader (id="pd-title").
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-labelledby', 'pd-title');
@@ -669,83 +864,78 @@ function ensureModal(): void {
     e.stopPropagation();
     marcarInteracaoUi();
   });
-  _modal = modal;
-  document.body.appendChild(modal);
+  return modal;
+}
 
+/** Attach the global Escape-closes-drawer handler once per module
+ *  lifetime — outlives individual modal elements. */
+function ensureKeydownHandler(): void {
+  if (_keydownHandler) return;
   _keydownHandler = (e: KeyboardEvent) => {
-    if (_closeResolver && e.key === 'Escape') { e.preventDefault(); close(); }
+    if (_closeResolver && e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
   };
   window.addEventListener('keydown', _keydownHandler);
 }
 
 export function abrirPlanetaDrawer(planeta: Planeta, mundo: Mundo): Promise<void> {
-  ensureModal();
-  if (!_modal) return Promise.resolve();
+  ensureKeydownHandler();
+
   // Same planet, already open — no-op.
   if (_closeResolver && _currentPlaneta === planeta) return Promise.resolve();
 
-  // Switching planets while a previous open Promise is still live —
-  // resolve the old one so its awaiter learns the modal moved on,
-  // then create a fresh Promise for the new planet.
-  if (_closeResolver && _currentPlaneta !== planeta) {
+  // Planet-switch while drawer is open: keep the current element, just
+  // re-render its body. Animating out + in between every selection
+  // would feel jumpy. User explicitly complained earlier about
+  // 're-animation on content change'.
+  if (_closeResolver && _modal && _currentPlaneta !== planeta) {
     const prev = _closeResolver;
     _closeResolver = null;
     prev();
+    _currentPlaneta = planeta;
+    _currentMundo = mundo;
+    _portraitCanvas = null;
+    _lastRebuildMs = performance.now();
+    removeAllChildren(_modal);
+    _modal.appendChild(buildHeader(planeta));
+    _modal.appendChild(buildDetailsButton(planeta, mundo));
+    const body = document.createElement('div');
+    body.className = 'planeta-drawer-body';
+    _bodyEl = body;
+    _modal.appendChild(body);
+    rebuildBody(planeta, mundo);
+    return new Promise<void>((resolve) => { _closeResolver = resolve; });
   }
 
+  // Cold open or re-open after previous close: create a BRAND NEW
+  // element every time. CSS @keyframes pd-slide-in plays automatically
+  // on mount, guaranteeing the slide-in animation every open.
+  // If a stale _modal exists (previous close still animating out),
+  // yank it immediately so there's no zombie layer.
+  if (_modal?.parentElement) _modal.parentElement.removeChild(_modal);
+
+  const modal = createModalElement();
+  _modal = modal;
   _currentPlaneta = planeta;
   _currentMundo = mundo;
   _lastRebuildMs = performance.now();
-
-  // Clear the stale portrait-canvas ref BEFORE detaching children.
-  // Without this, a planet-switch leaves _portraitCanvas pointing at
-  // a now-detached node; the next refreshPortrait compares parents
-  // against it and takes the wrong branch. close() already nulls it,
-  // but close() isn't called during a planet switch.
   _portraitCanvas = null;
-  removeAllChildren(_modal);
-  _modal.appendChild(buildHeader(planeta));
-  _modal.appendChild(buildDetailsButton(planeta, mundo));
+
+  modal.appendChild(buildHeader(planeta));
+  modal.appendChild(buildDetailsButton(planeta, mundo));
   const body = document.createElement('div');
   body.className = 'planeta-drawer-body';
   _bodyEl = body;
-  _modal.appendChild(body);
+  modal.appendChild(body);
   rebuildBody(planeta, mundo);
   const actions = buildActions(planeta, mundo);
-  if (actions) _modal.appendChild(actions);
+  if (actions) modal.appendChild(actions);
 
-  // Slide-in animation was coming FROM BELOW on the first open
-  // instead of from the right edge. Root cause: the drawer's hidden
-  // CSS state is `visibility: hidden + opacity: 0 + transform:
-  // translateX(100%) translateY(-50%)`. Browsers skip transform/
-  // opacity transitions when the element simultaneously flips from
-  // visibility hidden → visible at t=0, so the element snapped
-  // to its final X but animated Y from 0 to -50% (= "from below").
-  //
-  // Fix: force `visibility: visible` via INLINE STYLE one rAF before
-  // adding the `.visible` class. That lets the browser paint the
-  // element at its hidden transform + opacity while already visible,
-  // so the subsequent class swap runs the real transition on both
-  // axes from the correct starting pose.
-  const modal = _modal;
-  const wasVisible = modal.classList.contains('visible');
-  if (!wasVisible) {
-    modal.style.visibility = 'visible';
-    // Force a style recalc so the visibility change lands before the
-    // class swap — otherwise Chromium coalesces both mutations into a
-    // single frame and the old bug comes back.
-    void modal.offsetWidth;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // Clear the inline override so the .visible class drives the
-        // final visibility (still `visible`, but through the CSS rule).
-        modal.style.visibility = '';
-        modal.classList.add('visible');
-      });
-    });
-  } else {
-    modal.classList.add('visible');
-  }
+  // Append LAST so children exist before the mount-time animation
+  // runs — nothing flashes as the drawer slides in.
+  document.body.appendChild(modal);
 
   return new Promise<void>((resolve) => { _closeResolver = resolve; });
 }
@@ -777,17 +967,24 @@ export function isPlanetaDrawerAberto(): boolean {
 }
 
 function close(): void {
-  _modal?.classList.remove('visible');
-  _currentPlaneta = null;
+  const modal = _modal;
+  _modal = null;             // detach state ASAP so a follow-up open
+  _bodyEl = null;             // creates a brand new element without
+  _currentPlaneta = null;     // colliding with the closing one.
   _currentMundo = null;
   _portraitCanvas = null;
   _lastPortraitRefreshMs = 0;
-  // Release the Pixi resources cached for the portrait shader render.
-  // Keeping them around while the drawer is closed is pure dead weight.
   liberarPortraitPlaneta();
   const r = _closeResolver;
   _closeResolver = null;
   if (r) r();
+
+  if (!modal) return;
+  // Slide-out animation runs on .closing; remove element after.
+  modal.classList.add('closing');
+  setTimeout(() => {
+    if (modal.parentElement) modal.parentElement.removeChild(modal);
+  }, 300);
 }
 
 /** Public close — no-op if drawer isn't open. Used by click-outside

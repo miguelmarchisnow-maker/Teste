@@ -76,6 +76,10 @@ export interface Planeta extends Container {
   _anel: Graphics;
   _visivelAoJogador: boolean;
   _descobertoAoJogador: boolean;
+  /** Per-planet visual RNG seed. Drives the procedural palette + shader
+   *  uniforms so the same planet re-renders identically after save/load.
+   *  Persisted in PlanetaDTO.visualSeed. */
+  _visualSeed?: number;
 }
 
 // === Sol ===
@@ -87,6 +91,8 @@ export interface Sol extends Container {
   _visivelAoJogador: boolean;
   _descobertoAoJogador: boolean;
   _planetShader?: any;
+  /** Per-sol visual RNG seed. Same role as Planeta._visualSeed. */
+  _visualSeed?: number;
 }
 
 // === Nave ===

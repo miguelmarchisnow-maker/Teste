@@ -18,11 +18,12 @@ import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCamera
 import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatcher';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
 import { criarMobileMenuBtn } from './ui/mobile-menu-btn';
-import { criarEmpireBadge, destruirEmpireBadge } from './ui/empire-badge';
+import { criarEmpireBadge, atualizarEmpireBadge, setEmpireBadgeOnClick, destruirEmpireBadge } from './ui/empire-badge';
+import { abrirEmpireModal, atualizarEmpireModal, destruirEmpireModal } from './ui/empire-modal';
 import { criarChatLog, destruirChatLog } from './ui/chat-log';
 import { criarResourceBar, destruirResourceBar, atualizarResourceBar } from './ui/resource-bar';
 import { criarCreditsBar, destruirCreditsBar } from './ui/credits-bar';
-import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMinimapZoomOut, destruirMinimap } from './ui/minimap';
+import { criarMinimap, atualizarMinimap, onMinimapClick, onMinimapZoomIn, onMinimapZoomOut, destruirMinimap, fecharMinimapFullscreenSeAtivo } from './ui/minimap';
 import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats, destruirDebugMenu, setGameSpeed, fecharDebugOverlays, toggleDebugFast, toggleDebugFull } from './ui/debug-menu';
 import { installRootVariables } from './ui/hud-layout';
 import { instalarUiMode } from './core/ui-mode';
@@ -645,6 +646,10 @@ async function bootstrap(): Promise<void> {
 
   onAction('cancel_or_menu', () => {
     if (cancelarComandoNaveSeAtivo()) return;
+    // Collapse fullscreen minimap before anything else — it's a
+    // dedicated overlay state, closing it on ESC matches every
+    // other modal in the game.
+    if (fecharMinimapFullscreenSeAtivo()) return;
     if (fecharDebugOverlays()) return;
     if (_gameStarted && !isPauseMenuOpen()) abrirPauseMenu();
   });
@@ -816,6 +821,8 @@ function startTicker(): void {
       atualizarPlanetDetailsModal();
       atualizarStarDrawer();
       atualizarResourceBar(mundo);
+      atualizarEmpireBadge(mundo);
+      atualizarEmpireModal();
       atualizarBuildPanel(mundo);
       if (isMobileRuntime()) {
         atualizarMobileShipPanel(mundo);
@@ -866,6 +873,9 @@ async function entrarNoJogo(mundo: Mundo, nome: string, criadoEm: number, tempoJ
   if (!_hudInstalled) {
     _hudInstalled = true;
     criarEmpireBadge('Valorian Empire', 24);
+    setEmpireBadgeOnClick(() => {
+      if (_mundo) void abrirEmpireModal(_mundo);
+    });
     if (CREDITS_BAR_HABILITADO) criarCreditsBar(43892, GLOBE_HABILITADO);
     criarResourceBar();
     // Temporarily disabled — sidebar and chat log weren't earning
@@ -1073,14 +1083,26 @@ async function carregarMundo(nome: string): Promise<void> {
         fn(`[${d.categoria}] ${d.detalhe}`);
       }
       console.groupEnd();
-      const hasWarnOrErro = diag.some((d) => d.severidade === 'warn' || d.severidade === 'erro');
-      if (hasWarnOrErro) {
-        // Non-trivial drift — show modal so the player can inspect what
-        // was auto-fixed before jumping into the game. Info-only runs
-        // get a toast (quieter, auto-dismisses).
+      const hasErro = diag.some((d) => d.severidade === 'erro');
+      const hasWarn = diag.some((d) => d.severidade === 'warn');
+      if (hasErro) {
+        // Severidade 'erro' means the reconciler detected drift too
+        // severe to auto-heal safely (orphan refs, impossible tiers,
+        // etc.). Entering anyway produces the "tela toda bugada" the
+        // user complained about. Abort cleanly instead — surface the
+        // diagnostics through the corrupt-save modal path so the
+        // player can export/delete the file.
+        throw new Error(
+          `Reconciliação detectou ${diag.filter((d) => d.severidade === 'erro').length} erro(s) crítico(s): ` +
+          diag.filter((d) => d.severidade === 'erro').map((d) => `[${d.categoria}] ${d.detalhe}`).join('; '),
+        );
+      }
+      if (hasWarn) {
+        // Non-trivial but healable drift — show modal so the player
+        // can inspect what was auto-fixed before jumping into the game.
         void abrirSaveModal({
           title: 'SAVE RECONCILIADO',
-          severity: diag.some((d) => d.severidade === 'erro') ? 'erro' : 'warn',
+          severity: 'warn',
           summary: `Ajustes automáticos foram aplicados ao carregar "${nome}".`,
           items: diag.map((d) => ({ text: `[${d.categoria}] ${d.detalhe}`, tone: d.severidade })),
           actions: [{ label: 'Entendi', value: 'ok', variant: 'primary' }],
@@ -1196,6 +1218,7 @@ async function voltarAoMenu(): Promise<void> {
   if (_hudInstalled) {
     destruirSidebar();
     destruirEmpireBadge();
+    destruirEmpireModal();
     destruirCreditsBar();
     destruirResourceBar();
     destruirChatLog();

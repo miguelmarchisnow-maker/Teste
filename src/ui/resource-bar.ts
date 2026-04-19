@@ -80,12 +80,17 @@ function populationIcon(): SVGSVGElement {
 
 // Live HUD slots mapped to actual game state. The placeholder values
 // here are overwritten on the first tick of atualizarResourceBar().
+// The last two get static sub-labels (PLANETAS/NAVES) instead of a
+// +rate line — atualizarRecurso leaves the `rate` field alone when
+// called without a rate arg, so the label sticks. Matches the visual
+// rhythm of the currency slots (big value + small dim subtitle) so
+// the empire counts don't read as orphaned.
 const RESOURCES: Resource[] = [
   { id: 'comum',       value: '0', rate: '+0/s', icon: oreIcon },
   { id: 'raro',        value: '0', rate: '+0/s', icon: alloyIcon },
   { id: 'combustivel', value: '0', rate: '+0/s', icon: fuelIcon },
-  { id: 'planetas',    value: '0', icon: energyIcon },
-  { id: 'naves',       value: '0', icon: populationIcon },
+  { id: 'planetas',    value: '0', rate: 'PLANETAS', icon: energyIcon },
+  { id: 'naves',       value: '0', rate: 'NAVES', icon: populationIcon },
 ];
 
 let _container: HTMLDivElement | null = null;

@@ -220,28 +220,29 @@ export function recalc(): void {
   const gap = resolveCssPx('var(--hud-gap)') || 12;
   const margin = resolveCssPx('var(--hud-margin)') || 18;
 
-  // Center the resource bar horizontally in the space between the badge
-  // (or left margin) and the credits bar (or right margin). Clamp to both
-  // bounds so it never overlaps either side.
+  // Pin the resource bar to the geometric center of the viewport so it
+  // reads as a dead-center panel instead of "centered in the free space
+  // between side widgets" — the old behaviour shifted the bar rightward
+  // whenever the empire badge was present, which made the top-row look
+  // lopsided and the user flagged it ("posição das duas barrinhas de
+  // cima tão mal organizadas"). Width is capped so the bar still can't
+  // collide with either side panel.
   if (_resourceBarEl) {
     const badgeRect = _badgeEl?.getBoundingClientRect();
     const creditsRect = _creditsBarEl?.getBoundingClientRect();
 
-    const leftBound = badgeRect ? badgeRect.right + gap : margin;
-    const rightBound = creditsRect ? creditsRect.left - gap : vw - margin;
-    const available = rightBound - leftBound;
+    const leftLimit = badgeRect ? badgeRect.right + gap : margin;
+    const rightLimit = creditsRect ? creditsRect.left - gap : vw - margin;
+    const viewportCenter = vw / 2;
+    // How wide the bar can grow on each side of the viewport center
+    // before it would hit a side panel (or the viewport edge).
+    const halfWidthLeft = viewportCenter - leftLimit;
+    const halfWidthRight = rightLimit - viewportCenter;
+    const maxHalfWidth = Math.max(0, Math.min(halfWidthLeft, halfWidthRight));
 
-    // Allow bar to shrink to fit available width
-    _resourceBarEl.style.maxWidth = `${Math.max(0, available)}px`;
-
-    const barWidth = _resourceBarEl.getBoundingClientRect().width;
-    const centerX = leftBound + available / 2;
-    let leftOffset = centerX - barWidth / 2;
-    // Clamp to both sides
-    leftOffset = Math.max(leftBound, Math.min(leftOffset, rightBound - barWidth));
-
-    _resourceBarEl.style.left = `${leftOffset}px`;
-    _resourceBarEl.style.transform = 'none';
+    _resourceBarEl.style.maxWidth = `${maxHalfWidth * 2}px`;
+    _resourceBarEl.style.left = '50%';
+    _resourceBarEl.style.transform = 'translateX(-50%)';
     _resourceBarEl.style.top = `${margin}px`;
   }
 

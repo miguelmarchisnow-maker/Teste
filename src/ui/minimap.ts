@@ -435,6 +435,15 @@ function toggleFullscreen(): void {
   setFullscreen(!_isFullscreen);
 }
 
+/** Returns true if the minimap was fullscreen and has been collapsed.
+ *  Called from the Escape handler so pressing ESC collapses the full
+ *  minimap before any other overlay-closing step (pause menu, etc.). */
+export function fecharMinimapFullscreenSeAtivo(): boolean {
+  if (!_isFullscreen) return false;
+  setFullscreen(false);
+  return true;
+}
+
 export function destruirMinimap(): void {
   if (_resizeHandler) {
     window.removeEventListener('resize', _resizeHandler);

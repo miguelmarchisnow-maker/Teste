@@ -258,7 +258,14 @@ export function setLoadingFase(label: string): Promise<void> {
 /**
  * Hides the loader. If it hasn't been visible for at least MIN_VISIBLE_MS,
  * waits before hiding so the player actually perceives the transition.
+ *
+ * Also awaits the CSS opacity fade-out before resolving — callers that
+ * chain `mostrarModalSaveCorrompido` / `mostrarMainMenu` right after
+ * would otherwise have the loading screen still painting (still opacity>0
+ * during the 260ms transition) on top of their freshly-mounted UI,
+ * producing the "tela bugada" when a save fails to load.
  */
+const FADE_OUT_MS = 280; // slightly > the 260ms transition in CSS
 export function esconderCarregando(): Promise<void> {
   if (!_container) return Promise.resolve();
   const elapsed = performance.now() - _visibleSince;
@@ -266,7 +273,7 @@ export function esconderCarregando(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(() => {
       _container?.classList.remove('visible');
-      resolve();
+      setTimeout(() => resolve(), FADE_OUT_MS);
     }, wait);
   });
 }

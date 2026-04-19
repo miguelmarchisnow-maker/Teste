@@ -361,6 +361,15 @@ describe('reconstruirMundo — roundtrip', () => {
     dto1.seedMusical = 0;
     dto2.seedMusical = 0;
 
+    // visualSeed is backfilled on load for old saves that don't carry
+    // one (kept stable from that point on). The test mock DTOs omit it,
+    // so after a round-trip dto2 has concrete seeds while dto1 doesn't.
+    // Normalize both sides before the deep-equality compare.
+    for (const s of dto1.sois) s.visualSeed = 0;
+    for (const s of dto2.sois) s.visualSeed = 0;
+    for (const p of dto1.planetas) p.visualSeed = 0;
+    for (const p of dto2.planetas) p.visualSeed = 0;
+
     expect(dto2).toEqual(dto1);
   });
 

@@ -2,6 +2,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { Planeta, Mundo, FonteVisao, Camera } from '../types';
 import { nomeTipoPlaneta } from './planeta';
 import { criarPlanetaProceduralSprite } from './planeta-procedural';
+import { rngFromSeed } from './lore/seeded-rng';
 import { calcularBoundsViewport, type ViewportBounds } from './viewport-bounds';
 
 const _fogBoundsScratch: ViewportBounds = {
@@ -115,11 +116,20 @@ export function criarMemoriaVisualPlaneta(mundo: Mundo, planeta: Planeta): void 
   container.eventMode = 'none';
   container.alpha = 0;
 
+  // Derivamos o RNG do fantasma a partir do mesmo _visualSeed do
+  // planeta real — assim a silhueta da memória bate com o que o
+  // jogador viu. Fallback p/ Math.random se o seed ainda não foi
+  // setado (caminho raro em saves muito antigos).
+  const fantasmaRng = planeta._visualSeed != null
+    ? rngFromSeed(planeta._visualSeed)
+    : undefined;
   const fantasma = criarPlanetaProceduralSprite(
     0,
     0,
     planeta.dados.tamanho,
     planeta.dados.tipoPlaneta,
+    undefined,
+    fantasmaRng,
   );
   fantasma.alpha = ALPHA_FANTASMA;
   container.addChild(fantasma);

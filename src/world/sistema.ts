@@ -5,6 +5,7 @@ import { TIPO_PLANETA } from './planeta';
 import { criarPlanetaProceduralSprite, criarEstrelaProcedural } from './planeta-procedural';
 import { criarEstadoPesquisas } from './pesquisa';
 import { gerarNomePlaneta } from './nomes';
+import { rngFromSeed } from './lore/seeded-rng';
 
 function sortearTipoPlaneta(): string {
   const tipos = Object.values(TIPO_PLANETA);
@@ -28,9 +29,15 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
   const maiorPlaneta = Math.max(...tamanhosPlaneta);
   const raioSol = Math.max(110 + Math.random() * 60, maiorPlaneta * 1.5);
 
-  const solMesh = criarEstrelaProcedural(centroX, centroY, raioSol);
+  // Per-entity visual seed — drives palette + uSeed uniform so save/
+  // load preserves the exact shader output. Gerado uma única vez aqui
+  // e persistido em _visualSeed; na reconstrução, o save fornece o
+  // mesmo número de volta.
+  const solVisualSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
+  const solMesh = criarEstrelaProcedural(centroX, centroY, raioSol, rngFromSeed(solVisualSeed));
   const sol = solMesh as unknown as Sol;
   sol.id = `sol-${indiceSistema}`;
+  sol._visualSeed = solVisualSeed;
   sol._raio = raioSol;
   sol._cor = corSol;
   sol._tipoAlvo = 'sol';
@@ -65,14 +72,18 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
     });
     orbitasContainer.addChild(linhaOrbita);
 
+    const planetVisualSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
     const sprite = criarPlanetaProceduralSprite(
       centroX + Math.cos(anguloInicial) * raioOrbita,
       centroY + Math.sin(anguloInicial) * raioOrbita,
       tamanho,
       tipoPlaneta,
+      undefined,
+      rngFromSeed(planetVisualSeed),
     );
     const p = sprite as unknown as Planeta;
     p.id = `pla-${indiceSistema}-${i}`;
+    p._visualSeed = planetVisualSeed;
 
     p.dados = {
       dono: 'neutro',

@@ -547,42 +547,69 @@ function injectStyles(): void {
       color: var(--hud-text-dim);
     }
 
-    /* ─ Objetivo cards ─ */
+    /* ─ Objetivo cards — same overflow-safe rules as preset cards.
+       Title uses the variable-width hud font (NOT Press Start 2P)
+       so long labels like "Supremacia Científica" actually wrap
+       inside the narrow cards instead of bleeding across. */
     .nwm-objetivo-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(calc(var(--hud-unit) * 10), 1fr));
-      gap: calc(var(--hud-unit) * 0.45);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: calc(var(--hud-unit) * 0.5);
+      width: 100%;
+    }
+    @media (max-width: 560px) {
+      .nwm-objetivo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 380px) {
+      .nwm-objetivo-grid { grid-template-columns: 1fr; }
     }
     .nwm-objetivo {
+      box-sizing: border-box;
+      min-width: 0;
       text-align: left;
-      padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.7);
-      border: 1px solid var(--hud-line);
+      padding: calc(var(--hud-unit) * 0.65) calc(var(--hud-unit) * 0.7);
+      border: 1px solid var(--hud-border);
       border-radius: calc(var(--hud-radius) * 0.6);
-      background: rgba(0,0,0,0.25);
+      background: rgba(0, 0, 0, 0.35);
       color: var(--hud-text);
       cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: calc(var(--hud-unit) * 0.2);
-      transition: background 120ms ease, border-color 120ms ease;
+      gap: calc(var(--hud-unit) * 0.25);
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
       font-family: inherit;
+      overflow: hidden;
     }
-    .nwm-objetivo:hover { background: rgba(255,255,255,0.06); }
+    .nwm-objetivo:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .nwm-objetivo:active { transform: translateY(1px); }
     .nwm-objetivo.selected {
-      background: rgba(140, 224, 255, 0.12);
-      border-color: #8ce0ff;
+      background: rgba(255, 255, 255, 0.10);
+      border-color: #fff;
+      transform: translateY(-1px);
     }
     .nwm-objetivo-title {
-      font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 0.95);
-      letter-spacing: 0.08em;
+      font-family: var(--hud-font);
+      font-weight: 600;
+      font-size: calc(var(--hud-unit) * 0.82);
+      letter-spacing: 0.06em;
       text-transform: uppercase;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      max-width: 100%;
+      white-space: normal;
     }
     .nwm-objetivo-desc {
-      font-size: calc(var(--hud-unit) * 0.8);
+      font-size: calc(var(--hud-unit) * 0.72);
       color: var(--hud-text-dim);
-      line-height: 1.4;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      max-width: 100%;
     }
+    .nwm-objetivo.selected .nwm-objetivo-desc { color: var(--hud-text); }
 
     /* ─ Lore preview ─ */
     .nwm-lore {

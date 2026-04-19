@@ -4,6 +4,7 @@ import type { Mundo, Sol, Planeta, Sistema, Nave, FonteVisao } from '../../types
 import type { MundoDTO, SolDTO, PlanetaDTO, NaveDTO, AlvoDTO } from './dto';
 import { criarMundoVazio, aplicarZOrderMundo, type MundoVazio } from '../mundo';
 import { criarEstrelaProcedural, criarPlanetaProceduralSprite } from '../planeta-procedural';
+import { rngFromSeed } from '../lore/seeded-rng';
 import { criarMemoriaVisualPlaneta, restaurarMemoriaPlaneta } from '../nevoa';
 import { resetarNomesPlanetas } from '../nomes';
 import { instalarTrail } from '../engine-trails';
@@ -20,8 +21,8 @@ import { restaurarNomesUsados, resetNomesUsados } from '../proc-names';
 import { buildDistanceMatrix } from '../distance-matrix';
 
 export interface ReconstruirFactories {
-  criarSol: (x: number, y: number, raio: number) => Sol;
-  criarPlaneta: (x: number, y: number, tamanho: number, tipo: string) => Planeta;
+  criarSol: (x: number, y: number, raio: number, rng?: () => number) => Sol;
+  criarPlaneta: (x: number, y: number, tamanho: number, tipo: string, rng?: () => number) => Planeta;
   /**
    * When true, skip Pixi-dependent visual reconstruction (fog-of-war
    * memory visuals, stage mounting). Tests pass this to run without a
@@ -31,9 +32,9 @@ export interface ReconstruirFactories {
 }
 
 const defaultFactories: ReconstruirFactories = {
-  criarSol: (x, y, raio) => criarEstrelaProcedural(x, y, raio) as unknown as Sol,
-  criarPlaneta: (x, y, tamanho, tipo) =>
-    criarPlanetaProceduralSprite(x, y, tamanho, tipo) as unknown as Planeta,
+  criarSol: (x, y, raio, rng) => criarEstrelaProcedural(x, y, raio, rng) as unknown as Sol,
+  criarPlaneta: (x, y, tamanho, tipo, rng) =>
+    criarPlanetaProceduralSprite(x, y, tamanho, tipo, undefined, rng) as unknown as Planeta,
 };
 
 /** Async fase callback — same signature as criarMundo's onFase. */
@@ -228,13 +229,18 @@ function restaurarEstadoGlobalDoSave(dto: MundoDTO): void {
 }
 
 function reconstruirSol(dto: SolDTO, factories: ReconstruirFactories): Sol {
-  const sol = factories.criarSol(dto.x, dto.y, dto.raio);
+  // Old saves (pre-visualSeed) roll a fresh seed once here so the sun
+  // still renders; we also write it back onto the Sol so the next save
+  // captures it and future loads stay stable.
+  const visualSeed = dto.visualSeed ?? ((Math.random() * 0xFFFFFFFF) >>> 0);
+  const sol = factories.criarSol(dto.x, dto.y, dto.raio, rngFromSeed(visualSeed));
   sol.id = dto.id;
   sol._raio = dto.raio;
   sol._cor = dto.cor;
   sol._tipoAlvo = 'sol';
   sol._visivelAoJogador = dto.visivelAoJogador;
   sol._descobertoAoJogador = dto.descobertoAoJogador;
+  sol._visualSeed = visualSeed;
   sol.visible = dto.visivelAoJogador || dto.descobertoAoJogador;
   return sol;
 }
@@ -246,8 +252,12 @@ function reconstruirPlaneta(
 ): Planeta {
   const x = dto.orbita.centroX + Math.cos(dto.orbita.angulo) * dto.orbita.raio;
   const y = dto.orbita.centroY + Math.sin(dto.orbita.angulo) * dto.orbita.raio;
-  const planeta = factories.criarPlaneta(x, y, dto.dados.tamanho, dto.dados.tipoPlaneta);
+  const visualSeed = dto.visualSeed ?? ((Math.random() * 0xFFFFFFFF) >>> 0);
+  const planeta = factories.criarPlaneta(
+    x, y, dto.dados.tamanho, dto.dados.tipoPlaneta, rngFromSeed(visualSeed),
+  );
   planeta.id = dto.id;
+  planeta._visualSeed = visualSeed;
   planeta._tipoAlvo = 'planeta';
   planeta._orbita = { ...dto.orbita };
   planeta.dados = {

@@ -212,6 +212,7 @@ function serializarPlaneta(planeta: Planeta, agora: number): PlanetaDTO {
     visivelAoJogador: planeta._visivelAoJogador,
     descobertoAoJogador: planeta._descobertoAoJogador,
     memoria: serializarMemoria(planeta, agora),
+    visualSeed: planeta._visualSeed,
   };
 }
 
@@ -236,6 +237,7 @@ function serializarSol(sol: Sol): SolDTO {
     cor: sol._cor,
     visivelAoJogador: sol._visivelAoJogador,
     descobertoAoJogador: sol._descobertoAoJogador,
+    visualSeed: sol._visualSeed,
   };
 }
 

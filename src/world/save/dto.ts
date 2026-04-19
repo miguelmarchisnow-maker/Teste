@@ -109,6 +109,10 @@ export interface SolDTO {
   cor: number;
   visivelAoJogador: boolean;
   descobertoAoJogador: boolean;
+  /** Per-sol RNG seed for the procedural shader — persisted so load
+   *  regenerates the same visual. Optional for backward compat with
+   *  older saves (reconciler fills a fresh one when missing). */
+  visualSeed?: number;
 }
 
 export interface PlanetaDTO {
@@ -118,6 +122,9 @@ export interface PlanetaDTO {
   visivelAoJogador: boolean;
   descobertoAoJogador: boolean;
   memoria: MemoriaPlanetaDTO | null;
+  /** Per-planet RNG seed for the procedural shader — persisted so load
+   *  regenerates the same visual. Optional for backward compat. */
+  visualSeed?: number;
 }
 
 export interface MemoriaPlanetaDTO {

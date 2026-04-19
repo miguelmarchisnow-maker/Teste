@@ -5,7 +5,27 @@ import { aplicarProducaoCicloAoPlaneta, calcularCustoTier, calcularTempoConstruc
 import { criarNave, parseAcaoNave } from './naves';
 import { iniciarPesquisa } from './pesquisa';
 import { notifConstrucaoCompleta, notifNaveProducida } from '../ui/notificacao';
+import { toast } from '../ui/toast';
 import { somConstrucaoCompleta, somNaveProducida } from '../audio/som';
+
+const LABEL_NAVE_FILA: Record<string, string> = {
+  colonizadora: 'Colonizadora',
+  cargueira: 'Cargueira',
+  batedora: 'Batedora',
+  torreta: 'Torreta',
+  fragata: 'Fragata',
+};
+
+function rotuloAcao(acao: string): string {
+  const parsed = parseAcaoNave(acao);
+  if (parsed) {
+    const nome = LABEL_NAVE_FILA[parsed.tipo] ?? parsed.tipo;
+    return parsed.tipo === 'colonizadora' ? nome : `${nome} T${parsed.tier}`;
+  }
+  if (acao === 'fabrica') return 'Fábrica';
+  if (acao === 'infraestrutura') return 'Infraestrutura';
+  return acao;
+}
 
 // desenharConstrucoesPlaneta was removed — the orange/blue bars it
 // drew below each planet (one per factory / infra tier) were a world-
@@ -128,8 +148,12 @@ export function construirNoPlaneta(mundo: Mundo, planeta: Planeta, tipo: string)
   if (pesqMatch) {
     return iniciarPesquisa(planeta, pesqMatch[1], Number(pesqMatch[2]));
   }
-  if (totalItensProduzindo(planeta) >= 5) return false;
+  if (totalItensProduzindo(planeta) >= 5) {
+    toast('Fila cheia', 'err');
+    return false;
+  }
   planeta.dados.filaProducao.push({ acao: tipo });
+  toast(`Adicionado à fila: ${rotuloAcao(tipo)}`);
   tentarIniciarProximaAcaoFila(mundo, planeta);
   return true;
 }

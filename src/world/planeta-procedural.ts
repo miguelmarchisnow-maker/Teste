@@ -78,27 +78,33 @@ export interface PaletaPlaneta {
 
 type RGBA = [number, number, number, number];
 
+// All "random" helpers accept an rng source so planet visuals can be
+// deterministic when a seed is provided (needed for save/load: the
+// planet's palette + shader uniforms are restored from a per-entity
+// `visualSeed`, not re-rolled from Math.random each load).
+type Rng = () => number;
+
 // Subtle per-channel variation
-function shiftColor(c: RGBA, amount: number): RGBA {
+function shiftColor(c: RGBA, amount: number, rng: Rng): RGBA {
   return [
-    Math.max(0, Math.min(1, c[0] + (Math.random() - 0.5) * amount)),
-    Math.max(0, Math.min(1, c[1] + (Math.random() - 0.5) * amount)),
-    Math.max(0, Math.min(1, c[2] + (Math.random() - 0.5) * amount)),
+    Math.max(0, Math.min(1, c[0] + (rng() - 0.5) * amount)),
+    Math.max(0, Math.min(1, c[1] + (rng() - 0.5) * amount)),
+    Math.max(0, Math.min(1, c[2] + (rng() - 0.5) * amount)),
     c[3],
   ];
 }
 
-function jitter(base: number, range: number): number {
-  return base + (Math.random() - 0.5) * range;
+function jitter(base: number, range: number, rng: Rng): number {
+  return base + (rng() - 0.5) * range;
 }
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function pick<T>(arr: T[], rng: Rng): T {
+  return arr[Math.floor(rng() * arr.length)];
 }
 
 // Apply subtle variation to a whole palette (keeps structure, shifts slightly)
-function variarPaleta(palette: RGBA[]): RGBA[] {
-  return palette.map(c => c[3] === 0 ? c : shiftColor(c, 0.04));
+function variarPaleta(palette: RGBA[], rng: Rng): RGBA[] {
+  return palette.map(c => c[3] === 0 ? c : shiftColor(c, 0.04, rng));
 }
 
 // === REALISTIC PALETTES ===
@@ -137,30 +143,30 @@ const GAS_PALETTES: RGBA[][] = [
   [[0.45, 0.72, 0.75, 1], [0.30, 0.55, 0.60, 1], [0.18, 0.38, 0.42, 1], [0.10, 0.22, 0.28, 1], [0, 0, 0, 1], [0, 0, 0, 1]],
 ];
 
-export function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
+export function gerarPaletaAleatoria(tipo: string, rng: Rng = Math.random): PaletaPlaneta {
   switch (tipo) {
     case TIPO_PLANETA.COMUM: {
-      const colors = variarPaleta(pick(TERRAN_PALETTES));
+      const colors = variarPaleta(pick(TERRAN_PALETTES, rng), rng);
       return {
         planetType: 0,
         colors,
-        riverCutoff: jitter(0.368, 0.1),
+        riverCutoff: jitter(0.368, 0.1, rng),
         landCutoff: 0.0,
         cloudCover: 0.0,
         stretch: 2.0,
         cloudCurve: 1.3,
-        lightBorder1: jitter(0.287, 0.05),
-        lightBorder2: jitter(0.476, 0.05),
+        lightBorder1: jitter(0.287, 0.05, rng),
+        lightBorder2: jitter(0.476, 0.05, rng),
         octaves: 6,
-        size: jitter(4.6, 1.5),
+        size: jitter(4.6, 1.5, rng),
         timeSpeed: 0.1,
-        ditherSize: jitter(3.5, 1.0),
+        ditherSize: jitter(3.5, 1.0, rng),
         tiles: 1.0,
-        cloudAlpha: 0.45 + Math.random() * 0.2, // 0.45=nuvens moderadas, 0.65=poucas nuvens
+        cloudAlpha: 0.45 + rng() * 0.2, // 0.45=nuvens moderadas, 0.65=poucas nuvens
       };
     }
     case TIPO_PLANETA.MARTE: {
-      const colors = variarPaleta(pick(DRY_PALETTES));
+      const colors = variarPaleta(pick(DRY_PALETTES, rng), rng);
       return {
         planetType: 1,
         colors,
@@ -169,10 +175,10 @@ export function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
         cloudCover: 0.0,
         stretch: 2.0,
         cloudCurve: 1.3,
-        lightBorder1: jitter(0.615, 0.06),
-        lightBorder2: jitter(0.729, 0.06),
+        lightBorder1: jitter(0.615, 0.06, rng),
+        lightBorder2: jitter(0.729, 0.06, rng),
         octaves: 4,
-        size: jitter(8.0, 2.0),
+        size: jitter(8.0, 2.0, rng),
         timeSpeed: 0.4,
         ditherSize: 2.0,
         tiles: 1.0,
@@ -181,20 +187,20 @@ export function gerarPaletaAleatoria(tipo: string): PaletaPlaneta {
     }
     case TIPO_PLANETA.GASOSO:
     default: {
-      const colors = variarPaleta(pick(GAS_PALETTES));
+      const colors = variarPaleta(pick(GAS_PALETTES, rng), rng);
       return {
         planetType: 3,
         colors,
         riverCutoff: 0.0,
         landCutoff: 0.0,
-        cloudCover: jitter(0.45, 0.12),
-        stretch: jitter(2.0, 0.5),   // higher stretch = more horizontal bands
+        cloudCover: jitter(0.45, 0.12, rng),
+        stretch: jitter(2.0, 0.5, rng),   // higher stretch = more horizontal bands
         cloudCurve: 1.3,
-        lightBorder1: jitter(0.44, 0.06),
-        lightBorder2: jitter(0.75, 0.06),
+        lightBorder1: jitter(0.44, 0.06, rng),
+        lightBorder2: jitter(0.75, 0.06, rng),
         octaves: 5,
-        size: jitter(9.0, 2.0),
-        timeSpeed: jitter(0.35, 0.15),
+        size: jitter(9.0, 2.0, rng),
+        timeSpeed: jitter(0.35, 0.15, rng),
         ditherSize: 2.0,
         tiles: 1.0,
         cloudAlpha: 0.0,
@@ -247,13 +253,13 @@ const sharedGpuProgram = GpuProgram.from({
   name: 'planet-shader',
 });
 
-function criarUniformsPlaneta(paleta: PaletaPlaneta, seed: number, pixels: number, timeOffset: number): UniformGroup {
+function criarUniformsPlaneta(paleta: PaletaPlaneta, seed: number, pixels: number, timeOffset: number, rng: Rng = Math.random): UniformGroup {
   const c = paleta.colors;
   return new UniformGroup({
     uPixels: { value: pixels, type: 'f32' },
     uTime: { value: timeOffset, type: 'f32' },
     uSeed: { value: seed, type: 'f32' },
-    uRotation: { value: Math.random() * 6.28, type: 'f32' },
+    uRotation: { value: rng() * 6.28, type: 'f32' },
     uLightOrigin: { value: new Float32Array([0.39, 0.39]), type: 'vec2<f32>' },
     uTimeSpeed: { value: paleta.timeSpeed, type: 'f32' },
     uDitherSize: { value: paleta.ditherSize, type: 'f32' },
@@ -278,9 +284,9 @@ function criarUniformsPlaneta(paleta: PaletaPlaneta, seed: number, pixels: numbe
   });
 }
 
-function criarShaderPlaneta(tipoPlaneta: string, seed: number): Shader {
-  const paleta = gerarPaletaAleatoria(tipoPlaneta);
-  const planetUniforms = criarUniformsPlaneta(paleta, seed, 64.0, 0.0);
+function criarShaderPlaneta(tipoPlaneta: string, seed: number, rng: Rng = Math.random): Shader {
+  const paleta = gerarPaletaAleatoria(tipoPlaneta, rng);
+  const planetUniforms = criarUniformsPlaneta(paleta, seed, 64.0, 0.0, rng);
 
   return new Shader({
     gpuProgram: sharedGpuProgram,
@@ -311,6 +317,7 @@ function criarPlanetaCanvasSprite(
   x: number, y: number, tamanho: number,
   paleta: PaletaPlaneta, seed: number,
   uPixelsArg: number = 64,
+  rng: Rng = Math.random,
 ): Sprite {
   // Internal resolution matches the pixelization grid the shader uses.
   // Default uPixels=64 for planets, callers pass 128 for stars (same
@@ -327,7 +334,7 @@ function criarPlanetaCanvasSprite(
 
   const renderState: PlanetRenderState = {
     uTime: 0,
-    uRotation: Math.random() * 6.28,
+    uRotation: rng() * 6.28,
     uLightOriginX: 0.39,
     uLightOriginY: 0.39,
   };
@@ -347,7 +354,7 @@ function criarPlanetaCanvasSprite(
   sprite.scale.set(tamanho / W);
   sprite.eventMode = 'none';
 
-  const rotSpeed = (0.02 + Math.random() * 0.06) * (Math.random() > 0.5 ? 1 : -1);
+  const rotSpeed = (0.02 + rng() * 0.06) * (rng() > 0.5 ? 1 : -1);
   const canvasState: CanvasPlanetState = {
     paleta, seed, uPixels, canvas, ctx: ctx2d, imageData,
     state: renderState, dirty: true,
@@ -379,15 +386,16 @@ export function criarPlanetaProceduralSprite(
   tamanho: number,
   tipoPlaneta: string,
   seed?: number,
+  rng: Rng = Math.random,
 ): Mesh<Geometry, Shader> {
-  const planetSeed = seed ?? (1.0 + Math.random() * 9.0);
+  const planetSeed = seed ?? (1.0 + rng() * 9.0);
 
   if (isCanvas2dRenderer()) {
-    const paleta = gerarPaletaAleatoria(tipoPlaneta);
-    return criarPlanetaCanvasSprite(x, y, tamanho, paleta, planetSeed) as unknown as Mesh<Geometry, Shader>;
+    const paleta = gerarPaletaAleatoria(tipoPlaneta, rng);
+    return criarPlanetaCanvasSprite(x, y, tamanho, paleta, planetSeed, 64, rng) as unknown as Mesh<Geometry, Shader>;
   }
 
-  const shader = criarShaderPlaneta(tipoPlaneta, planetSeed);
+  const shader = criarShaderPlaneta(tipoPlaneta, planetSeed, rng);
 
   const state = State.for2d();
   state.blend = true;
@@ -404,7 +412,7 @@ export function criarPlanetaProceduralSprite(
   mesh.y = y;
 
   // Store shader reference and rotation speed for time/light updates
-  const rotSpeed = (0.02 + Math.random() * 0.06) * (Math.random() > 0.5 ? 1 : -1);
+  const rotSpeed = (0.02 + rng() * 0.06) * (rng() > 0.5 ? 1 : -1);
   (mesh as any)._planetShader = shader;
   (mesh as any)._rotSpeed = rotSpeed;
 
@@ -697,9 +705,10 @@ export function criarEstrelaProcedural(
   x: number,
   y: number,
   raio: number,
+  rng: Rng = Math.random,
 ): Mesh<Geometry, Shader> {
-  const seed = 1.0 + Math.random() * 9.0;
-  const colors = variarPaleta(pick(STAR_PALETTES));
+  const seed = 1.0 + rng() * 9.0;
+  const colors = variarPaleta(pick(STAR_PALETTES, rng), rng);
 
   const paleta: PaletaPlaneta = {
     planetType: 4,
@@ -712,7 +721,7 @@ export function criarEstrelaProcedural(
     lightBorder1: 0.5,
     lightBorder2: 0.7,
     octaves: 4,
-    size: jitter(4.5, 1.0),
+    size: jitter(4.5, 1.0, rng),
     timeSpeed: 0.1,
     ditherSize: 2.0,
     tiles: 1.0,
@@ -723,12 +732,12 @@ export function criarEstrelaProcedural(
 
   // Canvas2D mode: JS-port path. uPixels=128 matches the shader.
   if (isCanvas2dRenderer()) {
-    const sprite = criarPlanetaCanvasSprite(x, y, tamanho, paleta, seed, 128);
-    (sprite as any)._rotSpeed = 0.005 + Math.random() * 0.01;
+    const sprite = criarPlanetaCanvasSprite(x, y, tamanho, paleta, seed, 128, rng);
+    (sprite as any)._rotSpeed = 0.005 + rng() * 0.01;
     return sprite as unknown as Mesh<Geometry, Shader>;
   }
 
-  const planetUniforms = criarUniformsPlaneta(paleta, seed, 128.0, Math.random() * 100);
+  const planetUniforms = criarUniformsPlaneta(paleta, seed, 128.0, rng() * 100, rng);
 
   const shader = new Shader({
     gpuProgram: sharedGpuProgram,
@@ -749,7 +758,7 @@ export function criarEstrelaProcedural(
   mesh.x = x;
   mesh.y = y;
   (mesh as any)._planetShader = shader;
-  (mesh as any)._rotSpeed = 0.005 + Math.random() * 0.01;
+  (mesh as any)._rotSpeed = 0.005 + rng() * 0.01;
 
 
   return mesh;
