@@ -486,19 +486,26 @@ function injectStyles(): void {
     .nwm-preset.selected::before { opacity: 1; height: 3px; }
     .nwm-preset-title {
       font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 0.82);
-      letter-spacing: 0.06em;
+      font-size: calc(var(--hud-unit) * 0.72);
+      letter-spacing: 0.02em;
       text-transform: uppercase;
-      line-height: 1.1;
-      /* Long words like CONQUISTADOR have to fit 5.6u-wide cards, so
-         allow soft-wrap at letter boundaries if needed — reads better
-         than horizontal overflow. */
+      line-height: 1.15;
+      /* overflow-wrap: anywhere is the modern (CSS Text 3) way to say
+         "break this word if the line doesn't fit, at any character".
+         Combined with min-width: 0 on the flex card and hyphens: auto
+         for locale-appropriate hyphenation, long labels like
+         CONQUISTADOR fit even narrow cards without overflowing. */
+      overflow-wrap: anywhere;
       word-break: break-word;
+      hyphens: auto;
+      max-width: 100%;
     }
     .nwm-preset-desc {
-      font-size: calc(var(--hud-unit) * 0.72);
+      font-size: calc(var(--hud-unit) * 0.68);
       color: var(--hud-text-dim);
       line-height: 1.35;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
     .nwm-preset.selected .nwm-preset-desc { color: var(--hud-text); }
 
