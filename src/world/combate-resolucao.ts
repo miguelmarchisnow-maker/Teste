@@ -3,6 +3,7 @@ import type { Mundo, Nave } from '../types';
 import { saoHostis } from './constantes';
 import { getStatsCombate, podeAtacar } from './combate';
 import { somExplosao } from '../audio/som';
+import { bumpCounter } from '../core/profiling-instr';
 import { SHIP_TINT, limparPendingSprite } from './naves';
 import { destruirTrail } from './engine-trails';
 import { esquecerLastSeen } from './last-seen';
@@ -360,7 +361,10 @@ function _removerNaveDoMundo(mundo: Mundo, nave: Nave): void {
   // removerNave; anything that needs cleaning up on normal destroy
   // also needs cleaning up on combat-kill.
   const idx = mundo.naves.indexOf(nave);
-  if (idx >= 0) mundo.naves.splice(idx, 1);
+  if (idx >= 0) {
+    mundo.naves.splice(idx, 1);
+    bumpCounter('navesDestruidas');
+  }
   // Drain pending-spritesheet queue — otherwise a late-loading sheet
   // callback writes a texture onto the destroyed Pixi Sprite.
   limparPendingSprite(nave._sprite);

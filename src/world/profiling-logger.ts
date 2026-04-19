@@ -1,5 +1,15 @@
 import type { ProfilingData, Mundo } from '../types';
 import { profiling } from './profiling';
+import {
+  getLongTasks, getLayoutShifts, getPaints, getSlowEvents, getCLS,
+  getCounters, snapshotDom, getNavTiming, getResourceAgg, getNetInfo,
+  getBatteryInfo, getOrientation, getVisibilityState,
+  getAndResetCounters, captureSlowFrameContext, getSlowFrames,
+  type LongTaskSample, type LayoutShiftSample, type PaintSample,
+  type EventSample, type NetInfo, type BatteryInfo, type OrientationInfo,
+  type NavTiming, type ResourceAgg, type GameplayCounters,
+  type SlowFrameContext, type DomSnapshot,
+} from '../core/profiling-instr';
 
 /**
  * Rolling profiling capture — starts appending one sample per frame
@@ -25,6 +35,12 @@ export interface LoggedFrame {
   heapMb: number;
   /** True when the sample came from the menu ticker, false from in-game. */
   menu: boolean;
+  /** Per-tick gameplay counters (ships created/destroyed, etc). */
+  counters?: GameplayCounters;
+  /** Active-listener + timer + RAF + animation counts. */
+  live?: { listeners: number; timers: number; rafs: number; animations: number };
+  /** DOM snapshot — sampled every SNAPSHOT_EVERY frames. */
+  dom?: DomSnapshot;
 }
 
 export interface LoggedEvent {
@@ -107,6 +123,36 @@ export interface LogSession {
   // ── FPS histogram for at-a-glance distribution view ───────────
   fpsHistogram: Array<{ bin: number; count: number }>;
   heapTimeline: Array<{ t: number; heapMb: number }>;
+
+  // ── Browser-side profiling (novo — o que o profiling.ts não viu) ─
+  /** Long tasks: qualquer cálculo principal >50ms. Onde o browser
+   *  travou sem aviso. */
+  longTasks: LongTaskSample[];
+  /** Layout shifts (contribuições individuais p/ CLS). */
+  layoutShifts: LayoutShiftSample[];
+  /** Paint entries (FP/FCP) capturados. */
+  paints: PaintSample[];
+  /** Eventos de input >16ms (atraso percebido). */
+  slowEvents: EventSample[];
+  /** CLS cumulativo da sessão. */
+  cumulativeLayoutShift: number;
+
+  // ── Environment / hardware / runtime ───────────────────────────
+  network: NetInfo | null;
+  battery: BatteryInfo | null;
+  orientation: OrientationInfo | null;
+  navigationTiming: NavTiming | null;
+  resourceAggregate: ResourceAgg;
+  visibilityState: string;
+
+  // ── Slow-frame post-mortems ───────────────────────────────────
+  /** Contexto completo de cada frame >50ms capturado (estado de
+   *  modais, planeta selecionado, foco, # de listeners, etc.). */
+  slowFrames: SlowFrameContext[];
+
+  // ── Aggregates derived from the new metrics ────────────────────
+  longTaskStats: { count: number; totalMs: number; maxMs: number; avgMs: number };
+  slowEventStats: { count: number; maxMs: number; avgMs: number };
 }
 
 let _active = false;
@@ -122,6 +168,12 @@ const MAX_FRAMES = 18_000;
 // 60 times a second when the value barely drifts. Sample every 15f
 // (4× per second at 60Hz), interpolate visually if needed.
 const HEAP_SAMPLE_EVERY = 15;
+// DOM snapshot is expensive (querySelectorAll('*') + computed-style
+// checks). Sample at ~1Hz.
+const DOM_SNAPSHOT_EVERY = 60;
+// Slow-frame threshold (ms). Frames above this trigger the full
+// context capture (modal open, DOM counts, etc).
+const SLOW_FRAME_THRESHOLD_MS = 50;
 
 /**
  * Callers declare whether this sampler is being driven by the in-game
@@ -187,12 +239,33 @@ export function amostrarFrameProfiling(): void {
       heapMb = pm.usedJSHeapSize / (1024 * 1024);
     }
   }
+  const t = performance.now() - _startMs;
+
+  // Pick up per-tick gameplay counters (cheap — just numbers).
+  const counters = getAndResetCounters();
+  // Live counts are cheap — direct number reads.
+  const liveCounters = getCounters();
+  const live = {
+    listeners: liveCounters.listeners,
+    timers: liveCounters.timers,
+    rafs: liveCounters.rafs,
+    animations: 0, // filled below if DOM snapshot sampled
+  };
+  // DOM snapshot only every N frames — querySelectorAll is expensive.
+  let dom: DomSnapshot | undefined;
+  if (_frameCounter % DOM_SNAPSHOT_EVERY === 0) {
+    dom = snapshotDom();
+    live.animations = dom.animationCount;
+  }
+
+  // Capture slow-frame context if this frame is bad.
+  if (frameWall >= SLOW_FRAME_THRESHOLD_MS) {
+    captureSlowFrameContext(t, frameWall);
+  }
+
   _frames.push({
-    t: performance.now() - _startMs,
-    buckets: { ...profiling },
-    fps,
-    heapMb,
-    menu: _isMenu,
+    t, buckets: { ...profiling }, fps, heapMb, menu: _isMenu,
+    counters, live, dom,
   });
 }
 
@@ -437,6 +510,40 @@ function montarSessao(
     events: eventsSnapshot,
     fpsHistogram,
     heapTimeline,
+
+    // ── Browser-side profiling ────────────────────────────────────
+    longTasks: [...getLongTasks()],
+    layoutShifts: [...getLayoutShifts()],
+    paints: [...getPaints()],
+    slowEvents: [...getSlowEvents()],
+    cumulativeLayoutShift: getCLS(),
+
+    // ── Environment at export time ────────────────────────────────
+    network: getNetInfo(),
+    battery: getBatteryInfo(),
+    orientation: getOrientation(),
+    navigationTiming: getNavTiming(),
+    resourceAggregate: getResourceAgg(),
+    visibilityState: getVisibilityState(),
+
+    // ── Slow-frame post-mortems ──────────────────────────────────
+    slowFrames: [...getSlowFrames()],
+
+    // ── Aggregates over new metrics ──────────────────────────────
+    longTaskStats: (() => {
+      const lts = getLongTasks();
+      if (lts.length === 0) return { count: 0, totalMs: 0, maxMs: 0, avgMs: 0 };
+      let total = 0, max = 0;
+      for (const lt of lts) { total += lt.duration; if (lt.duration > max) max = lt.duration; }
+      return { count: lts.length, totalMs: total, maxMs: max, avgMs: total / lts.length };
+    })(),
+    slowEventStats: (() => {
+      const evs = getSlowEvents();
+      if (evs.length === 0) return { count: 0, maxMs: 0, avgMs: 0 };
+      let total = 0, max = 0;
+      for (const e of evs) { total += e.duration; if (e.duration > max) max = e.duration; }
+      return { count: evs.length, maxMs: max, avgMs: total / evs.length };
+    })(),
   };
 }
 

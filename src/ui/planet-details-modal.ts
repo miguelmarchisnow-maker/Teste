@@ -112,11 +112,27 @@ function fmtTempoAtras(ms: number): string {
   return `há ${h}h${String(m % 60).padStart(2, '0')}`;
 }
 
+const LABEL_PESQ_MODAL: Record<string, string> = {
+  cargueira: 'Pesq. Cargueira',
+  batedora: 'Pesq. Batedora',
+  torreta: 'Pesq. Torreta',
+  fragata: 'Pesq. Fragata',
+};
+function parsePesquisaAcaoModal(acao: string): { categoria: string; tier: number } | null {
+  const m = acao.match(/^pesquisa_(cargueira|batedora|torreta|fragata)_([1-5])$/);
+  return m ? { categoria: m[1], tier: Number(m[2]) } : null;
+}
+
 function rotuloAcaoFila(acao: string): string {
   const parsed = parseAcaoNave(acao);
   if (parsed) {
     const nome = LABEL_NAVE[parsed.tipo] ?? parsed.tipo;
     return parsed.tipo === 'colonizadora' ? nome : `${nome} T${parsed.tier}`;
+  }
+  const pesq = parsePesquisaAcaoModal(acao);
+  if (pesq) {
+    const nome = LABEL_PESQ_MODAL[pesq.categoria] ?? pesq.categoria;
+    return `${nome} T${pesq.tier}`;
   }
   if (acao === 'fabrica') return 'Fábrica';
   if (acao === 'infraestrutura') return 'Infraestrutura';
@@ -854,7 +870,7 @@ function buildSectionFila(p: Planeta): HTMLDivElement {
 
   const d = p.dados;
   const fila = d.filaProducao;
-  const headLocked = d.construcaoAtual !== null || d.producaoNave !== null;
+  const headLocked = d.construcaoAtual !== null || d.producaoNave !== null || d.pesquisaAtual !== null;
 
   if (fila.length === 0) {
     const empty = document.createElement('div');
@@ -891,7 +907,7 @@ function buildSectionFila(p: Planeta): HTMLDivElement {
 
       let pct: number | null = null;
       if (isHeadActive) {
-        const job = d.construcaoAtual ?? d.producaoNave;
+        const job = d.construcaoAtual ?? d.producaoNave ?? d.pesquisaAtual;
         if (job && job.tempoTotalMs > 0) {
           pct = Math.max(0, Math.min(100, Math.round(
             (1 - job.tempoRestanteMs / job.tempoTotalMs) * 100,

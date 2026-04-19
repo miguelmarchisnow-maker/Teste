@@ -1,12 +1,27 @@
 import type { Mundo, Planeta, AcaoNaveParsed, ItemFilaProducao } from '../types';
 import { cheats } from '../ui/debug';
-import { CICLO_RECURSO_MS, CUSTO_NAVE_COMUM } from './constantes';
+import { CICLO_RECURSO_MS, CUSTO_NAVE_COMUM, CUSTO_PESQUISA_RARO } from './constantes';
 import { aplicarProducaoCicloAoPlaneta, calcularCustoTier, calcularTempoConstrucaoMs, calcularTempoColonizadoraMs } from './recursos';
 import { criarNave, parseAcaoNave } from './naves';
-import { iniciarPesquisa } from './pesquisa';
+import { iniciarPesquisa, pesquisaTierDisponivel } from './pesquisa';
 import { notifConstrucaoCompleta, notifNaveProducida } from '../ui/notificacao';
 import { toast } from '../ui/toast';
 import { somConstrucaoCompleta, somNaveProducida } from '../audio/som';
+import { bumpCounter } from '../core/profiling-instr';
+
+interface PesquisaAcaoParsed { categoria: string; tier: number; }
+function parseAcaoPesquisa(acao: string): PesquisaAcaoParsed | null {
+  const m = acao.match(/^pesquisa_(cargueira|batedora|torreta|fragata)_([1-5])$/);
+  if (!m) return null;
+  return { categoria: m[1], tier: Number(m[2]) };
+}
+
+const LABEL_PESQUISA: Record<string, string> = {
+  cargueira: 'Pesq. Cargueira',
+  batedora: 'Pesq. Batedora',
+  torreta: 'Pesq. Torreta',
+  fragata: 'Pesq. Fragata',
+};
 
 const LABEL_NAVE_FILA: Record<string, string> = {
   colonizadora: 'Colonizadora',
@@ -21,6 +36,11 @@ function rotuloAcao(acao: string): string {
   if (parsed) {
     const nome = LABEL_NAVE_FILA[parsed.tipo] ?? parsed.tipo;
     return parsed.tipo === 'colonizadora' ? nome : `${nome} T${parsed.tier}`;
+  }
+  const pesq = parseAcaoPesquisa(acao);
+  if (pesq) {
+    const nome = LABEL_PESQUISA[pesq.categoria] ?? pesq.categoria;
+    return `${nome} T${pesq.tier}`;
   }
   if (acao === 'fabrica') return 'Fábrica';
   if (acao === 'infraestrutura') return 'Infraestrutura';
@@ -62,6 +82,7 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
       planeta.dados.construcaoAtual = null;
       notifConstrucaoCompleta(construcao.tipo, construcao.tierDestino);
       somConstrucaoCompleta();
+      bumpCounter('construcoesConcluidas');
     }
   }
 
@@ -78,6 +99,25 @@ export function atualizarFilasPlaneta(mundo: Mundo, planeta: Planeta, deltaMs: n
       criarNave(mundo, planeta, tipoNave, tier);
       notifNaveProducida(tipoNave, tier);
       somNaveProducida();
+      bumpCounter('navesCriadas');
+      bumpCounter('construcoesConcluidas');
+    }
+  }
+
+  // Pesquisa na fila: atualizarPesquisaPlaneta (em pesquisa.ts) é quem
+  // avança tempoRestanteMs e limpa pesquisaAtual quando termina. Aqui
+  // detectamos a transição "fila[0] é pesquisa X + pesquisaAtual null +
+  // pesquisas[cat][tier-1] true" pra remover da fila.
+  const headItem = planeta.dados.filaProducao[0];
+  if (headItem && !planeta.dados.pesquisaAtual) {
+    const pesqHead = parseAcaoPesquisa(headItem.acao);
+    if (pesqHead) {
+      const arr = planeta.dados.pesquisas[pesqHead.categoria];
+      if (arr && arr[pesqHead.tier - 1]) {
+        // pesquisa completou — avança fila
+        finalizarItemFila(planeta, `pesquisa:${pesqHead.categoria}:${pesqHead.tier}`);
+        bumpCounter('pesquisasConcluidas');
+      }
     }
   }
 
@@ -106,6 +146,8 @@ function finalizarItemFila(planeta: Planeta, idEsperado: string): void {
 function identificarItemFila(acao: string): string {
   const parsed = parseAcaoNave(acao);
   if (parsed) return `nave:${parsed.tipo}:${parsed.tier}`;
+  const pesq = parseAcaoPesquisa(acao);
+  if (pesq) return `pesquisa:${pesq.categoria}:${pesq.tier}`;
   return `construcao:${acao}`;
 }
 
@@ -135,18 +177,11 @@ export function construirNoPlaneta(mundo: Mundo, planeta: Planeta, tipo: string)
     return true;
   }
   if (tipo === 'fila_limpar') {
-    planeta.dados.filaProducao = (planeta.dados.construcaoAtual || planeta.dados.producaoNave)
+    planeta.dados.filaProducao = (planeta.dados.construcaoAtual || planeta.dados.producaoNave || planeta.dados.pesquisaAtual)
       ? planeta.dados.filaProducao.slice(0, 1)
       : [];
     planeta.dados.repetirFilaProducao = false;
     return true;
-  }
-  // Research actions bypass the build queue — they go to pesquisaAtual,
-  // which has its own update loop in atualizarPesquisaPlaneta.
-  // Format: pesquisa_<categoria>_<tier>
-  const pesqMatch = tipo.match(/^pesquisa_(cargueira|batedora|torreta|fragata)_([1-5])$/);
-  if (pesqMatch) {
-    return iniciarPesquisa(planeta, pesqMatch[1], Number(pesqMatch[2]));
   }
   if (totalItensProduzindo(planeta) >= 5) {
     toast('Fila cheia', 'err');
@@ -159,13 +194,22 @@ export function construirNoPlaneta(mundo: Mundo, planeta: Planeta, tipo: string)
 }
 
 function tentarIniciarProximaAcaoFila(mundo: Mundo, planeta: Planeta): void {
-  if (planeta.dados.construcaoAtual || planeta.dados.producaoNave) return;
+  if (planeta.dados.construcaoAtual || planeta.dados.producaoNave || planeta.dados.pesquisaAtual) return;
   const proximo = planeta.dados.filaProducao[0];
   if (!proximo) return;
 
   const parsedNave: AcaoNaveParsed | null = parseAcaoNave(proximo.acao);
   if (parsedNave) {
     enfileirarProducaoNave(mundo, planeta, parsedNave.tipo, parsedNave.tier);
+    return;
+  }
+
+  const parsedPesq = parseAcaoPesquisa(proximo.acao);
+  if (parsedPesq) {
+    // iniciarPesquisa itself handles fabrica tier / prev-tier / dono /
+    // raro resource checks. If it returns false we leave the item in
+    // the fila — diagnosticarFila will explain why to the player.
+    iniciarPesquisa(planeta, parsedPesq.categoria, parsedPesq.tier);
     return;
   }
 
@@ -209,7 +253,7 @@ function tentarIniciarProximaAcaoFila(mundo: Mundo, planeta: Planeta): void {
 export function diagnosticarFila(planeta: Planeta): string | null {
   const d = planeta.dados;
   if (d.filaProducao.length === 0) return null;
-  if (d.construcaoAtual || d.producaoNave) return null; // item 0 rodando
+  if (d.construcaoAtual || d.producaoNave || d.pesquisaAtual) return null; // item 0 rodando
   const proximo = d.filaProducao[0];
   if (!proximo) return null;
 
@@ -228,6 +272,28 @@ export function diagnosticarFila(planeta: Planeta): string | null {
     if (d.recursos.comum < CUSTO_NAVE_COMUM) {
       const falta = CUSTO_NAVE_COMUM - Math.floor(d.recursos.comum);
       return `Recursos insuficientes (faltam ${falta} comum).`;
+    }
+    return null;
+  }
+
+  const pesqParsed = parseAcaoPesquisa(proximo.acao);
+  if (pesqParsed) {
+    // Já concluída?
+    const arr = d.pesquisas[pesqParsed.categoria];
+    if (arr?.[pesqParsed.tier - 1]) return `Pesquisa ${pesqParsed.categoria} T${pesqParsed.tier} já concluída.`;
+    if (d.fabricas < pesqParsed.tier) {
+      return `Fábrica T${pesqParsed.tier} necessária p/ pesquisa (atual T${d.fabricas}).`;
+    }
+    if (pesqParsed.tier > 1 && arr && !arr[pesqParsed.tier - 2]) {
+      return `Pesquisa ${pesqParsed.categoria} T${pesqParsed.tier - 1} precisa estar concluída antes.`;
+    }
+    // Fallback: pesquisaTierDisponivel resume o resto das regras internas.
+    if (!pesquisaTierDisponivel(planeta, pesqParsed.categoria, pesqParsed.tier)) {
+      return `Pesquisa ${pesqParsed.categoria} T${pesqParsed.tier} indisponível.`;
+    }
+    if (d.recursos.raro < CUSTO_PESQUISA_RARO) {
+      const falta = CUSTO_PESQUISA_RARO - Math.floor(d.recursos.raro);
+      return `Recursos insuficientes (faltam ${falta} raro).`;
     }
     return null;
   }
@@ -263,7 +329,7 @@ export function moverItemFila(planeta: Planeta, fromIdx: number, toIdx: number):
   if (fromIdx < 0 || fromIdx >= fila.length) return false;
   if (toIdx < 0 || toIdx >= fila.length) return false;
   if (fromIdx === toIdx) return true;
-  const headLocked = planeta.dados.construcaoAtual !== null || planeta.dados.producaoNave !== null;
+  const headLocked = planeta.dados.construcaoAtual !== null || planeta.dados.producaoNave !== null || planeta.dados.pesquisaAtual !== null;
   if (headLocked && (fromIdx === 0 || toIdx === 0)) return false;
   const [item] = fila.splice(fromIdx, 1);
   fila.splice(toIdx, 0, item);
@@ -272,12 +338,12 @@ export function moverItemFila(planeta: Planeta, fromIdx: number, toIdx: number):
 
 /**
  * Removes a queue entry. Can't remove item 0 when it's actively being
- * built — cost was already spent.
+ * built / researched — cost was already spent.
  */
 export function removerItemFila(planeta: Planeta, idx: number): boolean {
   const fila = planeta.dados.filaProducao;
   if (idx < 0 || idx >= fila.length) return false;
-  const headLocked = planeta.dados.construcaoAtual !== null || planeta.dados.producaoNave !== null;
+  const headLocked = planeta.dados.construcaoAtual !== null || planeta.dados.producaoNave !== null || planeta.dados.pesquisaAtual !== null;
   if (headLocked && idx === 0) return false;
   fila.splice(idx, 1);
   return true;

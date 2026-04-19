@@ -100,6 +100,11 @@ const GLOBE_HABILITADO = false;
 
 async function bootstrap(): Promise<void> {
   installRootVariables();
+  // Instrument long tasks, layout shifts, paints, event-delay,
+  // listener/timer/RAF counts. Cheap — observers run on browser's
+  // own thread; wrapper cost per listener is a single counter inc.
+  const { instalarInstrumentacao } = await import('./core/profiling-instr');
+  instalarInstrumentacao();
 
   const app = new Application();
 
