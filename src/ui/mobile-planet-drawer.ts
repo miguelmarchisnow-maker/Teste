@@ -12,6 +12,8 @@ import { abrirImperioLore } from './lore-modal';
 import { getPersonalidades } from '../world/ia-decisao';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
 import { montarMobileBuild, desmontarMobileBuild, atualizarMobileBuild } from './mobile-build';
+import { setCameraFollow } from '../core/player';
+import { buildFocusIcon } from './planet-drawer';
 
 type Tab = 'planeta' | 'construir';
 
@@ -179,6 +181,22 @@ function injectStyles(): void {
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
+    .mpd-focus {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      margin: 0;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 8px;
+      color: rgba(255,255,255,0.75);
+      cursor: pointer;
+    }
+    .mpd-focus:active { background: rgba(255,255,255,0.14); color: #fff; }
+    .mpd-focus svg { width: 60%; height: 60%; display: block; }
     .mpd-owner {
       display: inline-flex;
       align-items: center;
@@ -589,6 +607,19 @@ function populateHead(p: Planeta, mundo: Mundo): void {
   meta.appendChild(owner);
 
   head.appendChild(meta);
+
+  const focusBtn = document.createElement('button');
+  focusBtn.type = 'button';
+  focusBtn.className = 'mpd-focus';
+  focusBtn.title = 'Centralizar câmera';
+  focusBtn.setAttribute('aria-label', 'Centralizar câmera no planeta');
+  focusBtn.appendChild(buildFocusIcon());
+  focusBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    marcarInteracaoUi();
+    setCameraFollow(p);
+  });
+  head.appendChild(focusBtn);
 }
 
 function close(): void {

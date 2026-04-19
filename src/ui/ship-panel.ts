@@ -8,7 +8,8 @@ import {
   cancelarMovimentoNave,
   alternarLoopCargueira,
 } from '../world/mundo';
-import { iniciarComandoNave } from '../core/player';
+import { iniciarComandoNave, setCameraFollow } from '../core/player';
+import { buildFocusIcon } from './planet-drawer';
 import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
 import { t } from '../core/i18n/t';
 
@@ -403,6 +404,13 @@ interface ActionSpec {
 }
 
 const ACTIONS: (Omit<ActionSpec, 'title'> & { titleKey: string })[] = [
+  {
+    id: 'focus',
+    titleKey: 'ship_panel.action_focus',
+    icon: buildFocusIcon,
+    enabled: () => true,
+    onClick: (n) => setCameraFollow(n),
+  },
   {
     id: 'move',
     titleKey: 'ship_panel.action_move',

@@ -21,6 +21,7 @@ import { gerarImperioLore } from '../world/lore/imperio-lore';
 import { abrirImperioLore } from './lore-modal';
 import { oreIcon, alloyIcon, fuelIcon } from './resource-bar';
 import { renderPlanetaParaCanvas, liberarPortraitPlaneta } from '../world/planeta-procedural';
+import { setCameraFollow } from '../core/player';
 
 let _modal: HTMLDivElement | null = null;
 let _bodyEl: HTMLDivElement | null = null;
@@ -153,6 +154,29 @@ function injectStyles(): void {
       border: 1px solid rgba(255,255,255,0.3);
     }
     .planeta-drawer-owner.clickable:hover .planeta-drawer-owner-name { text-decoration: underline; }
+
+    .planeta-drawer-focus {
+      align-self: flex-start;
+      width: calc(var(--hud-unit) * 2);
+      height: calc(var(--hud-unit) * 2);
+      display: grid;
+      place-items: center;
+      padding: 0;
+      margin: 0;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--hud-line);
+      border-radius: calc(var(--hud-radius) * 0.5);
+      color: var(--hud-text-dim);
+      cursor: pointer;
+      transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+      flex-shrink: 0;
+    }
+    .planeta-drawer-focus:hover {
+      background: rgba(255,255,255,0.10);
+      color: var(--hud-text);
+      border-color: var(--hud-border);
+    }
+    .planeta-drawer-focus svg { width: 60%; height: 60%; display: block; }
 
     .planeta-drawer-body {
       padding: calc(var(--hud-unit) * 0.6) calc(var(--hud-unit) * 0.8) calc(var(--hud-unit) * 0.7);
@@ -442,11 +466,49 @@ function buildHeader(p: Planeta): HTMLDivElement {
   meta.appendChild(owner);
   head.appendChild(meta);
 
+  const focusBtn = document.createElement('button');
+  focusBtn.type = 'button';
+  focusBtn.className = 'planeta-drawer-focus';
+  focusBtn.title = 'Centralizar câmera';
+  focusBtn.setAttribute('aria-label', 'Centralizar câmera no planeta');
+  focusBtn.appendChild(buildFocusIcon());
+  focusBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    setCameraFollow(p);
+  });
+  head.appendChild(focusBtn);
+
   // Close button intentionally omitted — the drawer closes on
   // click-outside (via fecharPlanetaDrawer wired in core/player.ts)
   // and on ESC (keydown handler), so an explicit × is redundant.
 
   return head;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export function buildFocusIcon(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const circle = document.createElementNS(SVG_NS, 'circle');
+  circle.setAttribute('cx', '12');
+  circle.setAttribute('cy', '12');
+  circle.setAttribute('r', '3');
+  // Host panels (e.g. ship-panel) may set `fill: currentColor` on child
+  // svg elements which would bleed into this stroke-only icon. Explicit
+  // attribute on each shape wins over inherited CSS fill.
+  circle.setAttribute('fill', 'none');
+  svg.appendChild(circle);
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M12 2v3M12 19v3M2 12h3M19 12h3');
+  path.setAttribute('fill', 'none');
+  svg.appendChild(path);
+  return svg;
 }
 
 function tipoPlanetaCor(tipo: string): string {

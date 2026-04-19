@@ -15,7 +15,7 @@ import {
 } from '../world/mundo';
 import { TEMPO_SURVEY_MS } from '../world/constantes';
 import { carregarSpritesheet, getSpritesheetImage } from '../world/spritesheets';
-import { iniciarComandoNave, cancelarComandoNave, getComandoNaveTipo } from '../core/player';
+import { iniciarComandoNave, cancelarComandoNave, getComandoNaveTipo, setCameraFollow } from '../core/player';
 import { confirmar } from './confirm-dialog';
 import { t } from '../core/i18n/t';
 
@@ -967,6 +967,7 @@ function renderMovePanel(_nave: Nave): void {
     stick.setPointerCapture(e.pointerId);
     stick.classList.add('active');
     applyFromPointer(e.clientX, e.clientY);
+    if (_selectedNave) setCameraFollow(_selectedNave);
   });
   stick.addEventListener('pointermove', (e) => {
     if (!joystickState.active || e.pointerId !== joystickState.pointerId) return;
@@ -990,7 +991,10 @@ function renderMovePanel(_nave: Nave): void {
   dpad.className = 'cp-dpad';
 
   const setThrustDir = (tx: number, ty: number) => {
-    if (_selectedNave) applyThrust(_selectedNave, tx, ty);
+    if (_selectedNave) {
+      applyThrust(_selectedNave, tx, ty);
+      setCameraFollow(_selectedNave);
+    }
   };
 
   const makeDpadBtn = (label: string, cls: string, onPress: () => void) => {

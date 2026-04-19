@@ -26,9 +26,15 @@ import { mostrarNotificacao } from '../ui/notificacao';
 import { t } from './i18n/t';
 import { abrirPlanetaDrawer, fecharPlanetaDrawer } from '../ui/planet-drawer';
 import { abrirMobilePlanetaDrawer, fecharMobilePlanetaDrawer } from '../ui/mobile-planet-drawer';
+import { abrirStarDrawer, fecharStarDrawer } from '../ui/star-drawer';
 import { isTouchMode } from './ui-mode';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
+
+// When non-null, atualizarCamera pins camera to this target each frame.
+// Any manual pan (drag, WASD, edge-scroll, pinch, click-to-go, setCameraPos)
+// clears this — the user reclaiming camera control always wins.
+let _followTarget: Nave | Planeta | Sol | null = null;
 
 let cameraDragging = false;
 const cameraLastMouse = { x: 0, y: 0 };
@@ -165,6 +171,25 @@ export function setCameraPos(x: number, y: number): void {
   // Cancel any in-flight zoom tween — otherwise the next frame's lerp
   // overwrites the explicit position (e.g. F-focus firing mid-tween).
   cancelarZoomTween();
+  // Explicit reposition overrides any active follow — otherwise the
+  // follow would snap the camera back next frame.
+  _followTarget = null;
+}
+
+export function setCameraFollow(target: Nave | Planeta | Sol): void {
+  _followTarget = target;
+  camera.x = target.x;
+  camera.y = target.y;
+  cancelarZoomTween();
+}
+
+export function clearCameraFollow(): void {
+  _followTarget = null;
+}
+
+export function isFollowing(target?: Nave | Planeta | Sol): boolean {
+  if (!_followTarget) return false;
+  return target ? _followTarget === target : true;
 }
 
 export function iniciarComandoNave(tipo: ComandoTipo, nave: Nave | null): void {
@@ -294,11 +319,13 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
           cameraDragging = true;
           cameraLastMouse.x = e.clientX;
           cameraLastMouse.y = e.clientY;
+          _followTarget = null;
         }
       } else if (e.button === 1 || e.button === 2) {
         cameraDragging = true;
         cameraLastMouse.x = e.clientX;
         cameraLastMouse.y = e.clientY;
+        _followTarget = null;
       }
     } else if (activePointers.size === 2) {
       // Second pointer: start pinch. Cancel any in-progress drag and
@@ -339,6 +366,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         camera.x -= panDx / camera.zoom;
         camera.y -= panDy / camera.zoom;
         cancelarZoomTween();
+        _followTarget = null;
       }
       pinch.anchorSx = newMid.x;
       pinch.anchorSy = newMid.y;
@@ -359,6 +387,7 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       // Pan overrides any in-flight zoom tween — otherwise the tween snaps
       // the camera back to its pre-pan target on the next frame.
       cancelarZoomTween();
+      _followTarget = null;
     }
   }, { signal });
 
@@ -493,21 +522,25 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
         cancelarComandoNave();
         selecionarPlaneta(mundo, clickInfo.planeta);
         somClique();
+        fecharStarDrawer();
         if (isTouchMode()) {
           void abrirMobilePlanetaDrawer(clickInfo.planeta, mundo);
         } else {
           void abrirPlanetaDrawer(clickInfo.planeta, mundo);
         }
+      } else if (clickInfo?.sol) {
+        cancelarComandoNave();
+        limparSelecoes(mundo);
+        if (isTouchMode()) fecharMobilePlanetaDrawer();
+        else fecharPlanetaDrawer();
+        void abrirStarDrawer(clickInfo.sol, mundo);
+        somClique();
       } else {
         cancelarComandoNave();
         limparSelecoes(mundo);
         if (isTouchMode()) fecharMobilePlanetaDrawer();
         else fecharPlanetaDrawer();
-        // Click-to-go: tap on empty space recenters the camera at that
-        // world position. Drag-pan still works (drags engage cameraDragging
-        // before reaching this branch — only taps under the movement
-        // threshold land here).
-        setCameraPos(destinoMapa.x, destinoMapa.y);
+        fecharStarDrawer();
       }
     }
 
@@ -539,6 +572,17 @@ export function cancelarRotaNaveSelecionada(mundo: Mundo): void {
 
 export function atualizarCamera(mundo: Mundo, app: Application): void {
   avancarZoomTween();
+  // Follow: pin camera to target each frame. Auto-drop if target died
+  // (ship destroyed, planet consumed) so we don't hold a ghost ref.
+  if (_followTarget) {
+    const t = _followTarget as { destroyed?: boolean; x: number; y: number };
+    if (t.destroyed) {
+      _followTarget = null;
+    } else {
+      camera.x = t.x;
+      camera.y = t.y;
+    }
+  }
   atualizarPreviewComandoNave();
   mundo.container.scale.set(camera.zoom);
   mundo.container.x = -camera.x * camera.zoom + app.screen.width / 2;
@@ -591,4 +635,5 @@ export function aplicarEdgeScrollAoCamera(deltaMs: number): void {
   const scale = VELOCIDADE_MAX * (deltaMs / 1000) / (cam.zoom || 1);
   cam.x += _edgeScrollVec.x * scale;
   cam.y += _edgeScrollVec.y * scale;
+  _followTarget = null;
 }

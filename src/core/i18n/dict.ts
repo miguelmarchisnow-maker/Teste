@@ -187,6 +187,7 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'ship_panel.alvo_planeta_fallback': { pt: 'Planeta', en: 'Planet' },
   'ship_panel.alvo_estrela': { pt: 'Estrela', en: 'Star' },
   'ship_panel.subtitulo_origem': { pt: 'de {nome}', en: 'from {nome}' },
+  'ship_panel.action_focus': { pt: 'Centralizar câmera', en: 'Center camera' },
   'ship_panel.action_move': { pt: 'Traçar rota (clique no mapa)', en: 'Set route (click on map)' },
   'ship_panel.action_cancel': { pt: 'Cancelar movimento', en: 'Cancel movement' },
   'ship_panel.action_close': { pt: 'Fechar painel', en: 'Close panel' },

@@ -13,7 +13,7 @@ import { gerarPersonalidades, PRESETS_DIFICULDADE } from './world/personalidade-
 import { setPersonalidadesParaMundoCarregado } from './world/ia-decisao';
 import { gerarLoreFaccao } from './world/lore-faccao';
 import { criarMundoMenu, atualizarMundoMenu, destruirMundoMenu, type MundoMenu } from './world/mundo-menu';
-import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo } from './core/player';
+import { configurarCamera, destruirCamera, atualizarCamera, getCamera, setCameraPos, setTipoJogador, zoomIn, zoomOut, setZoom, instalarEdgeScroll, aplicarEdgeScrollAoCamera, cancelarComandoNaveSeAtivo, clearCameraFollow } from './core/player';
 import { instalarDispatcher, onAction, onActionUp } from './core/input/dispatcher';
 import { criarSidebar, destruirSidebar } from './ui/sidebar';
 import { criarMobileMenuBtn } from './ui/mobile-menu-btn';
@@ -31,6 +31,7 @@ import { injectAnimations } from './ui/animations.css';
 import { criarPlanetPanel, atualizarPlanetPanel, destruirPlanetPanel } from './ui/planet-panel';
 import { atualizarPlanetaDrawer, destruirPlanetaDrawer } from './ui/planet-drawer';
 import { atualizarMobilePlanetaDrawer, destruirMobilePlanetaDrawer } from './ui/mobile-planet-drawer';
+import { atualizarStarDrawer } from './ui/star-drawer';
 import { criarBuildPanel, atualizarBuildPanel, destruirBuildPanel } from './ui/build-panel';
 import { criarShipPanel, atualizarShipPanel, destruirShipPanel } from './ui/ship-panel';
 import { criarMobileShipPanel, atualizarMobileShipPanel, destruirMobileShipPanel } from './ui/mobile-ship-panel';
@@ -791,10 +792,12 @@ function startTicker(): void {
     // Keyboard pan — applied per-frame so holding a key scrolls smoothly.
     const PAN_SPEED = 800;
     const panScale = PAN_SPEED * (app.ticker.deltaMS / 1000) / (camera.zoom || 1);
+    const anyPan = _panState.up || _panState.down || _panState.left || _panState.right;
     if (_panState.up) camera.y -= panScale;
     if (_panState.down) camera.y += panScale;
     if (_panState.left) camera.x -= panScale;
     if (_panState.right) camera.x += panScale;
+    if (anyPan) clearCameraFollow();
 
     atualizarMundo(mundo, app, camera);
 
@@ -808,6 +811,7 @@ function startTicker(): void {
       atualizarPlanetPanel(mundo, app);
       if (isMobileRuntime()) atualizarMobilePlanetaDrawer();
       else atualizarPlanetaDrawer();
+      atualizarStarDrawer();
       atualizarResourceBar(mundo);
       atualizarBuildPanel(mundo);
       if (isMobileRuntime()) {

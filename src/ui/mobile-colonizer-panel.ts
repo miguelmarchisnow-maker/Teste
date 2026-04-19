@@ -16,7 +16,7 @@ import {
   iniciarPilotagem,
   setNaveThrust,
 } from '../world/mundo';
-import { iniciarComandoNave, cancelarComandoNave, getComandoNaveTipo } from '../core/player';
+import { iniciarComandoNave, cancelarComandoNave, getComandoNaveTipo, setCameraFollow } from '../core/player';
 import { confirmar } from './confirm-dialog';
 import { t } from '../core/i18n/t';
 import {
@@ -908,6 +908,7 @@ function renderCockpit(): void {
     try { stick.setPointerCapture(e.pointerId); } catch {}
     stick.classList.add('active');
     applyFromPointer(e.clientX, e.clientY);
+    if (_selectedNave) setCameraFollow(_selectedNave);
   });
   stick.addEventListener('pointermove', (e) => {
     if (!state.active || e.pointerId !== state.pointerId) return;
