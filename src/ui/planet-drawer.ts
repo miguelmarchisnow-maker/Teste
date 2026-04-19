@@ -15,6 +15,7 @@
 
 import type { Mundo, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
+import { injectBottomSheetStyles } from './bottom-sheet.css';
 import { nomeTipoPlaneta, getTierMax } from '../world/mundo';
 import { getPersonalidades } from '../world/ia-decisao';
 import { gerarImperioLore } from '../world/lore/imperio-lore';
@@ -516,8 +517,9 @@ function rebuildBody(p: Planeta, _mundo: Mundo): void {
 function ensureModal(): void {
   if (_modal) return;
   injectStyles();
+  injectBottomSheetStyles();
   const modal = document.createElement('div');
-  modal.className = 'planeta-drawer';
+  modal.className = 'planeta-drawer bottom-sheet-capable';
   modal.setAttribute('data-ui', 'true');
   modal.addEventListener('pointerdown', (e) => {
     e.stopPropagation();

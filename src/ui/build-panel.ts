@@ -1,5 +1,6 @@
 import type { Mundo, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
+import { injectBottomSheetStyles } from './bottom-sheet.css';
 import {
   calcularCustoTier,
   calcularTempoConstrucaoMs,
@@ -664,11 +665,12 @@ function getRenderKey(planeta: Planeta): string {
 export function criarBuildPanel(): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
+  injectBottomSheetStyles();
   loadSheet('ships');
   loadSheet('buildings');
 
   const panel = document.createElement('div');
-  panel.className = 'build-panel';
+  panel.className = 'build-panel bottom-sheet-capable';
   panel.setAttribute('data-ui', 'true');
   panel.style.pointerEvents = 'auto';
   panel.addEventListener('pointerdown', () => marcarInteracaoUi());

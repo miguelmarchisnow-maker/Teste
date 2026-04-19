@@ -1,5 +1,6 @@
 import type { Mundo, Nave, Planeta } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
+import { injectBottomSheetStyles } from './bottom-sheet.css';
 import {
   obterNaveSelecionada,
   cancelarMovimentoNave,
@@ -1076,10 +1077,11 @@ function renderMovePanel(_nave: Nave): void {
 export function criarColonizerPanel(): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
+  injectBottomSheetStyles();
   loadShipsSheet();
 
   const panel = document.createElement('div');
-  panel.className = 'colonizer-panel';
+  panel.className = 'colonizer-panel bottom-sheet-capable';
   panel.setAttribute('data-ui', 'true');
   panel.style.pointerEvents = 'auto';
   panel.addEventListener('pointerdown', () => marcarInteracaoUi());

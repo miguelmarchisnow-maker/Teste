@@ -1,5 +1,6 @@
 import type { Mundo, Nave } from '../types';
 import { marcarInteracaoUi } from './interacao-ui';
+import { injectBottomSheetStyles } from './bottom-sheet.css';
 import {
   obterNaveSelecionada,
   capacidadeCargaCargueira,
@@ -534,10 +535,11 @@ function getStatsKey(nave: Nave): string {
 export function criarShipPanel(): HTMLDivElement {
   if (_container) return _container;
   injectStyles();
+  injectBottomSheetStyles();
   loadShipsSheet();
 
   const panel = document.createElement('div');
-  panel.className = 'ship-panel';
+  panel.className = 'ship-panel bottom-sheet-capable';
   panel.setAttribute('data-ui', 'true');
   panel.style.pointerEvents = 'auto';
   panel.addEventListener('pointerdown', () => marcarInteracaoUi());
