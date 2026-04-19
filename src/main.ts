@@ -25,6 +25,7 @@ import { criarDebugMenu, atualizarDebugMenu, getDebugState, getCheats, destruirD
 import { installRootVariables } from './ui/hud-layout';
 import { instalarUiMode } from './core/ui-mode';
 import { criarZoomControls } from './ui/zoom-controls';
+import { injectMobileStyles } from './ui/mobile.css';
 import { criarPlanetPanel, atualizarPlanetPanel, destruirPlanetPanel } from './ui/planet-panel';
 import { atualizarPlanetaDrawer, destruirPlanetaDrawer } from './ui/planet-drawer';
 import { criarBuildPanel, atualizarBuildPanel, destruirBuildPanel } from './ui/build-panel';
@@ -527,6 +528,7 @@ async function bootstrap(): Promise<void> {
   });
 
   instalarUiMode();
+  injectMobileStyles();
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
   document.body.appendChild(app.canvas);
