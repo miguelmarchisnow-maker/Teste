@@ -589,6 +589,7 @@ export function abrirEmpireModal(mundo: Mundo): Promise<void> {
   if (!_modal || !_backdrop) return Promise.resolve();
 
   _currentMundo = mundo;
+  _lastContentKey = null;
   forceRefresh('empire-modal');
   refreshContent();
 
@@ -610,10 +611,43 @@ export function abrirEmpireModal(mundo: Mundo): Promise<void> {
 }
 
 /** Live-refresh so planets/ships/resources update while the modal is open. */
+let _lastContentKey: string | null = null;
+
+function computeContentKey(): string {
+  const mundo = _currentMundo;
+  if (!mundo) return '';
+  const imp = mundo.imperioJogador;
+  let planetas = 0, naves = 0;
+  let comum = 0, raro = 0, combustivel = 0;
+  let pesquisas = 0;
+  for (const p of mundo.planetas) {
+    if (p.dados.dono !== 'jogador') continue;
+    planetas++;
+    comum += p.dados.recursos.comum;
+    raro += p.dados.recursos.raro;
+    combustivel += p.dados.recursos.combustivel;
+    for (const arr of Object.values(p.dados.pesquisas)) {
+      for (const f of arr) if (f) pesquisas++;
+    }
+  }
+  for (const n of mundo.naves) if (n.dono === 'jogador') naves++;
+  return [
+    imp?.nome ?? '—',
+    imp?.objetivo ?? '',
+    imp?.logo?.seed ?? 0,
+    planetas, naves,
+    Math.floor(comum), Math.floor(raro), Math.floor(combustivel),
+    pesquisas,
+  ].join('|');
+}
+
 export function atualizarEmpireModal(): void {
   if (!_modal || !_currentMundo) return;
   if (!_modal.classList.contains('visible')) return;
   if (!shouldRefresh('empire-modal')) return;
+  const key = computeContentKey();
+  if (key === _lastContentKey) return;
+  _lastContentKey = key;
   refreshContent();
 }
 

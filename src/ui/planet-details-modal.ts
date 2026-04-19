@@ -1811,6 +1811,9 @@ function refreshContent(): void {
   // Also cover the left pane (identidade) which shares the same key→tooltip map.
   const leftPane = _modal.querySelector<HTMLDivElement>('.pd-left');
   if (leftPane) applyTooltips(leftPane);
+  // Sync the content-key cache with the state we just rendered, so the
+  // next tick's atualizar call can correctly skip when nothing changed.
+  _lastContentKey = computeContentKey();
 }
 
 /**
@@ -1915,7 +1918,8 @@ function ensureModal(): void {
     btn.addEventListener('click', () => {
       if (_activeTab === tab.id) return;
       _activeTab = tab.id;
-      // Bypass throttle — tab switch must render NOW.
+      // Bypass throttle + content-key — tab switch must render NOW.
+      _lastContentKey = null;
       forceRefresh('planet-details-modal');
       refreshContent();
       // Re-trigger the enter animation only on tab-switch — tick
@@ -1956,6 +1960,7 @@ export function abrirPlanetDetailsModal(p: Planeta, mundo: Mundo): Promise<void>
 
   _current = p;
   _currentMundo = mundo;
+  _lastContentKey = null;
   forceRefresh('planet-details-modal');
   refreshContent();
 
@@ -1987,6 +1992,66 @@ export function abrirPlanetDetailsModal(p: Planeta, mundo: Mundo): Promise<void>
 
 /** Callable from outside (e.g. per-tick) so mundo updates surface
  *  live inside the modal. Safe to call when the modal is closed. */
+let _lastContentKey: string | null = null;
+
+/**
+ * Coarse signature of everything that can affect the rendered output.
+ * When this doesn't change between ticks, the whole refreshContent
+ * rebuild is skipped — most ticks nothing relevant actually changed
+ * (resources tick every 10s, progress bars quantized to 5% buckets).
+ * This is the cheap version of "update in-place": instead of mutating
+ * individual text nodes, we skip the rebuild entirely when unchanged.
+ */
+function computeContentKey(): string {
+  const p = _current;
+  const mundo = _currentMundo;
+  if (!p || !mundo) return '';
+  const d = p.dados;
+  const parts: Array<string | number> = [
+    _activeTab, p.id, d.dono, d.nome, d.tipoPlaneta,
+    Math.floor(d.recursos.comum), Math.floor(d.recursos.raro), Math.floor(d.recursos.combustivel),
+    d.fabricas, d.infraestrutura, d.naves,
+    d.filaProducao.length, d.repetirFilaProducao ? 1 : 0,
+    p._visivelAoJogador ? 1 : 0, p._descobertoAoJogador ? 1 : 0,
+  ];
+  // Quantize progress to 20 buckets (5% each) so progress-bar animation
+  // triggers reasonably-spaced rebuilds instead of one per tick.
+  if (d.construcaoAtual) {
+    const pct = Math.floor((1 - d.construcaoAtual.tempoRestanteMs / d.construcaoAtual.tempoTotalMs) * 20);
+    parts.push(`c:${d.construcaoAtual.tipo}:${d.construcaoAtual.tierDestino}:${pct}`);
+  }
+  if (d.producaoNave) {
+    const pct = Math.floor((1 - d.producaoNave.tempoRestanteMs / d.producaoNave.tempoTotalMs) * 20);
+    parts.push(`pn:${d.producaoNave.tipoNave}:${d.producaoNave.tier}:${pct}`);
+  }
+  if (d.pesquisaAtual) {
+    const pct = Math.floor((1 - d.pesquisaAtual.tempoRestanteMs / d.pesquisaAtual.tempoTotalMs) * 20);
+    parts.push(`pa:${d.pesquisaAtual.categoria}:${d.pesquisaAtual.tier}:${pct}`);
+  }
+  // Tabs that depend on mundo-wide state: include the slice that matters.
+  if (_activeTab === 'resumo') {
+    // Ship-in-orbit counts change when ships arrive/leave.
+    let orbiting = 0, transit = 0;
+    for (const n of mundo.naves) {
+      if (n.alvo === p) {
+        if (n.estado === 'orbitando') orbiting++;
+        else if (n.estado === 'viajando') transit++;
+      }
+    }
+    parts.push(`ships:${orbiting}:${transit}`);
+  } else if (_activeTab === 'orbita') {
+    parts.push(`ang:${p._orbita.angulo.toFixed(2)}`);
+  } else if (_activeTab === 'imperio') {
+    let planetasDono = 0, navesDono = 0;
+    for (const pp of mundo.planetas) if (pp.dados.dono === d.dono) planetasDono++;
+    for (const n of mundo.naves) if (n.dono === d.dono) navesDono++;
+    parts.push(`imp:${planetasDono}:${navesDono}`);
+  } else if (_activeTab === 'registro') {
+    parts.push(`reg:${mundo.ultimoTickMs | 0}`);
+  }
+  return parts.join('|');
+}
+
 export function atualizarPlanetDetailsModal(): void {
   if (!_modal || !_current) return;
   if (!_modal.classList.contains('visible')) return;
@@ -1995,9 +2060,13 @@ export function atualizarPlanetDetailsModal(): void {
   // on the drag handle) — otherwise the tick would rebuild the
   // section and the click/drag target disappears before release.
   if (isFilaDragging() || isFilaInteracting()) return;
-  // Throttle to ~5 Hz. Numbers ticking faster than that aren't
-  // perceptibly smoother but the rebuild cost is linear in tick rate.
+  // Throttle to ~5 Hz — upper bound on rebuild cadence.
   if (!shouldRefresh('planet-details-modal')) return;
+  // Content-key skip: only actually rebuild when something user-visible
+  // changed. Most ticks the key is stable → zero DOM churn.
+  const key = computeContentKey();
+  if (key === _lastContentKey) return;
+  _lastContentKey = key;
   refreshContent();
 }
 
