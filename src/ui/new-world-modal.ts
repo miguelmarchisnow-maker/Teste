@@ -485,20 +485,21 @@ function injectStyles(): void {
     }
     .nwm-preset.selected::before { opacity: 1; height: 3px; }
     .nwm-preset-title {
-      font-family: var(--hud-font-display);
-      font-size: calc(var(--hud-unit) * 0.72);
-      letter-spacing: 0.02em;
+      /* NOT using --hud-font-display (Press Start 2P): that pixel font
+         is 8-12px-per-char no matter what font-size we ask for, so
+         CONQUISTADOR (~140px wide) can't fit a 90px card even with
+         break-all. Switch to the variable-width hud font which both
+         scales down cleanly and wraps at natural word boundaries. */
+      font-family: var(--hud-font);
+      font-size: calc(var(--hud-unit) * 0.78);
+      font-weight: 600;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
-      line-height: 1.15;
-      /* overflow-wrap: anywhere is the modern (CSS Text 3) way to say
-         "break this word if the line doesn't fit, at any character".
-         Combined with min-width: 0 on the flex card and hyphens: auto
-         for locale-appropriate hyphenation, long labels like
-         CONQUISTADOR fit even narrow cards without overflowing. */
+      line-height: 1.1;
       overflow-wrap: anywhere;
       word-break: break-word;
-      hyphens: auto;
       max-width: 100%;
+      white-space: normal;
     }
     .nwm-preset-desc {
       font-size: calc(var(--hud-unit) * 0.68);
