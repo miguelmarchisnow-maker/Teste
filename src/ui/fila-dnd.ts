@@ -1,15 +1,15 @@
 /**
  * HTML5 drag & drop reorder para a fila de produção.
  *
- * Substituiu a implementação pointer-based anterior que em alguns
- * contextos não disparava pointermove após o pointerdown (o handle
- * recebia o evento mas não via as movimentações). A API nativa
- * `draggable` + dragstart/dragover/drop é mais simples e battle-tested
- * em todos os browsers.
+ * Tentativa 3: drag-by-handle via "sempre draggable + cancela no
+ * dragstart se não veio do handle". As tentativas anteriores
+ * (pointerdown.draggable=true) falharam porque alguns browsers
+ * avaliam o atributo draggable ANTES do pointerdown listener rodar,
+ * então flipar a prop em resposta ao pointerdown chega tarde demais.
  *
- * Mantém as mesmas garantias anteriores:
- *   - Item locked (posição 0 em produção) não arrasta nem é deslocado.
- *   - Rebuild loop pula enquanto há drag ativo ou pointer pressionado.
+ * Mantém:
+ *   - Item locked (posição 0 em produção) não arrasta nem deslocam.
+ *   - Rebuild loop pula enquanto há drag ou pointer down no fila.
  *   - Esc cancela.
  */
 
@@ -37,14 +37,14 @@ function injectFilaStyles(): void {
       line-height: 1;
       letter-spacing: -1px;
       touch-action: none;
+      /* Handle needs its own z context so dragstart captures it cleanly. */
+      position: relative;
     }
     .fila-drag-handle:hover { color: var(--hud-text); }
+    .fila-drag-handle:active { cursor: grabbing; }
     .fila-drag-handle.locked {
       opacity: 0.25;
       cursor: not-allowed;
-    }
-    .fila-drag-handle:active {
-      cursor: grabbing;
     }
     .fila-remove-btn {
       appearance: none;
@@ -107,12 +107,6 @@ export interface FilaDragOptions {
   onReorder: (fromIdx: number, toIdx: number) => void;
 }
 
-/**
- * Wires HTML5 drag & drop on the given list.
- * - Sets `draggable=true` on each item whose handle isn't locked.
- * - Starts drag only when the pointer is on the handle (drag-by-handle).
- * - Shows a drop indicator line between items as the user hovers.
- */
 export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions): void {
   injectFilaStyles();
 
@@ -120,8 +114,6 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
     listEl.style.position = 'relative';
   }
 
-  // Indicator reused per bind call (rebuilt each time the list is
-  // rerendered — cheap, only one per list).
   let indicator: HTMLDivElement | null = null;
   const ensureIndicator = (): HTMLDivElement => {
     if (!indicator || !indicator.isConnected) {
@@ -133,31 +125,28 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
   };
 
   let dragSourceIdx = -1;
-  let pointerOnHandle = false;
 
   const items = Array.from(listEl.querySelectorAll<HTMLElement>(options.itemSelector));
   for (const item of items) {
     const idx = options.getIdx(item);
     const locked = options.isLocked(idx);
     const handle = item.querySelector<HTMLElement>(options.handleSelector);
-    if (locked) {
-      item.draggable = false;
-      continue;
-    }
 
-    // HTML5 drag only starts from draggable=true elements; but we want
-    // drag-by-handle (not drag-by-anywhere-on-row). Trick: flip
-    // draggable on/off based on whether the pointer is on the handle.
-    item.draggable = false;
-    if (handle) {
-      handle.addEventListener('pointerdown', () => { item.draggable = true; pointerOnHandle = true; });
-      handle.addEventListener('pointerup',   () => { pointerOnHandle = false; });
-      handle.addEventListener('pointerleave', () => { pointerOnHandle = false; });
-      handle.addEventListener('mouseenter', () => { /* ensures hover styles */ });
-    }
+    // KEY FIX: draggable must be static. Flipping it in a pointerdown
+    // handler is too late — some browsers (Firefox, Safari) read the
+    // attribute at pointerdown time, so by the time our listener runs,
+    // the decision to not-start-drag has already been made.
+    item.draggable = !locked;
+
+    if (locked) continue;
 
     item.addEventListener('dragstart', (e) => {
-      if (!pointerOnHandle) {
+      // Drag-by-handle: only proceed if the mousedown that kicked this
+      // off happened inside the handle element. e.target on dragstart
+      // is the deepest descendant under the cursor at the moment drag
+      // started.
+      const target = e.target as HTMLElement | null;
+      if (!handle || !target || !handle.contains(target)) {
         e.preventDefault();
         return;
       }
@@ -166,15 +155,13 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
       item.classList.add('fila-dragging-source');
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = 'move';
-        // Required by Firefox for drag to start at all.
+        // Firefox requires data to be set on dataTransfer or the drag is aborted.
         e.dataTransfer.setData('text/plain', String(idx));
       }
     });
 
     item.addEventListener('dragend', () => {
       item.classList.remove('fila-dragging-source');
-      item.draggable = false;
-      pointerOnHandle = false;
       dragSourceIdx = -1;
       _draggingActive = false;
       if (indicator) indicator.style.display = 'none';
@@ -184,8 +171,6 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
       if (dragSourceIdx < 0) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      // Position the drop indicator line: above or below this item
-      // depending on which half the cursor is in.
       const ind = ensureIndicator();
       const rect = item.getBoundingClientRect();
       const listRect = listEl.getBoundingClientRect();
@@ -193,15 +178,13 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
       const indY = (below ? rect.bottom : rect.top) - listRect.top - 1;
       ind.style.top = `${indY}px`;
       ind.style.display = 'block';
-      // Cache target idx on the indicator so drop can read it.
+
       const fromIdx = dragSourceIdx;
       let rawTarget = below ? idx + 1 : idx;
-      // Can't drop in front of any locked item.
       for (const other of items) {
         const oIdx = options.getIdx(other);
         if (options.isLocked(oIdx)) rawTarget = Math.max(rawTarget, oIdx + 1);
       }
-      // splice adjust: removing from fromIdx shifts later entries by -1.
       const adjusted = rawTarget > fromIdx ? rawTarget - 1 : rawTarget;
       ind.dataset.targetIdx = String(adjusted);
     });
@@ -220,17 +203,15 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
     });
   }
 
-  // Bottom-of-list drop target so the user can drop AFTER the last
-  // item even when no item is under the cursor.
+  // Drop target for the bottom gap (below all items).
   listEl.addEventListener('dragover', (e) => {
     if (dragSourceIdx < 0) return;
-    // Only activate if no child item has already consumed the event.
-    // (child dragovers called preventDefault; this one catches the gap.)
     if (e.defaultPrevented) return;
     e.preventDefault();
   });
 
-  // Track pointer-down-in-list for rebuild suppression.
+  // Track pointer-down-in-list for rebuild suppression (covers the ×
+  // button click that would otherwise race the rebuild tick).
   const onListPointerDown = (): void => {
     _pointerDownInsideFila++;
     const release = (): void => {
@@ -243,7 +224,6 @@ export function bindFilaDragDrop(listEl: HTMLElement, options: FilaDragOptions):
   };
   listEl.addEventListener('pointerdown', onListPointerDown);
 
-  // Esc cancels the drag (abort via releasing the drag).
   const onKey = (e: KeyboardEvent): void => {
     if (dragSourceIdx < 0) return;
     if (e.key === 'Escape') {
