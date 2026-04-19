@@ -511,8 +511,19 @@ function ensureModal(): void {
 
   const backdrop = document.createElement('div');
   backdrop.className = 'planet-details-backdrop';
-  backdrop.addEventListener('click', () => close());
   backdrop.setAttribute('data-ui', 'true');
+  // Close on pointerdown (not click) AND only when the press actually
+  // STARTS on the backdrop itself. Reason: the user's click that
+  // opens this modal via the drawer button ends its mouseup-phase on
+  // top of the newly-appended backdrop. A plain `click` handler then
+  // fires on the backdrop (because click synthesises to the nearest
+  // common ancestor of down + up), so the open-click immediately
+  // became a close-click — that's the "need two clicks to open" bug.
+  // Using pointerdown filters the phantom click out because the
+  // original pointerdown was on the button, not the backdrop.
+  backdrop.addEventListener('pointerdown', (e) => {
+    if (e.target === backdrop) close();
+  });
   document.body.appendChild(backdrop);
   _backdrop = backdrop;
 
@@ -571,6 +582,7 @@ function ensureModal(): void {
 }
 
 export function abrirPlanetDetailsModal(p: Planeta, mundo: Mundo): Promise<void> {
+  const firstOpen = !_modal;
   ensureModal();
   if (!_modal || !_backdrop) return Promise.resolve();
 
@@ -578,21 +590,27 @@ export function abrirPlanetDetailsModal(p: Planeta, mundo: Mundo): Promise<void>
   _currentMundo = mundo;
   refreshContent();
 
-  // CRITICAL: on the FIRST open after ensureModal creates the element,
-  // the modal starts at opacity:0 + visibility:hidden from CSS. Adding
-  // `.visible` in the same tick triggers the class change BEFORE the
-  // browser ever painted the hidden state, so the CSS transition
-  // doesn't play (user sees nothing, thinks the click was dropped,
-  // clicks again — the 'double-click to open' bug). Force layout once
-  // via getComputedStyle, then rAF-defer the class toggle so the
-  // browser has a frame to register the initial state first.
   const modal = _modal;
   const backdrop = _backdrop;
-  void modal.offsetWidth; // read-layout → flush pending style calcs
-  requestAnimationFrame(() => {
+  // On FIRST open the element is freshly in the DOM with opacity 0
+  // + visibility hidden from CSS. Adding `.visible` in the same tick
+  // skips the transition because the browser hasn't painted the
+  // hidden state yet (that's the 'double-click to open' bug). Use a
+  // double-rAF so there's guaranteed a full paint cycle at opacity 0
+  // before we toggle visible.
+  const apply = () => {
     backdrop.classList.add('visible');
     modal.classList.add('visible');
-  });
+  };
+  if (firstOpen) {
+    // Force style recalc, then wait two frames.
+    void modal.offsetWidth;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(apply);
+    });
+  } else {
+    apply();
+  }
   marcarInteracaoUi();
 
   return new Promise<void>((resolve) => { _closeResolver = resolve; });
