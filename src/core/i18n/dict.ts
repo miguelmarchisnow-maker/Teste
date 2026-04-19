@@ -366,6 +366,11 @@ export const DICT: Record<string, { pt: string; en: string }> = {
   'settings.row.save_experimental': { pt: 'Save experimental (IndexedDB)', en: 'Experimental save (IndexedDB)' },
   'settings.row.confirmar_destrutivo': { pt: 'Confirmar ações destrutivas', en: 'Confirm destructive actions' },
   'settings.row.edge_scroll': { pt: 'Edge-scroll', en: 'Edge-scroll' },
+  'settings.row.touch_mode': { pt: 'Modo toque', en: 'Touch mode' },
+  'settings.touch_mode.auto': { pt: 'Automático', en: 'Automatic' },
+  'settings.touch_mode.on': { pt: 'Sempre ligado', en: 'Always on' },
+  'settings.touch_mode.off': { pt: 'Sempre desligado', en: 'Always off' },
+  'tooltips.touchMode': { pt: 'Ativa gestos de toque (arrastar, pinça, duplo-toque) e HUD adaptada. "Automático" detecta pelo dispositivo.', en: 'Enables touch gestures (drag, pinch, double-tap) and adaptive HUD. "Automatic" detects by device.' },
 
   // Settings — audio categories
   'settings.audio.master': { pt: 'Master', en: 'Master' },

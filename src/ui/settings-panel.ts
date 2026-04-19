@@ -37,7 +37,7 @@ type TooltipKey =
   | 'qualidade' | 'fullscreen' | 'scanlines' | 'fps' | 'ram' | 'fpsCap' | 'vsync' | 'renderScale'
   | 'renderer' | 'webglVersion' | 'gpuPref' | 'verInfo' | 'orbitas'
   | 'starfield' | 'fantasmas' | 'shaderLive' | 'autosave' | 'saveMode'
-  | 'confirmar' | 'edge';
+  | 'confirmar' | 'edge' | 'touchMode';
 
 function tooltip(key: TooltipKey): string {
   return t(`tooltips.${key}`);
@@ -1262,6 +1262,22 @@ function renderGameplayTab(body: HTMLDivElement): void {
       setConfig({ gameplay: { ...getConfig().gameplay, edgeScroll: cb.checked } });
     });
     row.appendChild(cb);
+    body.appendChild(row);
+  }
+
+  // Touch mode
+  {
+    const [row] = rowWithLabel(t('settings.row.touch_mode'), 'touchMode');
+    const select = criarSelect([
+      ['auto', t('settings.touch_mode.auto')],
+      ['on',   t('settings.touch_mode.on')],
+      ['off',  t('settings.touch_mode.off')],
+    ], getConfig().ui?.touchMode ?? 'auto');
+    select.addEventListener('change', () => {
+      const val = select.dataset.value as 'auto' | 'on' | 'off';
+      setConfig({ ui: { ...getConfig().ui, touchMode: val } });
+    });
+    row.appendChild(select);
     body.appendChild(row);
   }
 
