@@ -220,14 +220,34 @@ function injectStyles(): void {
       left: 0 !important;
       transform: translateX(-100%) !important;
       height: 100vh;
-      width: min(72vw, 280px);
-      background: rgba(6,12,20,0.92);
+      width: min(78vw, 300px);
+      background: rgba(6,12,20,0.96);
       border-right: 1px solid var(--hud-border, rgba(255,255,255,0.2));
       transition: transform 220ms ease;
       z-index: 500;
-      padding-top: 64px;
+      padding: 72px 16px 24px 16px;
       justify-content: flex-start;
-      gap: 6px;
+      gap: 4px;
+      /* Drawer items need bigger text than the floating sidebar tokens. */
+      --sb-icon: 24px;
+      --sb-label: 13px;
+      --sb-pad-v: 12px;
+      --sb-pad-h: 14px;
+    }
+    body.touch.size-sm .sidebar .sidebar-btn,
+    body.touch.portrait.size-md .sidebar .sidebar-btn {
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 14px;
+      min-height: 48px;
+      width: 100%;
+      padding: 10px 14px;
+    }
+    body.touch.size-sm .sidebar .sidebar-label,
+    body.touch.portrait.size-md .sidebar .sidebar-label {
+      font-size: 13px;
+      letter-spacing: 0.5px;
     }
     body.touch.size-sm.sidebar-open .sidebar,
     body.touch.portrait.size-md.sidebar-open .sidebar {
