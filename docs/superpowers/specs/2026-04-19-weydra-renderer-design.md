@@ -43,7 +43,7 @@ Auditoria completa gerada durante brainstorming (in-conversation, 2026-04-19). R
 - Graphics API: ~12 métodos (circle, rect, roundRect, moveTo, lineTo, arc, fill, stroke, clear)
 - 2 blend modes: normal + add
 - 2 scale modes: nearest (quase tudo) + linear (só fog)
-- Hit-testing: custom no Orbital via DOM addEventListener — Pixi eventMode usado só em 2 botões
+- Hit-testing: majoritariamente custom via DOM addEventListener, MAS Pixi eventMode é usado mais do que parece — **5 objetos com `eventMode='static'`** em `minimapa.ts`, `tutorial.ts`, `painel.ts`, `selecao.ts`, e **~11 handlers `.on('pointer...')`** ativos (selection cards com hover+press, action buttons nos painéis, close button do tutorial, click-to-navigate no minimap). Migração precisa re-wire esses no M7-M9, não só M9
 - **Não usa:** Filter (zero instâncias), BitmapFont, mask, cacheAsTexture, post-processing
 - RenderTexture usado só pra shader warmup (não crítico)
 - Text: 3 usos com fonte de sistema (monospace)
@@ -164,11 +164,14 @@ impl Renderer {
     pub fn create_sprite(&mut self, texture: u32) -> u64 { /* ... */ }
     pub fn destroy(&mut self, handle: u64) { /* ... */ }
 
-    // Escape hatches pra hot path
-    pub fn transforms_ptr(&self) -> *const f32 { /* ... */ }
-    pub fn colors_ptr(&self) -> *const u32 { /* ... */ }
-    pub fn flags_ptr(&self) -> *const u8 { /* ... */ }
+    // Escape hatches pra hot path. wasm-bindgen NÃO aceita retorno de
+    // `*const T` direto — expomos como u32/usize e reconstituímos a
+    // view no TS via `wasm.memory.buffer + offset`.
+    pub fn transforms_ptr(&self) -> u32 { self.transforms.as_ptr() as u32 }
+    pub fn colors_ptr(&self) -> u32 { self.colors.as_ptr() as u32 }
+    pub fn flags_ptr(&self) -> u32 { self.flags.as_ptr() as u32 }
     pub fn capacity(&self) -> u32 { /* ... */ }
+    pub fn mem_version(&self) -> u32 { self.mem_version }  // incrementa se memory growth
 
     pub fn render(&mut self) { /* ... */ }
 }
@@ -192,11 +195,71 @@ class Sprite {
 | Shared memory manual | 1 | <0.05ms |
 | **wasm-bindgen + shared memory (escolhido)** | **1** | **<0.05ms** |
 
-### Capacidade pré-alocada
+### Capacidade pré-alocada + revalidação obrigatória
 
-Pra evitar que growth do `WebAssembly.Memory` invalide typed array views, reservamos capacidade generosa no boot: 10.000 sprites, 500 meshes, 10.000 graphics nodes. Total ~460KB. Views criados uma vez, válidos a sessão toda.
+Pré-alocar capacidade ajuda mas **não é suficiente**. `WebAssembly.Memory` pode crescer por motivos fora do nosso controle:
 
-Se capacidade exceder (caso raro), há mecanismo de re-validação via version counter — mas não no hot path.
+- Upload de textura grande (staging buffer temporário no Rust)
+- Lyon tessellation criando buffers novos durante `render()`
+- Alocações transientes de wasm-bindgen glue (strings de erro, debugging)
+
+Qualquer growth detacha o `ArrayBuffer` subjacente e invalida SILENCIOSAMENTE todos os typed array views — reads retornam 0, writes são no-op. Bug terrível de debugar.
+
+**Mecanismo obrigatório:**
+
+```rust
+// core: mantém um version counter que incrementa após qualquer
+// operação que pode ter causado memory growth
+pub struct Renderer {
+    mem_version: u32,
+    // ...
+}
+
+// Método exposto ao TS
+pub fn mem_version(&self) -> u32 { self.mem_version }
+```
+
+```ts
+// ts-bridge: checa versão a cada operação que pode ter crescido memory
+class Renderer {
+  private views: { transforms: Float32Array, /* ... */ };
+  private lastMemVersion: number = 0;
+
+  private revalidate() {
+    const v = this.wasm.mem_version();
+    if (v !== this.lastMemVersion) {
+      this.views.transforms = new Float32Array(
+        this.wasm.memory.buffer,
+        this.wasm.transforms_ptr(),
+        this.wasm.capacity() * 4
+      );
+      // ... recriar TODOS os views
+      this.lastMemVersion = v;
+    }
+  }
+
+  uploadTexture(bytes: Uint8Array) {
+    const id = this.wasm.upload_texture(bytes, ...);
+    this.revalidate();  // upload pode ter causado growth
+    return id;
+  }
+
+  render() {
+    this.wasm.render();
+    this.revalidate();  // render pode ter causado growth (lyon tessellation)
+  }
+
+  // Hot path: SEM revalidate, porque setters não alocam
+  setPosition(h, x, y) {
+    this.views.transforms[h * 4] = x;
+    this.views.transforms[h * 4 + 1] = y;
+  }
+}
+```
+
+Revalidação vale só ~50ns (comparação de inteiro + reconstrução condicional de Float32Arrays). No hot path, pula. Em setup ops, chama sempre.
+
+Capacidade inicial: 10.000 sprites, 500 meshes, 10.000 graphics nodes (~460KB). Generoso o suficiente pra raramente crescer.
 
 ## Scene graph + modelo de dados
 
@@ -288,7 +351,15 @@ export class PlanetInstance {
 
 ### Fallback WebGL2
 
-wgpu traduz WGSL → GLSL automaticamente. Nossos shaders usam apenas features mapeáveis (uniforms, textures, sem storage buffers, sem compute). Zero trabalho adicional.
+wgpu traduz WGSL → GLSL 3.00 ES via `naga` crate. Features básicas (uniforms, textures, sampling) mapeiam limpo.
+
+**Gaps conhecidos** que podem exigir ajuste shader-side:
+- `textureNumLevels` não existe em GLSL 3.00 ES — hoje não usamos
+- `textureDimensions` em recursos não-uniformes — hoje não usamos
+- Dynamic array indexing em loops pode gerar GLSL inválido em alguns casos
+- Arrays de cores indexados dinamicamente — `planeta.wgsl` usa `uColors0..uColors5` via switch, deve funcionar mas validar
+
+M2 (starfield) e M5 (planet) são os testes reais do path WebGL2. Se algum shader exigir tweaks pro backend GL, reserva +2-3 dias adicionais no milestone afetado.
 
 ## Estratégia de migração
 
@@ -307,6 +378,18 @@ wgpu traduz WGSL → GLSL automaticamente. Nossos shaders usam apenas features m
 
 **Limitação aceita:** z-order entre objetos em canvases diferentes é fixo. Mitigado por migrar rigidamente bottom-up (starfield → ships → planets → graphics → UI).
 
+**Estados intermediários com z-order visualmente errado:** Orbital tem camadas interleaved que NÃO seguem split bottom/top limpo:
+- Orbit Graphics rings (atrás de planetas, acima de starfield)
+- Ship engine trails (atrás de naves, acima de planet rings)
+- Fog overlay (acima de tudo exceto UI)
+
+Durante a migração, períodos onde (exemplo) ship trails estão no weydra canvas (baixo) mas orbit rings ainda estão em Pixi (cima) vão renderizar em ordem **visualmente errada**. Não é bug — é consequência do approach incremental.
+
+**Mitigação:**
+- Intermediate states são aceitáveis em branch de dev
+- Antes de mergear milestone pra main, ou o z-order fica correto, ou o flag fica default-off e o sistema só ativa em dev builds até o próximo milestone corrigir
+- Alternativa: mergear 2-3 milestones adjacentes juntos quando o z-order exigir (ex: M4+M5 planets + M7 graphics rings merged juntos como "planet layer complete")
+
 ### Milestones
 
 | # | Sistema | Duração | Critério de merge |
@@ -317,12 +400,16 @@ wgpu traduz WGSL → GLSL automaticamente. Nossos shaders usam apenas features m
 | M4 | Planets baked mode | 2 sem | Planetas pequenos via weydra |
 | M5 | Planets live shader mode | 2 sem | Planet shader FBM idêntico |
 | M6 | Fog-of-war | 1 sem | Fog overlay via weydra |
-| M7 | Graphics primitives (orbits/routes/beams) | 2 sem | Todos os Graphics via weydra |
-| M8 | Text labels | 1-2 sem | Labels via weydra |
+| M7 | Graphics primitives (orbits/routes/beams/trails) | **3 sem** | Todos os Graphics via weydra |
+| M8 | Text labels | **3-4 sem** | Labels via weydra |
 | M9 | UI (minimap/tutorial/panels) | 2 sem | Overlays UI via weydra |
 | M10 | Pixi removal | 1 sem | `pixi.js` fora do package.json |
 
-**Total:** 15-17 semanas. Realistic com fricção: 5-6 meses.
+**Total corrigido:** 17-19 semanas (reviewer apontou sub-estimativa em M7 + M8). Realistic com fricção: **6-7 meses**.
+
+Detalhes:
+- **M7 subiu pra 3 semanas:** 12 primitive methods, integração lyon, retained mode com dirty tracking, tessellation cache. Plus re-wire dos pointer events do minimap/selecao (reviewer apontou ~11 handlers pixi que não tinham sido contados).
+- **M8 subiu pra 3-4 semanas:** integração fontdue não é trivial — font file selection, bundling, rasterização multi-size, glyph atlas, layout. Orbital usa text com conteúdo dinâmico (nomes de planeta, timestamps) que impede pre-baking completo do atlas.
 
 ### Feature flags por sistema
 
@@ -373,6 +460,8 @@ Ciclo <30s entre edit e validação visual.
 - **Tessellation lyon:** pode gerar polygon count diferente do Pixi. Plano: teste de parity pixel-a-pixel em cena com só Graphics.
 - **WebGL2 feature coverage:** wgpu não suporta tudo WGSL em WebGL2. Validar cedo — M2 já exerce shader complexo.
 - **Input no canvas inferior:** durante migração, se algum sistema precisar de hit-test no weydra canvas, precisamos de `pointer-events: auto` condicional. Plano: postergar pro M9 onde UI migra.
+- **CI visual parity em backends diferentes:** em CI headless, wgpu via WebGPU pode cair pra WARP/SwiftShader (software), enquanto Pixi roda em WebGL via ANGLE. Comparar pixel-a-pixel entre dois backends diferentes é enganoso. Plano: **rodar visual parity tests com BOTH renderers forçados no mesmo backend** (ex: ambos em WebGL via headless Chrome com `--disable-webgpu`), ou usar CI com GPU real (GitHub Actions `ubuntu-latest-large` com NVIDIA passthrough) pra WebGPU de verdade.
+- **WASM binary parse time em mobile low-end:** wgpu compila grande. Release + wasm-opt -O4 realistas: 1.5-3 MB de .wasm. Parse + instantiation em mobile low-end (PowerVR BXM-8-256 reportado pelo user) pode custar 200-500ms no boot. Medir em M1, e se for problemático, explorar code-splitting ou lazy init.
 
 ## Riscos gerais e mitigações
 
@@ -383,8 +472,12 @@ Ciclo <30s entre edit e validação visual.
 | Performance não supera Pixi em mobile | Baixa | Alto | Benchmarks desde M2; abort se regression confirmada |
 | wgpu bug de driver em browser-específico | Média | Médio | Fallback path Pixi via flag; report upstream |
 | Scope creep (B ou C antes da hora) | Alta | Médio | Spec explícita: só expandir após M10 estável 1 mês |
-| Bundle WASM muito pesado | Baixa | Baixo | Usuário explicitou que não importa; wasm-opt -O4 no release |
+| Bundle WASM tamanho (1.5-3 MB) | Baixa (size) / Média (parse time mobile) | Baixo (size) / Médio (parse) | wasm-opt -O4; medir parse time em M1 em PowerVR; code-split se necessário |
 | Safari iOS diferente de Safari desktop | Média | Médio | Teste manual iOS por milestone |
+| CI visual parity via backends diferentes | Média | Médio | Forçar mesmo backend pra ambos renderers em CI; ou GPU real via GitHub Actions self-hosted |
+| Z-order errado em estados intermediários durante migração | Alta | Baixo | Flags default-off em estados com z-quebrado; merge de milestones adjacentes quando necessário |
+| Sub-estimativa de M7 (Graphics) e M8 (Text) | Média | Médio | Já corrigido pra 3 e 3-4 semanas; spec ajustado pós code-review |
+| Ship hit-test via Pixi event system (5 objetos, 11 handlers) quebrando no M7-M9 | Média | Médio | Re-wire pra DOM events começa antes do M9; tasks específicas no plano do M7 |
 
 ## Open questions (pra resolver antes de começar M1)
 
