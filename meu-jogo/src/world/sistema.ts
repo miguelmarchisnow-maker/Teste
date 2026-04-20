@@ -4,6 +4,7 @@ import { DIST_MIN_SISTEMA } from './constantes';
 import { TIPO_PLANETA } from './planeta';
 import { criarPlanetaProceduralSprite, criarEstrelaProcedural } from './planeta-procedural';
 import { criarEstadoPesquisas } from './pesquisa';
+import { gerarNomePlaneta } from './nomes';
 
 function sortearTipoPlaneta(): string {
   const tipos = Object.values(TIPO_PLANETA);
@@ -62,6 +63,7 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
     p.dados = {
       dono: 'neutro',
       tipoPlaneta,
+      nome: gerarNomePlaneta(tipoPlaneta),
       producao: 1,
       recursos: { comum: 0, raro: 0, combustivel: 0 },
       tamanho,
@@ -90,7 +92,6 @@ export function criarSistemaSolar(container: Container, orbitasContainer: Contai
     p._linhaOrbita = linhaOrbita;
     p._visivelAoJogador = false;
     p._descobertoAoJogador = false;
-    p._planetFilter = (sprite as any)._planetFilter;
 
     const anel = new Graphics();
     p.addChild(anel);

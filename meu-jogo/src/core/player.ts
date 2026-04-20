@@ -10,11 +10,14 @@ import {
   encontrarNaveNoPonto,
   encontrarPlanetaNoPonto,
   encontrarSolNoPonto,
+  enviarNaveParaAlvo,
+  enviarNaveParaPosicao,
   limparSelecoes,
   obterNaveSelecionada,
   selecionarNave,
   selecionarPlaneta,
 } from '../world/mundo';
+import { mostrarNotificacao } from '../ui/notificacao';
 
 const camera: Camera = { x: 0, y: 0, zoom: 1 };
 
@@ -22,8 +25,20 @@ let cameraDragging = false;
 const cameraLastMouse = { x: 0, y: 0 };
 const clickStartScreen = { x: 0, y: 0 };
 let clickInfo: { nave: Nave | null; planeta: Planeta | null; sol: Sol | null } | null = null;
-let comandoNave: { tipo: 'mover' | 'origem' | 'destino'; nave: Nave | null; pontos: { x: number; y: number }[] } | null = null;
+// Command modes:
+//   'mover'   — cargueira/batedora/torreta multi-waypoint route mode
+//   'origem'  — cargueira route origin picker
+//   'destino' — cargueira route destination picker
+//   'target_colonizadora' — colonizer-panel armed targeting mode; next
+//                           planet click dispatches the colonizadora there
+//   'move_colonizadora'   — colonizer-panel armed free-move mode; next map
+//                           click sends the colonizadora to that point
+type ComandoTipo = 'mover' | 'origem' | 'destino' | 'target_colonizadora' | 'move_colonizadora';
+let comandoNave: { tipo: ComandoTipo; nave: Nave | null; pontos: { x: number; y: number }[] } | null = null;
 let comandoPreviewGfx: Graphics | null = null;
+// Cached reference so zoomIn/zoomOut (called from keyboard/minimap/ship panel)
+// can anchor the zoom at screen center instead of the origin.
+let _appRef: Application | null = null;
 const COR_PREVIEW_ROTA = 0x27465f;
 const COR_PREVIEW_PONTO = 0x3d6888;
 
@@ -54,13 +69,51 @@ export function getZoom(): number {
   return camera.zoom;
 }
 
+/**
+ * Zoom the camera while keeping a specific screen point anchored in place.
+ * If `sx`/`sy` are omitted the anchor defaults to the center of the viewport
+ * (matching what the user expects from keyboard/minimap zoom buttons).
+ */
+function aplicarZoom(novoZoom: number, sx?: number, sy?: number): void {
+  const app = _appRef;
+  if (!app) {
+    camera.zoom = Math.max(0.3, Math.min(2.0, novoZoom));
+    return;
+  }
+  const screenW = app.screen.width;
+  const screenH = app.screen.height;
+  const anchorSx = sx ?? screenW / 2;
+  const anchorSy = sy ?? screenH / 2;
+  // World point currently under the anchor, before zoom.
+  const worldX = (anchorSx - screenW / 2) / camera.zoom + camera.x;
+  const worldY = (anchorSy - screenH / 2) / camera.zoom + camera.y;
+  camera.zoom = Math.max(0.3, Math.min(2.0, novoZoom));
+  // Re-derive camera so the same world point stays under the anchor.
+  camera.x = worldX - (anchorSx - screenW / 2) / camera.zoom;
+  camera.y = worldY - (anchorSy - screenH / 2) / camera.zoom;
+}
+
+export function zoomIn(factor: number = 1.15): void {
+  aplicarZoom(camera.zoom * factor);
+}
+
+export function zoomOut(factor: number = 1.15): void {
+  aplicarZoom(camera.zoom / factor);
+}
+
+export function setZoom(zoom: number): void {
+  aplicarZoom(zoom);
+}
+
 export function setCameraPos(x: number, y: number): void {
   camera.x = x;
   camera.y = y;
 }
 
-export function iniciarComandoNave(tipo: 'mover' | 'origem' | 'destino', nave: Nave | null): void {
+export function iniciarComandoNave(tipo: ComandoTipo, nave: Nave | null): void {
   if (!nave) return;
+  // Self-commit: pressing the Mover button a second time while already in
+  // 'mover' mode finalises the waypoint list as a manual route.
   if (tipo === 'mover' && comandoNave?.tipo === 'mover' && comandoNave.nave === nave) {
     if (comandoNave.pontos.length > 0) {
       definirRotaManualNave(nave, comandoNave.pontos.map((p) => ({ _tipoAlvo: 'ponto', x: p.x, y: p.y })));
@@ -69,10 +122,12 @@ export function iniciarComandoNave(tipo: 'mover' | 'origem' | 'destino', nave: N
     atualizarPreviewComandoNave();
     return;
   }
-  if (tipo === 'mover') {
-    comandoNave = { tipo, nave, pontos: [] };
+  // Any other transition — including switching from 'origem'/'destino' to
+  // 'mover' or vice versa — must explicitly clear the previous mode so
+  // stale preview graphics/waypoints don't leak into the new mode.
+  if (comandoNave && (comandoNave.tipo !== tipo || comandoNave.nave !== nave)) {
+    comandoNave = null;
     atualizarPreviewComandoNave();
-    return;
   }
   comandoNave = { tipo, nave, pontos: [] };
   atualizarPreviewComandoNave();
@@ -85,12 +140,20 @@ export function cancelarComandoNave(): void {
 
 export function getTextoComandoNave(): string {
   if (!comandoNave?.nave?.selecionado) return '';
-  if (comandoNave.tipo === 'mover') return `Modo movimento: ${comandoNave.pontos.length}/5 pontos, clique no mapa e depois em Mover para iniciar`;
-  if (comandoNave.tipo === 'origem') return 'Config origem: clique em um planeta seu';
-  return 'Config destino: clique em um planeta seu';
+  switch (comandoNave.tipo) {
+    case 'mover': return `Modo movimento: ${comandoNave.pontos.length}/5 pontos, clique no mapa e depois em Mover para iniciar`;
+    case 'origem': return 'Config origem: clique em um planeta seu';
+    case 'destino': return 'Config destino: clique em um planeta seu';
+    case 'target_colonizadora': return 'Modo colonização: clique num planeta alvo';
+    case 'move_colonizadora': return 'Modo voo livre: clique no mapa para definir destino';
+  }
 }
 
-export function getComandoNaveAtual(): { tipo: 'mover' | 'origem' | 'destino'; nave: Nave | null; pontos: { x: number; y: number }[] } | null {
+export function getComandoNaveTipo(): ComandoTipo | null {
+  return comandoNave?.tipo ?? null;
+}
+
+export function getComandoNaveAtual(): { tipo: ComandoTipo; nave: Nave | null; pontos: { x: number; y: number }[] } | null {
   return comandoNave;
 }
 
@@ -103,6 +166,7 @@ function screenToWorld(sx: number, sy: number, app: Application) {
 
 export function configurarCamera(app: Application, mundo: Mundo): void {
   const canvas = app.canvas;
+  _appRef = app;
   if (!comandoPreviewGfx) {
     comandoPreviewGfx = new Graphics();
     comandoPreviewGfx.eventMode = 'none';
@@ -167,20 +231,82 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
       const naveSelecionada = obterNaveSelecionada(mundo);
       const destinoMapa = screenToWorld(e.clientX, e.clientY, app);
 
-      if (naveSelecionada && comandoNave?.nave === naveSelecionada && comandoNave.tipo === 'mover') {
-        if (comandoNave.pontos.length < 5) {
-          comandoNave.pontos.push({ x: destinoMapa.x, y: destinoMapa.y });
-          atualizarPreviewComandoNave();
-          somClique();
+      // Click-arbitration priority (highest to lowest):
+      //   1. 'target_colonizadora' mode + planet → dispatch colonizadora
+      //   2. 'move_colonizadora' mode + any click → dispatch free move
+      //   3. Click on a ship                 → select that ship
+      //   4. 'origem'/'destino' mode + planet → set cargueira route
+      //   5. 'mover' mode + empty space      → add waypoint
+      //   6. Click on a planet                → select that planet
+      //   7. Click on empty space             → clear selection
+
+      // (1) Colonizadora targeting: consume the click to dispatch.
+      if (
+        naveSelecionada
+        && comandoNave?.nave === naveSelecionada
+        && comandoNave.tipo === 'target_colonizadora'
+      ) {
+        if (clickInfo?.planeta) {
+          const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.planeta);
+          if (ok) {
+            cancelarComandoNave();
+            somClique();
+          }
+        } else if (clickInfo?.sol) {
+          const ok = enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.sol);
+          if (ok) {
+            cancelarComandoNave();
+            somClique();
+          }
+        } else {
+          mostrarNotificacao('Clique em um planeta ou estrela pra alvejar.', '#ffcc66');
         }
-      } else if (clickInfo?.nave) {
+        clickInfo = null;
+        return;
+      }
+
+      // (2) Colonizadora free move: any click becomes the destination.
+      if (
+        naveSelecionada
+        && comandoNave?.nave === naveSelecionada
+        && comandoNave.tipo === 'move_colonizadora'
+      ) {
+        if (clickInfo?.planeta) {
+          enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.planeta);
+        } else if (clickInfo?.sol) {
+          enviarNaveParaAlvo(mundo, naveSelecionada, clickInfo.sol);
+        } else {
+          enviarNaveParaPosicao(mundo, naveSelecionada, destinoMapa.x, destinoMapa.y);
+        }
+        cancelarComandoNave();
+        somClique();
+        clickInfo = null;
+        return;
+      }
+
+      if (clickInfo?.nave) {
         cancelarComandoNave();
         selecionarNave(mundo, clickInfo.nave);
         somClique();
-      } else if (naveSelecionada && comandoNave?.nave === naveSelecionada) {
-        if ((comandoNave.tipo === 'origem' || comandoNave.tipo === 'destino') && clickInfo?.planeta?.dados.dono === 'jogador') {
-          definirPlanetaRotaCargueira(naveSelecionada, comandoNave.tipo, clickInfo.planeta);
-          cancelarComandoNave();
+      } else if (
+        naveSelecionada
+        && comandoNave?.nave === naveSelecionada
+        && (comandoNave.tipo === 'origem' || comandoNave.tipo === 'destino')
+        && clickInfo?.planeta?.dados.dono === 'jogador'
+      ) {
+        definirPlanetaRotaCargueira(naveSelecionada, comandoNave.tipo, clickInfo.planeta);
+        cancelarComandoNave();
+        somClique();
+      } else if (
+        naveSelecionada
+        && comandoNave?.nave === naveSelecionada
+        && comandoNave.tipo === 'mover'
+        && !clickInfo?.planeta
+        && !clickInfo?.sol
+      ) {
+        if (comandoNave.pontos.length < 5) {
+          comandoNave.pontos.push({ x: destinoMapa.x, y: destinoMapa.y });
+          atualizarPreviewComandoNave();
           somClique();
         }
       } else if (clickInfo?.planeta) {
@@ -196,19 +322,25 @@ export function configurarCamera(app: Application, mundo: Mundo): void {
     clickInfo = null;
   });
 
+  // Global Escape: cancels any active command mode, unless the user is
+  // currently typing in an input (e.g. the colony-modal name field).
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+    if (comandoNave) {
+      cancelarComandoNave();
+      e.preventDefault();
+    }
+  });
+
   canvas.addEventListener('wheel', (e: WheelEvent) => {
     e.preventDefault();
-
-    const mouseWorld = screenToWorld(e.clientX, e.clientY, app);
-
-    if (e.deltaY < 0) {
-      camera.zoom = camera.zoom * 1.1;
-    } else {
-      camera.zoom = camera.zoom / 1.1;
-    }
-
-    camera.x = mouseWorld.x - (e.clientX - app.screen.width / 2) / camera.zoom;
-    camera.y = mouseWorld.y - (e.clientY - app.screen.height / 2) / camera.zoom;
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    aplicarZoom(camera.zoom * factor, sx, sy);
   }, { passive: false });
 }
 
