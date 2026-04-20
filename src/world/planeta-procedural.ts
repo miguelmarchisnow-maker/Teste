@@ -1,4 +1,4 @@
-import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite, Container, Rectangle, RenderTexture, Texture, AlphaFilter } from 'pixi.js';
+import { Mesh, Shader, GlProgram, GpuProgram, UniformGroup, Geometry, Buffer, State, Sprite, Container, Rectangle, RenderTexture, Texture } from 'pixi.js';
 import { renderPlanetParaImageData, type PlanetRenderState } from './planeta-canvas';
 import type { Application } from 'pixi.js';
 import vertexSrc from '../shaders/planeta.vert?raw';
@@ -240,19 +240,6 @@ function criarQuadGeometry(): Geometry {
 
 const quadGeometry = criarQuadGeometry();
 
-// Filter passthrough em half-res — todo planeta live (mesh não-baked)
-// aplica isso, fazendo o fragment shader rodar em 1/4 dos pixels (½
-// em cada dim). O filter é compositado de volta com upscale bilinear
-// do Pixi. Ganho: ~2-4ms/frame em GPU fullscreen de planetas
-// grandes, imperceptível visualmente porque:
-//   - o shader já pixeliza via uPixels (64 internal grid) — a textura
-//     nativa já tem detalhe sub-pixel discreto
-//   - o bilinear suaviza a borda do disco sem mudar a imagem interna
-//   - bake (planetas < 40px) não usa filter porque já é sprite estático
-// Compartilhado entre todos os planetas pra minimizar alocação de
-// filter/RT pool.
-const _halfResFilter = new AlphaFilter({ alpha: 1.0, resolution: 0.5 });
-
 // Shared programs — created once, reused by all planets/stars
 const sharedGlProgram = GlProgram.from({
   vertex: vertexSrc,
@@ -424,12 +411,6 @@ export function criarPlanetaProceduralSprite(
   mesh.x = x;
   mesh.y = y;
 
-  // Half-res render via filter passthrough — ver comentário do
-  // _halfResFilter. Só se aplica enquanto o mesh está visível (modo
-  // live); quando bakeado mesh.visible=false e o sprite estático é
-  // renderizado diretamente sem passar pelo filter.
-  mesh.filters = [_halfResFilter];
-
   // Store shader reference and rotation speed for time/light updates
   const rotSpeed = (0.02 + rng() * 0.06) * (rng() > 0.5 ? 1 : -1);
   (mesh as any)._planetShader = shader;
@@ -500,8 +481,15 @@ function bakePlaneta(planeta: any): void {
 
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
-    sprite.width = tamanho;
-    sprite.height = tamanho;
+    // Display size precisa bater com o frameSize da textura, não com
+    // tamanho. A textura é frameSize×frameSize e o disco dentro ocupa
+    // tamanho (centralizado). Se display=tamanho, o sprite escala a
+    // textura por tamanho/frameSize e o disco encolhe — visível pra
+    // planetas pequenos (frameSize=64 mínimo, então tamanho=30 →
+    // disco aparece em 30/64 = 47% do tamanho esperado). Ajustar pra
+    // frameSize mantém o disco com raio tamanho/2 igual ao mesh live.
+    sprite.width = frameSize;
+    sprite.height = frameSize;
 
     // Add baked sprite as sibling, hide the mesh
     (planeta as any)._bakedSprite = sprite;
@@ -843,9 +831,6 @@ export function criarEstrelaProcedural(
   mesh.scale.set(tamanho);
   mesh.x = x;
   mesh.y = y;
-  // Same half-res filter dos planetas — sóis têm shader igual de caro
-  // (plasma/FBM), e ganham o mesmo 4× de economia de fragments.
-  mesh.filters = [_halfResFilter];
   (mesh as any)._planetShader = shader;
   (mesh as any)._rotSpeed = 0.005 + rng() * 0.01;
 
