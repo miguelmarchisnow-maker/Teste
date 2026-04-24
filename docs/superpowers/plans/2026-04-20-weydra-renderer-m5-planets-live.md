@@ -431,18 +431,26 @@ createPlanetInstance(): PlanetInstance {
   return new PlanetInstance(BigInt(h), this);
 }
 
-get planetUniformsView(): Float32Array {
-  const buf = _wasm.memory.buffer;
-  return new Float32Array(
-    buf,
-    this.inner.planet_uniforms_ptr(),
-    (this.inner.planet_uniforms_capacity() * this.inner.planet_uniforms_stride()) / 4,
-  );
-}
+// Cached in revalidate() — NÃO é getter, é field. Recriar typed array a cada
+// acesso desalinha f32view e i32view entre si se memory grew; cache garante
+// que ambas apontam pro mesmo ArrayBuffer current.
+planetUniformsView!: Float32Array;
+planetUniformsIView!: Int32Array;
+planetUniformsStride!: number;
+planetUniformsPtr!: number;
+planetUniformsCapacity!: number;
 
-get planetUniformsStride(): number { return this.inner.planet_uniforms_stride(); }
-get planetUniformsPtr(): number { return this.inner.planet_uniforms_ptr(); }
-get planetUniformsCapacity(): number { return this.inner.planet_uniforms_capacity(); }
+// Em revalidate() (chame após create_planet_shader ou upload que possa
+// ter crescido memory):
+private revalidatePlanetViews(): void {
+  const buf = _wasm.memory.buffer;
+  this.planetUniformsPtr = this.inner.planet_uniforms_ptr();
+  this.planetUniformsStride = this.inner.planet_uniforms_stride();
+  this.planetUniformsCapacity = this.inner.planet_uniforms_capacity();
+  const totalF32 = (this.planetUniformsCapacity * this.planetUniformsStride) / 4;
+  this.planetUniformsView = new Float32Array(buf, this.planetUniformsPtr, totalF32);
+  this.planetUniformsIView = new Int32Array(buf, this.planetUniformsPtr, totalF32);
+}
 ```
 
 Note: for robustness, use auto-generated accessors from `vite-plugin-wgsl` instead of hand-written — that's the whole point of the plugin. In this plan's simplified form, we write them manually. In actual execution, the plugin generates them.
@@ -613,22 +621,21 @@ impl Renderer {
             });
             pass.set_pipeline(&mesh.pipeline);
             pass.set_bind_group(0, &self.engine.bind_group, &[]);
-            pass.set_bind_group(1, &pool.bind_groups[h.slot as usize], &[]);
+            pass.set_bind_group(1, &pool.bind_group, &[pool.offset_for(h.slot)]);
             pass.draw(0..6, 0..1);
         }
         self.ctx.queue.submit(Some(encoder.finish()));
 
-        // Register as texture handle. Sampler é criado fresh aqui —
-        // evitar dep em `TextureRegistry::get_default_sampler()` que M3
-        // não expõe publicamente. wgpu::Sampler internamente é Arc, criar
-        // novo é trivial.
+        // Register as texture handle. Sampler é criado fresh aqui. `insert`
+        // público em TextureRegistry aceita `Texture` pronto (ver M3 adição
+        // obrigatória abaixo).
         let sampler = self.ctx.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("planet bake sampler"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-        let tex_handle = self.textures.insert_external(crate::texture::Texture {
+        let tex_handle = self.textures.insert(crate::texture::Texture {
             texture: rt.texture,
             view: rt.view,
             sampler,

@@ -118,14 +118,25 @@ pub struct GraphicsVertex {
     pub color: [f32; 4],
 }
 
+pub struct Graphics {
+    pub commands: Vec<GraphicsCmd>,
+    pub dirty: bool,
+    pub world_space: bool,
+    pub fill_vertex_buffer: Option<wgpu::Buffer>,
+    pub fill_index_buffer: Option<wgpu::Buffer>,
+    pub fill_index_count: u32,
+    pub stroke_vertex_buffer: Option<wgpu::Buffer>,
+    pub stroke_index_buffer: Option<wgpu::Buffer>,
+    pub stroke_index_count: u32,
+    pub uniforms_buffer: wgpu::Buffer,
+    pub uniforms_bind_group: wgpu::BindGroup,
+}
+
 impl Graphics {
     pub fn tessellate(&mut self, ctx: &GpuContext) {
         if !self.dirty { return; }
 
-        let mut geometry: VertexBuffers<GraphicsVertex, u16> = VertexBuffers::new();
-        // Fill e stroke tem `VertexBuffers` separados pra evitar índice
-        // aliasing quando comandos consecutivos misturam fill/stroke.
-        // Em render: draw call 1 = fill_geometry, draw call 2 = stroke_geometry.
+        // Fill e stroke em buffers separados — draw call 1 fill, draw call 2 stroke.
         let mut fill_geometry: VertexBuffers<GraphicsVertex, u16> = VertexBuffers::new();
         let mut stroke_geometry: VertexBuffers<GraphicsVertex, u16> = VertexBuffers::new();
         let mut fill_tess = FillTessellator::new();
@@ -141,7 +152,7 @@ impl Graphics {
                         let opts = FillOptions::default();
                         fill_tess.tessellate_path(
                             &path, &opts,
-                            &mut BuffersBuilder::new(&mut geometry, |v: FillVertex| GraphicsVertex {
+                            &mut BuffersBuilder::new(&mut fill_geometry, |v: FillVertex| GraphicsVertex {
                                 position: v.position().to_array(), color: *color,
                             }),
                         ).unwrap();
@@ -150,30 +161,50 @@ impl Graphics {
                         let opts = StrokeOptions::default().with_line_width(*width);
                         stroke_tess.tessellate_path(
                             &path, &opts,
-                            &mut BuffersBuilder::new(&mut geometry, |v: StrokeVertex| GraphicsVertex {
+                            &mut BuffersBuilder::new(&mut stroke_geometry, |v: StrokeVertex| GraphicsVertex {
                                 position: v.position().to_array(), color: *color,
                             }),
                         ).unwrap();
                     }
                 }
-                // ... other cmds
+                // ... other cmds (Rect, RoundRect, Line, Arc) seguem mesma pattern:
+                // fill → fill_geometry, stroke → stroke_geometry
                 _ => todo!(),
             }
         }
 
-        // Upload to GPU
+        // Upload fill + stroke separadamente
         use wgpu::util::DeviceExt;
-        self.vertex_buffer = Some(ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("graphics verts"),
-            contents: bytemuck::cast_slice(&geometry.vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        self.index_buffer = Some(ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("graphics indices"),
-            contents: bytemuck::cast_slice(&geometry.indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
-        self.index_count = geometry.indices.len() as u32;
+        if !fill_geometry.vertices.is_empty() {
+            self.fill_vertex_buffer = Some(ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("graphics fill verts"),
+                contents: bytemuck::cast_slice(&fill_geometry.vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }));
+            self.fill_index_buffer = Some(ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("graphics fill indices"),
+                contents: bytemuck::cast_slice(&fill_geometry.indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }));
+            self.fill_index_count = fill_geometry.indices.len() as u32;
+        } else {
+            self.fill_vertex_buffer = None; self.fill_index_buffer = None; self.fill_index_count = 0;
+        }
+        if !stroke_geometry.vertices.is_empty() {
+            self.stroke_vertex_buffer = Some(ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("graphics stroke verts"),
+                contents: bytemuck::cast_slice(&stroke_geometry.vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }));
+            self.stroke_index_buffer = Some(ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("graphics stroke indices"),
+                contents: bytemuck::cast_slice(&stroke_geometry.indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }));
+            self.stroke_index_count = stroke_geometry.indices.len() as u32;
+        } else {
+            self.stroke_vertex_buffer = None; self.stroke_index_buffer = None; self.stroke_index_count = 0;
+        }
         self.dirty = false;
     }
 }

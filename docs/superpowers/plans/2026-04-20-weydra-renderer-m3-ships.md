@@ -287,6 +287,13 @@ impl TextureRegistry {
     pub fn get(&self, h: Handle) -> Option<&Texture> {
         self.textures.get(h)
     }
+
+    /// Insert a pre-built Texture (used by render-to-texture paths like M5 bake).
+    /// Most callers use `upload_rgba`; this is the escape hatch for wgpu textures
+    /// created elsewhere (e.g. RenderTarget texture).
+    pub fn insert(&mut self, t: Texture) -> Handle {
+        self.textures.insert(t)
+    }
 }
 
 impl Default for TextureRegistry {
@@ -487,11 +494,32 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 }
 ```
 
-- [ ] **Step 2: Note limitation**
+- [ ] **Step 2: Escrever variant WebGL2 instanced**
 
-Storage buffers não existem em WebGL2. Como fallback, a gente usa vertex buffer com per-instance attributes. Mas pra desenhar o spec como está, usar storage buffer em WebGPU + vertex buffer em WebGL2 é um switch de backend detectado no boot.
+Este milestone **tem** que prover ambos paths (WebGPU storage buffer + WebGL2 vertex-attribute) — ver "Scope extensions absorved into M3" no topo do plano. Criar `core/shaders/sprite_batch_instanced.wgsl` com per-instance vertex attributes:
 
-**Deferrable:** pra este milestone, assumir WebGPU (storage buffer path) primeiro. Vertex buffer fallback vira task follow-up se o deploy pegar WebGL2.
+```wgsl
+struct CameraUniforms { camera: vec2<f32>, viewport: vec2<f32>, time: f32, _pad: vec3<f32> };
+@group(0) @binding(0) var<uniform> cam: CameraUniforms;
+@group(2) @binding(0) var tex: texture_2d<f32>;
+@group(2) @binding(1) var samp: sampler;
+
+// Per-instance attributes (VertexStepMode::Instance)
+struct InstanceIn {
+  @location(0) transform: vec4<f32>,  // x, y, scale_x, scale_y
+  @location(1) uv_rect: vec4<f32>,    // u, v, w, h
+  @location(2) color_rgba: u32,       // RGBA8
+  @location(3) display: vec2<f32>,
+  // vertex_index usado pra pegar corner (0..6)
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vid: u32, inst: InstanceIn) -> VsOut {
+  // mesma lógica de corners do shader storage, só lendo de inst.* em vez de sprites[iid]
+}
+```
+
+Detecção de backend no boot + selecionar pipeline: ver "Scope extensions" no topo. Ambas variants expõem a mesma API TS (`create_sprite`, etc).
 
 - [ ] **Step 3: Commit**
 

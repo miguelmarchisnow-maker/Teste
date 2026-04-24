@@ -276,5 +276,5 @@ git commit -m "feat(orbital): fog via weydra shader + M6 complete"
 
 **Risks:**
 - Hard-coded 64 sources — validar que Orbital raramente passa. Stress test com 50 naves do jogador + 20 naves inimigas visíveis.
-- `destination-out` do Pixi tinha bordas soft via smoothstep natural do canvas. Shader precisa replicar — ajustar `smoothstep(radius, radius * 0.75, d)` até parity visual.
+- `destination-out` do Pixi tinha bordas soft via smoothstep natural do canvas. Shader precisa replicar — ajustar `smoothstep(radius * 0.75, radius, d)` (inner → outer) até parity visual.
 - Loop em fragment shader (64 iter × fullscreen) — validar perf em PowerVR mobile.
