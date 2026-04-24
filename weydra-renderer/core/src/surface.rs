@@ -25,7 +25,10 @@ impl<'window> RenderSurface<'window> {
             .iter()
             .find(|f| f.is_srgb())
             .copied()
-            .unwrap_or_else(|| caps.formats[0]);
+            .or_else(|| caps.formats.first().copied())
+            .ok_or_else(|| {
+                WeydraError::SurfaceCreationFailed("no supported surface formats".into())
+            })?;
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -50,27 +53,29 @@ impl<'window> RenderSurface<'window> {
         self.surface.configure(&ctx.device, &self.config);
     }
 
-    /// Acquire the next texture to render into. Returned texture must be
-    /// presented (via SurfaceTexture::present) before the next frame.
-    pub fn acquire_next_texture(&self) -> Result<wgpu::SurfaceTexture> {
+    /// Acquire the next texture to render into. Returned texture (when `Some`)
+    /// must be presented (via `SurfaceTexture::present`) before the next frame.
+    ///
+    /// Returns `Ok(None)` when the frame should be skipped (e.g. surface was
+    /// outdated/lost and has been reconfigured, or acquire timed out). Callers
+    /// should silently drop the frame and try again next tick.
+    pub fn acquire_next_texture(
+        &mut self,
+        ctx: &GpuContext,
+    ) -> Result<Option<wgpu::SurfaceTexture>> {
         match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Ok(t),
-            wgpu::CurrentSurfaceTexture::Timeout => Err(WeydraError::SurfaceCreationFailed(
-                "surface acquire timeout".into(),
-            )),
-            wgpu::CurrentSurfaceTexture::Occluded => Err(WeydraError::SurfaceCreationFailed(
-                "surface occluded".into(),
-            )),
-            wgpu::CurrentSurfaceTexture::Outdated => Err(WeydraError::SurfaceCreationFailed(
-                "surface outdated".into(),
-            )),
-            wgpu::CurrentSurfaceTexture::Lost => {
-                Err(WeydraError::SurfaceCreationFailed("surface lost".into()))
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Ok(Some(t)),
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                // Transient: reconfigure and skip this frame.
+                self.surface.configure(&ctx.device, &self.config);
+                Ok(None)
             }
-            wgpu::CurrentSurfaceTexture::Validation => Err(WeydraError::SurfaceCreationFailed(
-                "surface validation error".into(),
-            )),
+            wgpu::CurrentSurfaceTexture::Timeout => Ok(None),
+            wgpu::CurrentSurfaceTexture::Occluded => Ok(None),
+            wgpu::CurrentSurfaceTexture::Validation => {
+                Err(WeydraError::SurfaceAcquireFailed("surface validation failed"))
+            }
         }
     }
 }

@@ -15,7 +15,7 @@ pub struct CameraUniforms {
     pub camera: [f32; 2],
     pub viewport: [f32; 2],
     pub time: f32,
-    pub _pad: [f32; 3],
+    pub(crate) _pad: [f32; 3],
 }
 
 impl Default for CameraUniforms {
@@ -29,10 +29,6 @@ impl Default for CameraUniforms {
     }
 }
 
-impl CameraUniforms {
-    pub const BYTE_SIZE: u64 = std::mem::size_of::<Self>() as u64;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -41,7 +37,6 @@ mod tests {
     fn camera_uniforms_is_32_bytes() {
         assert_eq!(std::mem::size_of::<CameraUniforms>(), 32);
         assert_eq!(std::mem::align_of::<CameraUniforms>(), 4);
-        assert_eq!(CameraUniforms::BYTE_SIZE, 32);
     }
 
     #[test]

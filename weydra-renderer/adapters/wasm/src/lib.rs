@@ -38,30 +38,10 @@ impl Renderer {
             .create_surface(surface_target)
             .map_err(|e| JsValue::from_str(&format!("surface: {e}")))?;
 
-        // wgpu 29: request_adapter returns Result<Adapter, E>
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
+        let ctx = GpuContext::new_with_surface(instance, &surface)
             .await
-            .map_err(|e| JsValue::from_str(&format!("adapter: {e}")))?;
+            .map_err(|e| JsValue::from_str(&format!("gpu init: {e}")))?;
 
-        // wgpu 29: request_device takes DeviceDescriptor only, descriptor requires experimental_features.
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("weydra device (wasm)"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-                memory_hints: wgpu::MemoryHints::Performance,
-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                trace: wgpu::Trace::Off,
-            })
-            .await
-            .map_err(|e| JsValue::from_str(&format!("device: {e}")))?;
-
-        let ctx = GpuContext { instance, adapter, device, queue };
         let render_surface = RenderSurface::configure(&ctx, surface, width, height)
             .map_err(|e| JsValue::from_str(&format!("config: {e}")))?;
 
@@ -73,7 +53,7 @@ impl Renderer {
     }
 
     pub fn render(&mut self) -> Result<(), JsValue> {
-        render_clear(&self.ctx, &self.surface, [0.0, 0.0, 0.0, 1.0])
+        render_clear(&self.ctx, &mut self.surface, [0.0, 0.0, 0.0, 1.0])
             .map_err(|e| JsValue::from_str(&format!("render: {e}")))
     }
 }

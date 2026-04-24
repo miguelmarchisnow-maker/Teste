@@ -509,15 +509,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glam"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
-dependencies = [
- "bytemuck",
-]
-
-[[package]]
 name = "glow"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1935,7 +1926,6 @@ name = "weydra-renderer"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "glam",
  "log",
  "pollster",
  "wgpu",

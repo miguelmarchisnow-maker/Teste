@@ -22,12 +22,15 @@ impl ApplicationHandler for App {
                 .expect("failed to create window"),
         );
 
-        let ctx = pollster::block_on(GpuContext::new_headless()).expect("gpu init failed");
-
-        let surface = ctx
-            .instance
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = instance
             .create_surface(window.clone())
             .expect("surface creation failed");
+
+        let ctx = pollster::block_on(GpuContext::new_with_surface(instance, &surface))
+            .expect("gpu init failed");
+
         let size = window.surface_size();
         let render_surface =
             RenderSurface::configure(&ctx, surface, size.width, size.height).expect("surface config");
@@ -52,7 +55,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 if let (Some(ctx), Some(surface), Some(window)) =
-                    (&self.ctx, &self.surface, &self.window)
+                    (&self.ctx, self.surface.as_mut(), &self.window)
                 {
                     if let Err(e) = render_clear(ctx, surface, [0.0, 0.05, 0.15, 1.0]) {
                         log::error!("render_clear failed: {e}");

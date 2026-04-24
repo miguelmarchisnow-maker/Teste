@@ -5,6 +5,7 @@ pub enum WeydraError {
     AdapterNotFound,
     DeviceRequestFailed(wgpu::RequestDeviceError),
     SurfaceCreationFailed(String),
+    SurfaceAcquireFailed(&'static str),
 }
 
 impl fmt::Display for WeydraError {
@@ -13,6 +14,7 @@ impl fmt::Display for WeydraError {
             Self::AdapterNotFound => write!(f, "no suitable GPU adapter found"),
             Self::DeviceRequestFailed(e) => write!(f, "failed to request device: {e}"),
             Self::SurfaceCreationFailed(m) => write!(f, "failed to create surface: {m}"),
+            Self::SurfaceAcquireFailed(m) => write!(f, "failed to acquire surface: {m}"),
         }
     }
 }

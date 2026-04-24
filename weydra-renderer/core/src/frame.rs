@@ -10,10 +10,13 @@ use crate::surface::RenderSurface;
 /// graphics, and dispatch custom meshes.
 pub fn render_clear(
     ctx: &GpuContext,
-    target: &RenderSurface,
+    target: &mut RenderSurface,
     clear_color: [f64; 4],
 ) -> Result<()> {
-    let frame = target.acquire_next_texture()?;
+    let frame = match target.acquire_next_texture(ctx)? {
+        Some(t) => t,
+        None => return Ok(()),
+    };
     let view = frame
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
