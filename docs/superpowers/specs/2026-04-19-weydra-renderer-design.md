@@ -819,3 +819,36 @@ All 4 reviewer perspectives (spec / plan / quality / bugs) ran on every task. Fi
 
 ### Next
 M2 (starfield port) — see `docs/superpowers/plans/2026-04-20-weydra-renderer-m2-starfield.md`.
+
+## M1.5 Status: Complete (2026-04-24)
+
+Scaffolding multi-plataforma pronto. `cargo check` passa em: linux-host, web, native-linux, native-windows (via mingw-w64). macOS/Android/iOS skip gracefully por falta de toolchain no host Linux (Apple requer macOS host, Android requer NDK+cargo-ndk). Platform guards documentados e enforced via script local (`scripts/check-platform-guards.sh` → 0 violations).
+
+### Verificação automática
+- `./scripts/check-all-platforms.sh` → 4 pass, 4 skip, 0 fail
+- `./scripts/check-platform-guards.sh` → 0 violations
+- `cargo build --workspace` limpo em todos os 6 crates (core + 4 adapters + hello-clear)
+- `cargo test -p weydra-renderer --lib` → 3/3 tests passam (M1 não regrediu)
+- `npm run build:renderer` → wasm pkg reconstruído sem erros
+
+### Adapters entregues (skeleton — full em M11/M12)
+- `adapters/native`: winit + wgpu com features [vulkan, metal, dx12], `NativeRenderer::new/resize/render`, power_preference HighPerformance
+- `adapters/android`: winit (android-native-activity) + wgpu [vulkan, gles] + android_logger 0.15, `AndroidRenderer::new/resize/render`, power_preference LowPower (mobile)
+- `adapters/ios`: placeholder sem features wgpu (Metal HAL só em M12 no macOS host), `ios_placeholder()` stub
+- `adapters/wasm`: intocado (M1 já completo)
+
+### Adaptações vs plano
+- Plan pedia `channel = "stable"` + wgpu 25; usamos `nightly` + wgpu 29 (M1 override herdado)
+- winit feature `android-native-activity` (confirmado em winit 0.31-beta.2; spec line 499 mencionava `android-activity` que não existe naquela versão)
+- `GpuContext::new_with_surface_pref(instance, surface, power_preference)` adicionado ao core — permite adapters passarem PowerPreference custom (mobile vs desktop). Método anterior `new_with_surface` agora é thin wrapper com HighPerformance — backwards-compat preservado
+- wgpu direct version pin (`version = "29"`) em `adapters/native` e `adapters/android` em vez de `workspace = true` — Cargo proíbe override de `default-features` quando workspace entry é bare version
+- Field drop order em NativeRenderer/AndroidRenderer: `surface` antes de `ctx` antes de `_window` (wgpu issue #5781)
+- `pub(crate)` em fields dos adapters em vez de `pub` (reduz API surface, match com wasm adapter style)
+- `android_logger = "0.15"` em vez de plan's 0.13 (outdated)
+- Script `check-platform-guards.sh` Cargo.toml regex expandido pra cobrir `[dependencies.X]` section headers + indented deps em `[target.cfg.dependencies]` (bug reviewer finding durante execução)
+
+### Reviewer gate
+4 reviewers (spec/plan/quality/bugs) dispatched em paralelo após cada Task. Findings fixados e re-reviewed até clean. Tasks 1-7 todas passaram nos 4 lentes. Itens rejeitados (plan-authorized): matriz simplificada vs spec rows, gles feature Android, android-native-activity vs android-activity (spec typo).
+
+### Next
+M2 (starfield port) segue em paralelo. M11 (full native adapter) e M12 (full mobile adapters) ficam sob demanda.
