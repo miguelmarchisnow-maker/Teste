@@ -12,6 +12,25 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    rollupOptions: {
+      output: {
+        // Bundle all of Pixi into a single chunk. Pixi v8's auto-imported
+        // `scene/graphics/init.mjs` runs `extensions.add(GraphicsContextSystem)`
+        // at module load, where `GraphicsContextSystem` lives in the main
+        // shared file. Rolldown's default chunker puts that init file in
+        // the lazy CanvasRenderer chunk and keeps `GraphicsContextSystem`
+        // in the index chunk, creating a circular import: index statically
+        // imports `Graphics` from CanvasRenderer, CanvasRenderer statically
+        // imports `GraphicsContextSystem` from index. The browser evaluates
+        // CanvasRenderer first, reads `GraphicsContextSystem` before index
+        // has initialised it, and crashes with "Invalid extension type"
+        // (undefined). One vendor chunk eliminates the cross-chunk cycle.
+        manualChunks: (id) => {
+          if (id.includes('/pixi.js/')) return 'pixi';
+          return undefined;
+        },
+      },
+    },
   },
   // Workaround pro bug do Vite 8 onde __BUNDLED_DEV__ não é substituído
   // em @vite/client em alguns casos de cache. Force explícito pra false.
