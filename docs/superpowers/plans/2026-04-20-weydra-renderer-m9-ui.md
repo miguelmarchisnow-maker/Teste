@@ -10,7 +10,40 @@
 
 ### Z-order
 
-Weydra renderiza pools em ordem crescente de `z_order: f32`. UI overlays precisam ficar **acima** de tudo do mundo. Constants já padronizados em M10 (`Z.UI_BACKGROUND=50, UI_GRAPHICS=51, UI_TEXT=52, UI_HOVER=55`). Este milestone referencia esses valores — **todo** `Graphics`/`Text` criado em `src/ui/` precisa setar `zOrder` antes do primeiro render, ou a UI fica atrás do starfield.
+Weydra renderiza pools em ordem crescente de `z_order: f32`. UI overlays precisam ficar **acima** de tudo do mundo. Criar `src/core/render-order.ts` **neste milestone** (Task 0) — não esperar M10:
+
+```typescript
+// src/core/render-order.ts
+export const Z = {
+  STARFIELD: 0,
+  STARFIELD_BRIGHT: 1,
+  PLANET_BAKED: 10,
+  PLANET_LIVE: 11,
+  ORBITS: 20,
+  ROUTES: 25,
+  SHIP_TRAILS: 28,
+  SHIPS: 30,
+  BEAMS: 35,
+  FOG: 40,
+  UI_BACKGROUND: 50,
+  UI_GRAPHICS: 51,
+  UI_TEXT: 52,
+  UI_HOVER: 55,
+} as const;
+```
+
+Cada arquivo em M9 importa `import { Z } from '../core/render-order'`. M10 reusa o mesmo arquivo e adiciona sprites/planets a ele — não duplica.
+
+### Graphics em screen-space
+
+O shader `graphics.wgsl` (M7) por padrão aplica transform de camera (world-space). UI Graphics não quer isso. M7 já precisa expor uma flag `worldSpace: boolean` no `Graphics` class, ou o engine precisa duas pipelines (world + screen). **Dependência bloqueante pro M9:** se M7 não expôs ainda, adicionar como pré-requisito task:
+
+```typescript
+// M7 precisa ter:
+const g = r.createGraphics({ worldSpace: false }); // screen-space
+```
+
+Se M7 foi merged sem isso, abrir follow-up task antes de começar M9. Text (M8) já tem flag `worldSpace` no `createText`.
 
 ### Hit-test e devicePixelRatio
 
@@ -49,6 +82,46 @@ return {
 
 Leak de listener é bug crítico — overlay fechado continua reagindo a cliques do mundo.
 
+### Overlay tick
+
+Overlays animados (tutorial slide-in, painel fade, etc) expõem `tick(dtSec)`. Ninguém chama isso automaticamente — precisa wiring explícito. Criar `src/ui/overlay-registry.ts`:
+
+```typescript
+type Overlay = { tick?: (dtSec: number) => void; destruir: () => void };
+const overlays: Set<Overlay> = new Set();
+
+export function registerOverlay(o: Overlay): () => void {
+  overlays.add(o);
+  return () => { overlays.delete(o); };
+}
+
+export function tickOverlays(dtSec: number): void {
+  for (const o of overlays) o.tick?.(dtSec);
+}
+```
+
+O game loop (weydra-loader ou game-tick.ts) chama `tickOverlays(dtSec)` por frame. Cada overlay registra na criação e desregistra no `destruir`.
+
+### Hoisting de estado
+
+Closures de event handler que leem estado compartilhado (ex: minimap lê `estadoAtual`) precisam declaração explícita antes do `addEventListener`. Sempre:
+
+```typescript
+let estadoAtual: EstadoMundo | null = null;
+const handlers = {
+  onDown: (ev: PointerEvent) => {
+    if (!estadoAtual) return;
+    // ... usa estadoAtual com segurança
+  },
+};
+canvas.addEventListener('pointerdown', handlers.onDown);
+
+return {
+  atualizar: (estado) => { estadoAtual = estado; /* redraw */ },
+  destruir: () => { /* remove listener */ },
+};
+```
+
 **Tech Stack:** M7 Graphics + M8 Text + M3 Sprite (para ícones).
 
 **Depends on:** M7 + M8 complete.
@@ -64,6 +137,53 @@ Leak de listener é bug crítico — overlay fechado continua reagindo a cliques
 - `src/ui/selecao.ts` — selection cards (bg + text + hover state)
 - `src/world/mundo.ts` — remover `addChild` em containers Pixi pra esses objetos quando flag on
 - `src/core/config.ts` — `weydra.ui` flag
+
+---
+
+### Task 0: Pré-requisitos compartilhados
+
+**Files:**
+- Create: `src/core/render-order.ts` (Z constants)
+- Create: `src/ui/overlay-registry.ts`
+- Create: `src/ui/_dom-helpers.ts` (toCanvasXY + rgbaWithAlpha)
+
+- [ ] **Step 1: Z constants**
+
+Conforme seção "Convenções transversais". Exporta `Z`.
+
+- [ ] **Step 2: overlay-registry**
+
+Conforme seção "Overlay tick". Exporta `registerOverlay`, `tickOverlays`.
+
+- [ ] **Step 3: dom-helpers**
+
+```typescript
+export function toCanvasXY(ev: PointerEvent, canvas: HTMLCanvasElement): [number, number] {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  return [(ev.clientX - rect.left) * dpr, (ev.clientY - rect.top) * dpr];
+}
+
+export function rgbaWithAlpha(rgb: number, alpha01: number): number {
+  const a = Math.max(0, Math.min(255, Math.round(alpha01 * 255)));
+  return ((rgb & 0xFFFFFF) << 8) | a;
+}
+```
+
+- [ ] **Step 4: Wire tickOverlays no game loop**
+
+Em `src/weydra-loader.ts` (ou game-tick.ts do M10):
+```typescript
+import { tickOverlays } from './ui/overlay-registry';
+// No loop: tickOverlays(dtSec); antes de _renderer.render();
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/render-order.ts src/ui/overlay-registry.ts src/ui/_dom-helpers.ts src/weydra-loader.ts
+git commit -m "feat(ui): shared Z constants + overlay registry + DOM helpers for M9"
+```
 
 ---
 
@@ -105,16 +225,18 @@ export function montarMinimapa(/* args */) {
   if (getConfig().weydra.ui) {
     const r = getWeydraRenderer();
     if (r) {
-      const bg = r.createGraphics();       bg.zOrder = Z.UI_BACKGROUND;
-      const dots = r.createGraphics();     dots.zOrder = Z.UI_GRAPHICS;
-      const viewport = r.createGraphics(); viewport.zOrder = Z.UI_HOVER;
-      const titulo = r.createText(FONT_SMALL, 16);
+      const bg = r.createGraphics({ worldSpace: false });       bg.zOrder = Z.UI_BACKGROUND;
+      const dots = r.createGraphics({ worldSpace: false });     dots.zOrder = Z.UI_GRAPHICS;
+      const viewport = r.createGraphics({ worldSpace: false }); viewport.zOrder = Z.UI_HOVER;
+      const titulo = r.createText(FONT_SMALL, 16, false);
       titulo.zOrder = Z.UI_TEXT;
       titulo.text = 'MINIMAP';
 
+      let estadoAtual: any = null;
       const canvas = document.getElementById('weydra-canvas') as HTMLCanvasElement;
       const handlers = {
         onDown: (ev: PointerEvent) => {
+          if (!estadoAtual) return;
           const [x, y] = toCanvasXY(ev, canvas);
           if (x < MX || x >= MX + MW || y < MY || y >= MY + MH) return;
           const wx = ((x - MX) / MW) * estadoAtual.worldW;
@@ -124,6 +246,15 @@ export function montarMinimapa(/* args */) {
       };
       canvas.addEventListener('pointerdown', handlers.onDown);
 
+      const overlay = {
+        destruir: () => {
+          canvas.removeEventListener('pointerdown', handlers.onDown);
+          r.destroyGraphics(bg); r.destroyGraphics(dots); r.destroyGraphics(viewport);
+          r.destroyText(titulo);
+          desregistrar();
+        },
+      };
+      const desregistrar = registerOverlay(overlay);
       return {
         atualizar: (estado) => {
           estadoAtual = estado;
@@ -137,11 +268,7 @@ export function montarMinimapa(/* args */) {
           viewport.clear().rect(viewX, viewY, viewW, viewH).stroke({ width: 1, color: 0x66ccff, alpha: 0.8 });
           titulo.x = MX + 4; titulo.y = MY + 2;
         },
-        destruir: () => {
-          canvas.removeEventListener('pointerdown', handlers.onDown);
-          r.destroyGraphics(bg); r.destroyGraphics(dots); r.destroyGraphics(viewport);
-          r.destroyText(titulo);
-        },
+        ...overlay,
       };
     }
   }
@@ -229,16 +356,19 @@ if (getConfig().weydra.ui) {
     };
     canvas.addEventListener('pointerdown', handlers.onDown);
 
-    return {
-      redraw, tick,
+    const overlay = {
+      tick,
       destruir: () => {
         canvas.removeEventListener('pointerdown', handlers.onDown);
         r.destroyGraphics(frame);
         r.destroyText(titulo);
         for (const l of linhas) r.destroyText(l);
         r.destroyText(close);
+        desregistrar();
       },
     };
+    const desregistrar = registerOverlay(overlay);
+    return { redraw, ...overlay };
   }
 }
 ```
@@ -270,18 +400,28 @@ git commit -m "feat(orbital): tutorial via weydra graphics + text"
 
 Painel é o mais denso. 24 Text (M8 já cuida), ~5 Graphics pra backgrounds de seções (planeta, naves, edifícios, pesquisa, carga), e botões de ação.
 
-Estratégia: preservar a função `montarPainelPlaneta()` ou similar, branch no topo pra escolher Pixi vs weydra. As chamadas internas a `new Text(...)` já passam pelo helper de M8; só substituir `new Graphics()` por `r.createGraphics()`.
-
-Botões: hoje eram Pixi `eventMode='static' + on('pointertap', ...)`. M7 já mudou pra DOM. O painel em weydra só precisa desenhar o visual dos botões; hit-test DOM lê `btn.bounds`.
+Estratégia: preservar a função `montarPainelPlaneta()`, branch no topo pra escolher Pixi vs weydra. Helper `criarText` (M8) já retorna weydra Text quando flag on; só substituir `new Graphics()` por `r.createGraphics({ worldSpace: false })`.
 
 ```typescript
+import { Z } from '../core/render-order';
+import { toCanvasXY } from './_dom-helpers';
+import { registerOverlay } from './overlay-registry';
+
 if (getConfig().weydra.ui) {
   const r = getWeydraRenderer();
   if (r) {
-    const secaoPlaneta = r.createGraphics();
-    const secaoNaves = r.createGraphics();
+    const secaoPlaneta = r.createGraphics({ worldSpace: false }); secaoPlaneta.zOrder = Z.UI_BACKGROUND;
+    const secaoNaves = r.createGraphics({ worldSpace: false });   secaoNaves.zOrder = Z.UI_BACKGROUND;
     // ... demais seções
-    // Text é criado via helper criarText (já retorna weydra Text quando flag on)
+    // Text via criarText helper — zOrder = Z.UI_TEXT aplicado no helper
+
+    // Botões
+    const btnConstruir = r.createGraphics({ worldSpace: false }); btnConstruir.zOrder = Z.UI_GRAPHICS;
+    const btnPesquisa  = r.createGraphics({ worldSpace: false }); btnPesquisa.zOrder = Z.UI_GRAPHICS;
+    const buttons: Array<{ bounds: {x:number;y:number;w:number;h:number}; onClick: () => void }> = [
+      { bounds: { x: bcX, y: bcY, w: bcW, h: bcH }, onClick: onConstruirClick },
+      { bounds: { x: bpX, y: bpY, w: bpW, h: bpH }, onClick: onPesquisaClick },
+    ];
 
     const redraw = () => {
       secaoPlaneta.clear()
@@ -289,31 +429,52 @@ if (getConfig().weydra.ui) {
         .fill(0x0a1020, 0.85)
         .stroke({ width: 1, color: 0x224466 });
       // ... repetir pra outras seções
-      // Textos já posicionados via Pattern:
+      // Textos posicionados:
       txtPlanetas.x = sx + 8; txtPlanetas.y = sy + 20;
       txtPlanetas.text = `Planetas: ${count}`;
+
+      btnConstruir.clear()
+        .roundRect(bcX, bcY, bcW, bcH, 3)
+        .fill(0x1a3a5a, 0.9)
+        .stroke({ width: 1, color: 0x66ccff });
     };
 
-    return { redraw, destruir: () => { /* ... */ } };
+    const canvas = document.getElementById('weydra-canvas') as HTMLCanvasElement;
+    const handlers = {
+      onDown: (ev: PointerEvent) => {
+        const [x, y] = toCanvasXY(ev, canvas);
+        for (const btn of buttons) {
+          if (x >= btn.bounds.x && x < btn.bounds.x + btn.bounds.w &&
+              y >= btn.bounds.y && y < btn.bounds.y + btn.bounds.h) {
+            btn.onClick();
+            return;
+          }
+        }
+      },
+    };
+    canvas.addEventListener('pointerdown', handlers.onDown);
+
+    const overlay = {
+      destruir: () => {
+        canvas.removeEventListener('pointerdown', handlers.onDown);
+        r.destroyGraphics(secaoPlaneta);
+        r.destroyGraphics(secaoNaves);
+        r.destroyGraphics(btnConstruir);
+        r.destroyGraphics(btnPesquisa);
+        // destroy all text nodes via helper
+        desregistrar();
+      },
+    };
+    const desregistrar = registerOverlay(overlay);
+
+    return { redraw, ...overlay };
   }
 }
 ```
 
-- [ ] **Step 2: Botões**
+- [ ] **Step 2: Botões — nota**
 
-Cada action button é um Graphics retângulo + Text label. Hit-test lê posição:
-```typescript
-const btnBounds = { x: bx, y: by, w: bw, h: bh };
-function onPointerDown(ev: PointerEvent) {
-  const rect = canvas.getBoundingClientRect();
-  const x = ev.clientX - rect.left;
-  const y = ev.clientY - rect.top;
-  if (x >= btnBounds.x && x < btnBounds.x + btnBounds.w && /* y */) {
-    onClick();
-  }
-}
-canvas.addEventListener('pointerdown', onPointerDown);
-```
+Hit-test usa `toCanvasXY(ev, canvas)` (já inclui DPR). Handler armazenado em `handlers.onDown` como property — mesma referência usada no `addEventListener` e `removeEventListener`. Listener leak evitado.
 
 - [ ] **Step 3: Commit**
 
@@ -398,8 +559,7 @@ if (getConfig().weydra.ui) {
     canvas.addEventListener('pointerdown', handlers.onDown);
     canvas.addEventListener('pointerup', handlers.onUp);
 
-    return {
-      redraw,
+    const overlay = {
       destruir: () => {
         canvas.removeEventListener('pointermove', handlers.onMove);
         canvas.removeEventListener('pointerdown', handlers.onDown);
@@ -409,8 +569,11 @@ if (getConfig().weydra.ui) {
           r.destroyGraphics(card.ring);
           if ((card.label as any)._weydra) r.destroyText((card.label as any)._weydra);
         }
+        desregistrar();
       },
     };
+    const desregistrar = registerOverlay(overlay);
+    return { redraw, ...overlay };
   }
 }
 ```

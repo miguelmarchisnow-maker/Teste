@@ -219,21 +219,41 @@ pub fn bake_atlas(
 }
 
 /// A live text node. Re-tessellates vertex buffer on content change.
+/// Owns its own TextUniforms buffer (16 bytes) + bind group for group 1.
 pub struct TextNode {
     pub atlas: usize, // index into renderer's atlases Vec
     pub content: String,
     pub position: [f32; 2],
     pub color: u32,
+    pub visible: bool,
+    pub z_order: f32,
     pub vertex_buffer: wgpu::Buffer,
     pub vertex_count: u32,
     pub capacity_chars: usize,
     /// When true, vs_main subtracts camera and uses world coords;
     /// when false, pos is screen-space pixels (UI overlays).
     pub world_space: bool,
+    /// TextUniforms buffer (16 bytes: [world_space, pad, pad, pad]).
+    pub uniforms_buffer: wgpu::Buffer,
+    /// Bind group 1 (TextUniforms) — one per node, rebuilt only when layout
+    /// changes (never, post-construction). Cheap; each node adds 1 bind group.
+    pub uniforms_bind_group: wgpu::BindGroup,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct TextUniforms {
+    pub world_space: f32,
+    pub _pad: [f32; 3],
 }
 
 impl TextNode {
-    pub fn new(ctx: &GpuContext, atlas: usize, capacity_chars: usize) -> Self {
+    pub fn new(
+        ctx: &GpuContext,
+        atlas: usize,
+        capacity_chars: usize,
+        uniforms_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         let byte_size = (capacity_chars * 6 * std::mem::size_of::<TextVertex>()) as u64;
         let vertex_buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("text vertex buffer"),
@@ -241,16 +261,42 @@ impl TextNode {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let uniforms_buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("text uniforms"),
+            size: std::mem::size_of::<TextUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let uniforms_bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("text uniforms bg"),
+            layout: uniforms_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniforms_buffer.as_entire_binding(),
+            }],
+        });
         Self {
             atlas,
             content: String::new(),
             position: [0.0, 0.0],
             color: 0xFFFFFFFF,
+            visible: true,
+            z_order: 0.0,
             vertex_buffer,
             vertex_count: 0,
             capacity_chars,
             world_space: false,
+            uniforms_buffer,
+            uniforms_bind_group,
         }
+    }
+
+    pub fn write_uniforms(&self, ctx: &GpuContext) {
+        let u = TextUniforms {
+            world_space: if self.world_space { 1.0 } else { 0.0 },
+            _pad: [0.0; 3],
+        };
+        ctx.queue.write_buffer(&self.uniforms_buffer, 0, bytemuck::bytes_of(&u));
     }
 
     /// Re-tessellate the text into the vertex buffer. Call after `content`,
@@ -315,14 +361,124 @@ pub struct TextVertex {
 pub struct TextRegistry {
     pub atlases: Vec<GlyphAtlas>,
     pub nodes: SlotMap<TextNode>,
+    /// Bind group 1 layout (TextUniforms) — same for all nodes
+    pub uniforms_layout: wgpu::BindGroupLayout,
+    /// Bind group 2 layout (atlas texture + sampler) — same for all atlases
+    pub atlas_layout: wgpu::BindGroupLayout,
+    /// One bind group 2 per atlas, indexed by atlas index
+    pub atlas_bind_groups: Vec<wgpu::BindGroup>,
+    pub pipeline: Option<wgpu::RenderPipeline>,
 }
 
 impl TextRegistry {
-    pub fn new() -> Self { Self { atlases: Vec::new(), nodes: SlotMap::new() } }
-}
+    pub fn new(ctx: &GpuContext) -> Self {
+        let uniforms_layout = ctx.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("text uniforms layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<TextUniforms>() as u64),
+                },
+                count: None,
+            }],
+        });
+        let atlas_layout = ctx.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("text atlas layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        Self {
+            atlases: Vec::new(),
+            nodes: SlotMap::new(),
+            uniforms_layout,
+            atlas_layout,
+            atlas_bind_groups: Vec::new(),
+            pipeline: None,
+        }
+    }
 
-impl Default for TextRegistry {
-    fn default() -> Self { Self::new() }
+    /// Build the text pipeline once all 3 bind group layouts are defined.
+    /// Called during Renderer::new after bake_atlas runs for each atlas.
+    pub fn build_pipeline(
+        &mut self,
+        ctx: &GpuContext,
+        shader_module: &wgpu::ShaderModule,
+        engine_layout: &wgpu::BindGroupLayout,
+        surface_format: wgpu::TextureFormat,
+    ) {
+        let pipeline_layout = ctx.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("text pipeline layout"),
+            bind_group_layouts: &[engine_layout, &self.uniforms_layout, &self.atlas_layout],
+            push_constant_ranges: &[],
+        });
+
+        let vertex_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<TextVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 0,  shader_location: 0 },
+                wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 8,  shader_location: 1 },
+                wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 16, shader_location: 2 },
+            ],
+        };
+
+        let pipeline = ctx.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("text pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader_module, entry_point: Some("vs_main"),
+                buffers: &[vertex_layout], compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader_module, entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        self.pipeline = Some(pipeline);
+    }
+
+    /// After each atlas is baked, build its bind group 2 (texture + sampler).
+    pub fn register_atlas_bind_group(&mut self, ctx: &GpuContext, texture: &crate::texture::Texture) {
+        let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("text atlas bg"),
+            layout: &self.atlas_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&texture.view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&texture.sampler) },
+            ],
+        });
+        self.atlas_bind_groups.push(bg);
+    }
 }
 ```
 
@@ -430,22 +586,36 @@ const SILKSCREEN_TTF: &[u8] = include_bytes!("../../../core/src/fonts/silkscreen
 const VT323_TTF: &[u8] = include_bytes!("../../../core/src/fonts/vt323.ttf");
 ```
 
-- [ ] **Step 2: Init text atlases during Renderer::new**
+- [ ] **Step 2: Init text atlases + pipeline durante Renderer::new**
 
 ```rust
 // In Renderer struct:
 text_registry: TextRegistry,
-text_pipeline: Option<wgpu::RenderPipeline>,
 // atlases indices: 0 = silkscreen 12px, 1 = silkscreen 16px, 2 = vt323 24px
 ```
 
-At end of `new(canvas)`:
+At end of `new(canvas)`, após engine bindings e shader_registry criados:
+
 ```rust
-let mut text_registry = TextRegistry::new();
-text_registry.atlases.push(bake_atlas(&ctx, &mut textures, SILKSCREEN_TTF, 12.0, DEFAULT_CHARSET));
-text_registry.atlases.push(bake_atlas(&ctx, &mut textures, SILKSCREEN_TTF, 16.0, DEFAULT_CHARSET));
-text_registry.atlases.push(bake_atlas(&ctx, &mut textures, VT323_TTF, 24.0, DEFAULT_CHARSET));
+let mut text_registry = TextRegistry::new(&ctx);
+
+// Bake atlases
+for (ttf, px) in [(SILKSCREEN_TTF, 12.0), (SILKSCREEN_TTF, 16.0), (VT323_TTF, 24.0)] {
+    let atlas = bake_atlas(&ctx, &mut textures, ttf, px, DEFAULT_CHARSET);
+    let tex = textures.get(atlas.texture).expect("atlas texture").clone();
+    text_registry.register_atlas_bind_group(&ctx, &tex);
+    text_registry.atlases.push(atlas);
+}
+
+// Compile shader + pipeline
+let text_shader = shader_registry.compile(&ctx, TEXT_WGSL, "text");
+let text_module = &shader_registry.get(text_shader).unwrap().module;
+text_registry.build_pipeline(&ctx, text_module, &engine.layout, surface.format);
 ```
+
+onde `TEXT_WGSL` é `include_str!("../../../core/shaders/text.wgsl")`.
+
+Observação: `textures.get` retorna `&Texture` — pra clonar precisa `Texture` ser `Clone` (wgpu::Texture, View, Sampler são `Arc` por dentro, clone é barato). Se não for derivável, passar `&Texture` direto pro `register_atlas_bind_group`.
 
 - [ ] **Step 3: Add text API**
 
@@ -453,11 +623,29 @@ text_registry.atlases.push(bake_atlas(&ctx, &mut textures, VT323_TTF, 24.0, DEFA
 #[wasm_bindgen]
 impl Renderer {
     pub fn create_text(&mut self, atlas_idx: u32, capacity_chars: u32, world_space: bool) -> u64 {
-        let mut node = TextNode::new(&self.ctx, atlas_idx as usize, capacity_chars as usize);
+        let mut node = TextNode::new(
+            &self.ctx,
+            atlas_idx as usize,
+            capacity_chars as usize,
+            &self.text_registry.uniforms_layout,
+        );
         node.world_space = world_space;
+        node.write_uniforms(&self.ctx);
         let h = self.text_registry.nodes.insert(node);
         self.mem_version = self.mem_version.wrapping_add(1);
         h.to_u64()
+    }
+
+    pub fn set_text_visible(&mut self, handle: u64, visible: bool) {
+        if let Some(node) = self.text_registry.nodes.get_mut(Handle::from_u64(handle)) {
+            node.visible = visible;
+        }
+    }
+
+    pub fn set_text_z_order(&mut self, handle: u64, z: f32) {
+        if let Some(node) = self.text_registry.nodes.get_mut(Handle::from_u64(handle)) {
+            node.z_order = z;
+        }
     }
 
     pub fn destroy_text(&mut self, handle: u64) {
@@ -504,15 +692,35 @@ impl Renderer {
 
 - [ ] **Step 4: Update render() to draw text**
 
-After sprite pass, add text pass (top of z-stack — UI overlay):
+Após sprite pass, add text pass (z-order: UI overlay). Agrupar por atlas pra minimizar rebinds:
 
 ```rust
-if !self.text_registry.nodes.is_empty() && self.text_pipeline.is_some() {
-    // bind pipeline + engine group 0
-    // for each atlas group, bind atlas texture (group 1), draw each node's vertex buffer
-    // 1 draw call per node (nodes are tiny; batching glyphs across nodes is premature opt)
+if let Some(pipeline) = &self.text_registry.pipeline {
+    pass.set_pipeline(pipeline);
+    pass.set_bind_group(0, &self.engine.bind_group, &[]);
+
+    // Collect visible nodes grouped by atlas
+    let mut by_atlas: Vec<Vec<Handle>> = vec![Vec::new(); self.text_registry.atlases.len()];
+    for (h, node) in self.text_registry.nodes.iter() {
+        if node.visible && node.vertex_count > 0 {
+            by_atlas[node.atlas].push(h);
+        }
+    }
+
+    for (atlas_idx, handles) in by_atlas.iter().enumerate() {
+        if handles.is_empty() { continue; }
+        pass.set_bind_group(2, &self.text_registry.atlas_bind_groups[atlas_idx], &[]);
+        for h in handles {
+            let node = self.text_registry.nodes.get(*h).unwrap();
+            pass.set_bind_group(1, &node.uniforms_bind_group, &[]);
+            pass.set_vertex_buffer(0, node.vertex_buffer.slice(..));
+            pass.draw(0..node.vertex_count, 0..1);
+        }
+    }
 }
 ```
+
+Uma draw call por text node (não batched); 10-30 nodes visíveis em peak UI → trivial.
 
 - [ ] **Step 5: Rebuild + commit**
 
@@ -546,12 +754,22 @@ export class Text {
     private r: Renderer,
   ) {}
 
-  set text(v: string) { this.r.innerSetTextContent(this.handle, v); }
+  private _text = '';
+  private _visible = true;
+  private _zOrder = 0;
+
+  set text(v: string) { this._text = v; this.r.innerSetTextContent(this.handle, v); }
+  get text(): string { return this._text; }
   set x(v: number) { this._x = v; this.r.innerSetTextPosition(this.handle, v, this._y); }
   get x(): number { return this._x; }
   set y(v: number) { this._y = v; this.r.innerSetTextPosition(this.handle, this._x, v); }
   get y(): number { return this._y; }
   set color(rgba: number) { this.r.innerSetTextColor(this.handle, rgba); }
+  set visible(v: boolean) { this._visible = v; this.r.innerSetTextVisible(this.handle, v); }
+  get visible(): boolean { return this._visible; }
+  /// Higher z-order renders on top. UI overlays use Z.UI_* constants (50+).
+  set zOrder(v: number) { this._zOrder = v; this.r.innerSetTextZOrder(this.handle, v); }
+  get zOrder(): number { return this._zOrder; }
 }
 
 // In Renderer:
@@ -570,6 +788,8 @@ destroyText(t: Text): void {
 innerSetTextContent(h: bigint, s: string): void { this.inner.set_text_content(h, s); }
 innerSetTextPosition(h: bigint, x: number, y: number): void { this.inner.set_text_position(h, x, y); }
 innerSetTextColor(h: bigint, c: number): void { this.inner.set_text_color(h, c); }
+innerSetTextVisible(h: bigint, v: boolean): void { this.inner.set_text_visible(h, v); }
+innerSetTextZOrder(h: bigint, z: number): void { this.inner.set_text_z_order(h, z); }
 ```
 
 - [ ] **Step 2: Commit**
@@ -656,21 +876,36 @@ export function criarText(
     const r = getWeydraRenderer();
     if (r) {
       const fontIdx = fontSize <= 13 ? FONT_SMALL : fontSize <= 18 ? FONT_MEDIUM : FONT_LARGE;
-      const t = r.createText(fontIdx, Math.max(64, content.length + 16));
+      const t = r.createText(fontIdx, Math.max(64, content.length + 16), false);
       t.text = content;
-      t.color = (color << 8) | 0xFF; // RGBA8
+      t.color = ((color & 0xFFFFFF) << 8) | 0xFF; // RGBA8
+      // Delegate 100% to the underlying Text (which has its own getters/setters).
+      // No shadow state — prevents get-returns-stale-value bug.
       return {
-        get text() { return content; },
+        get text() { return t.text; },
         set text(v: string) { t.text = v; },
+        get x() { return t.x; },
         set x(v: number) { t.x = v; },
+        get y() { return t.y; },
         set y(v: number) { t.y = v; },
-        set visible(v: boolean) { /* toggle via color alpha or scale */ },
+        get visible() { return t.visible; },
+        set visible(v: boolean) { t.visible = v; },
         _weydra: t,
       } as any;
     }
   }
   const pixiText = new Text({ text: content, style: { fontSize, fill: color, fontFamily: 'monospace' } });
-  return { text: content, x: 0, y: 0, visible: true, _pixi: pixiText } as any;
+  return {
+    get text() { return pixiText.text; },
+    set text(v: string) { pixiText.text = v; },
+    get x() { return pixiText.x; },
+    set x(v: number) { pixiText.x = v; },
+    get y() { return pixiText.y; },
+    set y(v: number) { pixiText.y = v; },
+    get visible() { return pixiText.visible; },
+    set visible(v: boolean) { pixiText.visible = v; },
+    _pixi: pixiText,
+  } as any;
 }
 ```
 

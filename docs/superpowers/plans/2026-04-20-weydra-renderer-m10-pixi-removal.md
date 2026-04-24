@@ -97,15 +97,27 @@ cat /tmp/pixi-audit-pre-m10.txt
 
 Validar que **cada arquivo listado tem path weydra implementado**. Se algum não tem, voltar pro M correspondente e só então começar M10.
 
-- [ ] **Step 4: Audit tests**
+- [ ] **Step 4: Audit + migrate tests ANTES de qualquer delete**
 
-Tests que mockam ou importam Pixi precisam migração antes de Task 7 (uninstall):
+Tests que mockam ou importam Pixi precisam **migração feita já** antes das Tasks 2-4 começarem. Se testes importarem um arquivo de `src/world/` que vai ser editado, eles quebram no próximo `npm run test`:
 
 ```bash
 grep -rn -l "pixi" src/**/*.test.ts src/**/*.spec.ts 2>/dev/null
 ```
 
-Para cada arquivo retornado: substituir mock Pixi por mock weydra, ou deletar teste se era Pixi-specific e não faz mais sentido.
+Para cada arquivo retornado:
+- Se mockava `pixi.js`: substituir por mock de `@weydra/renderer` equivalente
+- Se testava lógica renderer-agnostic (ex: `atualizarMundo` com mock de Pixi): remover imports Pixi, injetar mock de `getWeydraRenderer()` via `vi.mock('./weydra-loader', () => ({ getWeydraRenderer: () => mockRenderer }))`
+- Se era teste de Pixi-specific (e não tem análogo weydra): deletar o teste
+
+Rodar `npm run test` depois desta migração — precisa passar **antes de começar Task 2**. Commit:
+
+```bash
+git add src/**/*.test.ts src/**/*.spec.ts
+git commit -m "refactor(tests): migrate Pixi mocks to weydra (prep for M10)"
+```
+
+Durante Tasks 2-4, `npm run test` é rodado após cada arquivo editado. Se falhar: o ponto fraco é migração incompleta (não o delete), voltar e corrigir o teste.
 
 ---
 
@@ -253,33 +265,72 @@ Se `index.html` tinha `<canvas id="pixi-canvas">`, deletar. O weydra canvas fica
 
 - [ ] **Step 2: Extrair game-tick do startTicker Pixi**
 
-Antes de deletar Pixi Application, **extrair** a closure que roda dentro de `app.ticker.add(...)` em `src/main.ts` pra uma função pura:
+Antes de deletar Pixi Application, **extrair** a closure que roda dentro de `app.ticker.add(...)` em `src/main.ts` pra uma função pura. O corpo real de `startTicker` lê/escreve ~8 módulos-level bindings e chama funções que hoje tomam `app`. Listar tudo explicitamente:
 
 ```typescript
 // src/game-loop.ts (novo arquivo)
-import { atualizarMundo, /* ... */ } from './world/mundo';
-// ... demais imports que eram locais à closure
+import { atualizarMundo, atualizarCamera, aplicarEdgeScrollAoCamera, type Mundo } from './world/mundo';
 import type { Camera } from './core/camera';
+import type { PanState } from './core/pan';
+import type { MundoMenu } from './world/mundo-menu';
 
-interface GameLoopDeps {
-  camera: Camera;
-  getCanvasSize: () => { width: number; height: number };  // substitui app.screen
-  onProfilingRender?: (dtMs: number) => void;              // substitui render-wrap
+export interface GameLoopState {
+  // Valores módulo-level do main.ts que ticker lia/escrevia.
+  // Passa por referência — main.ts mantém o objeto e mutações são visíveis.
+  mundo: Mundo | null;
+  mundoMenu: MundoMenu | null;
+  gameStarted: boolean;
+  cinematicTime: number;
+  fimTocado: boolean;
+  hudAcumMs: number;
+  gameSpeed: number;   // substitui app.ticker.speed
 }
 
-export function gameTick(dtSec: number, deps: GameLoopDeps): void {
-  // Mover TODO o corpo do startTicker() aqui dentro, trocando:
-  //   app.screen.width/height → deps.getCanvasSize()
-  //   app.renderer.render(...) → deps.onProfilingRender?.(dtMs) + nada (weydra rende próprio)
-  //   app.ticker.speed → variável local gameSpeed
-  //   app.canvas → canvas passado direto
+export interface GameLoopDeps {
+  camera: Camera;
+  panState: PanState;                                      // mutável, capturado por teclado handlers
+  canvas: HTMLCanvasElement;                               // substitui app.canvas
+  getCanvasCssSize: () => { width: number; height: number }; // substitui app.screen
+  onProfilingRender?: (gpuMs: number) => void;             // GPU time via timestamp query (setup em Step 6); fallback: skip
+  updateHud: () => void;                                   // substitui as N chamadas HUD individuais
+}
+
+export function gameTick(dtMs: number, state: GameLoopState, deps: GameLoopDeps): void {
+  // Mover TODO o corpo original do `startTicker().add(...)` callback aqui.
+  // Substituições mecânicas:
+  //   app.screen.width           → deps.getCanvasCssSize().width
+  //   app.screen.height          → deps.getCanvasCssSize().height
+  //   app.canvas                 → deps.canvas
+  //   app.ticker.deltaMS         → dtMs  (parâmetro)
+  //   app.ticker.speed           → state.gameSpeed
+  //   app.renderer.render(...)   → removido (weydra renderiza próprio)
+  //   _mundo                     → state.mundo
+  //   _mundoMenu                 → state.mundoMenu
+  //   _gameStarted               → state.gameStarted
+  //   _cinematicTime             → state.cinematicTime
+  //   _fimTocado                 → state.fimTocado
+  //   _hudAcumMs                 → state.hudAcumMs
+  //   _panState                  → deps.panState
+  //   camera                     → deps.camera
   //
-  // atualizarMundo, atualizarCamera, aplicarEdgeScroll, _hudAcumMs updates,
-  // cinematic menu camera, FPS counter — tudo fica aqui.
+  // Funções que hoje tomam `app` (atualizarCamera, aplicarEdgeScroll etc):
+  // modificar a assinatura pra aceitar `{ width, height }` ou `camera` direto.
+  // Essa é a segunda parte do Step 2 — refactor das funções chamadas, não só do ticker.
+}
+
+/** Set externa via debug-menu, UI, etc — troca o global que o tick lê. */
+export function setGameSpeed(state: GameLoopState, v: number): void {
+  state.gameSpeed = v;
 }
 ```
 
-Este é o **passo crítico** do M10. Não pular. O `startTicker` original tinha ~100 linhas de lógica não-rendering; copiar tudo literal, substituir só as 3 referências acima.
+Este é o **passo crítico** do M10. 3 sub-steps:
+
+1. Copiar corpo literal de `startTicker` → `gameTick`, substituir refs conforme tabela
+2. Atualizar `atualizarCamera(mundo, app)` → `atualizarCamera(mundo, { width, height })`, idem `aplicarEdgeScrollAoCamera` e outras funções que tomam `app`
+3. Em `main.ts`, criar `const _state: GameLoopState = { mundo: null, ... }` e expor `setGameSpeed(_state, v)` pros callers (debug-menu)
+
+Não pular nenhum. Perder qualquer ref acima vira NaN ou pan quebrado.
 
 - [ ] **Step 3: Adaptar context-loss handler pra WebGPU**
 
@@ -294,17 +345,36 @@ _renderer.onDeviceLost((reason) => {
 });
 ```
 
-Expor via adapter wasm:
+Expor via adapter wasm. **Requer `wasm-bindgen-futures` no Cargo.toml do adapter** (se ainda não tiver):
+
+```toml
+# weydra-renderer/adapters/wasm/Cargo.toml
+[dependencies]
+# ... existing
+wasm-bindgen-futures = "0.4"
+```
+
 ```rust
-// em weydra-renderer/adapters/wasm/src/lib.rs
+// weydra-renderer/adapters/wasm/src/lib.rs
+use wasm_bindgen_futures::spawn_local;
+use std::sync::Arc;
+
 #[wasm_bindgen]
 impl Renderer {
     pub fn on_device_lost(&self, callback: js_sys::Function) {
-        // spawn_local uma task que aguarda self.ctx.device.lost()
-        // e chama callback com JsString(reason)
+        // device é Arc internally em wgpu, clone é cheap e segue pro async task.
+        let device = self.ctx.device.clone();
+        spawn_local(async move {
+            let info = device.lost().await;
+            let reason = format!("{:?}: {}", info.reason, info.message);
+            let this = JsValue::NULL;
+            let _ = callback.call1(&this, &JsValue::from_str(&reason));
+        });
     }
 }
 ```
+
+**Sharp edge:** se o `Renderer` for dropped antes do device ser perdido, o `spawn_local` continua rodando com o `device` clonado; mas como `device.lost()` só fulfill quando o device é explicitamente lost, e drop do Renderer dispara drop do device (se for a última ref), a promise resolve com cleanup reason e callback dispara — benign. Não há race aqui.
 
 - [ ] **Step 4: Remove Application.init de main.ts**
 
@@ -356,24 +426,33 @@ export async function startWeydra() {
     _renderer!.resize(canvas.width, canvas.height);
   });
 
-  const deps = {
+  const deps: GameLoopDeps = {
     camera,
-    getCanvasSize: () => ({
+    panState,
+    canvas,
+    getCanvasCssSize: () => ({
       width: canvas.width / (window.devicePixelRatio || 1),
       height: canvas.height / (window.devicePixelRatio || 1),
     }),
-    onProfilingRender: (dtMs: number) => { /* push pro profiling HUD */ },
+    // GPU timestamp via wgpu timestamp query. Setup separado (Step 6 opcional —
+    // postergável: no dia 1 deixa undefined, profiling HUD fica sem bucket render
+    // — aceitável, Pixi bucket viraria zero depois do uninstall de qualquer jeito).
+    onProfilingRender: undefined,
+    updateHud,
   };
 
   const loop = (t: number) => {
-    const dtSec = Math.min(0.1, (t - _lastT) / 1000); _lastT = t;
-    gameTick(dtSec, deps);
+    const dtMs = Math.min(100, t - _lastT); _lastT = t;
+    tickOverlays(dtMs / 1000);
+    gameTick(dtMs, state, deps);
     _renderer!.render();
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
 }
 ```
+
+(`state: GameLoopState` vem do `main.ts` e é passado via parâmetro de `startWeydra` ou variável módulo-level compartilhada. Mantém refs mutáveis visíveis em ambos lados.)
 
 - [ ] **Step 4: Commit**
 
