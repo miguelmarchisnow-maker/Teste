@@ -1970,6 +1970,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "weydra-renderer-ios"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "weydra-renderer",
+ "wgpu",
+]
+
+[[package]]
 name = "weydra-renderer-native"
 version = "0.1.0"
 dependencies = [
