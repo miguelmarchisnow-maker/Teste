@@ -1,8 +1,8 @@
 import type { Plugin } from 'vite';
 import { basename, extname } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { reflectWgsl } from './reflect.ts';
-import { generateTsModule } from './codegen.ts';
+import { reflectWgsl } from './reflect.js';
+import { generateTsModule } from './codegen.js';
 
 /**
  * Vite plugin that handles `.wgsl` imports.
