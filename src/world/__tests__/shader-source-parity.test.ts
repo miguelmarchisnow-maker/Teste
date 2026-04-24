@@ -31,10 +31,13 @@ describe('shader source parity: starfield', () => {
     expect(wgsl).toContain('1013904223u');
   });
 
-  it('both declare the three starLayer calls with matching cell sizes', () => {
+  it('both declare matching starLayer calls with same cell sizes', () => {
+    // Far-layer foi movida pra TilingSprite (perf task #82) — agora são 2
+    // layers procedurais em cada path. Parity continua valendo: mesmos cell
+    // sizes nos dois shaders.
     const fragSizes = [...frag.matchAll(/starLayer\(worldPos,\s*([0-9.]+)/g)].map((m) => m[1]);
     const wgslSizes = [...wgsl.matchAll(/starLayer\(worldPos,\s*(?:cam,\s*)?([0-9.]+)/g)].map((m) => m[1]);
-    expect(fragSizes.length).toBeGreaterThanOrEqual(3);
+    expect(fragSizes.length).toBeGreaterThanOrEqual(2);
     expect(fragSizes).toEqual(wgslSizes);
   });
 
