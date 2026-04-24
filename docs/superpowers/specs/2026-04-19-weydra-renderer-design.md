@@ -782,3 +782,40 @@ Todos os plans M1-M10 escritos e revisados (10 rodadas de code review, ~80 bugs 
 - lyon tessellation: https://docs.rs/lyon/
 - fontdue: https://docs.rs/fontdue/
 - Pixi audit: seção **Contexto** deste spec (consolidado in-line)
+
+## M1 Status: Complete (2026-04-24)
+
+Foundation merged. Renderer clears to black behind Pixi when debug flag is on. Pipeline validated end-to-end: Rust core (wgpu 29, nightly toolchain) → wasm-pack → ts-bridge (@weydra/renderer) → Vite plugin (@weydra/vite-plugin-wgsl) → game integration.
+
+### Verified automatically
+- `cargo build --workspace` clean
+- `cargo test --workspace` — 3 tests pass (device headless init + 2 camera layout tests)
+- `cargo build --package hello-clear --release` clean
+- `npm run build:renderer` clean (0 warnings)
+- `npm run build:renderer:release` clean
+- `npm run build` clean (pre-existing Rollup chunk-size + static+dynamic import warnings unchanged)
+- `npm run dev` boots, GET `/orbital-fork/` returns 200
+- `tsc --noEmit` clean across all src/
+
+### Deferred to user (requires browser)
+- Run `hello-clear` native example → dark blue window
+- Enable `localStorage.setItem('weydra_m1', '1'); location.reload()` in browser
+- Verify console log `[weydra] M1 renderer initialized, clearing to black at 60fps`
+- Play game for 2 min — expect zero console errors, game remains playable, 60fps sustained
+
+### Authorized deviations from plan
+- wgpu **29** (plan: 25), winit **0.31.0-beta.2** (plan: 0.30), bytemuck 1.25, glam 0.32 — user wanted absolute latest versions.
+- Rust toolchain pinned to **nightly** (plan: stable) — user chose nightly always.
+- Batched commits — plan had 12 per-task commits; shipped with ~8 logical commits (workspace, device, surface+camera+frame, hello-clear, wasm adapter, reviewer-fixes, wasm32-gate, ts-bridge, vite plugin, plan-alignment fix, Orbital wire, ESM require-fix, canvas+loader, M1 status).
+- wgpu 29 API adaptations: `InstanceDescriptor::new_without_display_handle()`, `Instance::new(desc)` by value, `request_adapter` returns `Result` (not `Option`), `request_device(&desc)` single-arg + `experimental_features: ExperimentalFeatures::disabled()`, `RenderPassDescriptor.multiview_mask`, `RenderPassColorAttachment.depth_slice`, `Surface.get_current_texture` returns `CurrentSurfaceTexture` enum.
+- winit 0.31-beta adaptations: `Arc<dyn Window>`, `WindowAttributes::default()`, `can_create_surfaces` (not `resumed`), `WindowEvent::SurfaceResized`, `surface_size()`, `run_app(app)` by value.
+- TS bridge: async factory `Renderer.create(canvas)` instead of `#[wasm_bindgen(constructor)]` (deprecated in wasm-bindgen 0.2.118, produced invalid TS types).
+- `cc = 1.2.45` pinned to avoid cc 1.2.60 incompatibility with nightly 1.97.
+- Wasm adapter crate gated to `#![cfg(target_arch = "wasm32")]` so `cargo build --workspace` works natively.
+- `src/` require-based lazy imports converted to static ESM imports after `"type": "module"` flip.
+
+### Reviewer gate
+All 4 reviewer perspectives (spec / plan / quality / bugs) ran on every task. Findings fixed and re-reviewed until clean. Final verdict: ✅ across all 4 on Tasks 1-11.
+
+### Next
+M2 (starfield port) — see `docs/superpowers/plans/2026-04-20-weydra-renderer-m2-starfield.md`.
