@@ -64,6 +64,7 @@ export interface OrbitalConfig {
     ships: boolean;      // M3 — sprite pool for all ships
     shipTrails: boolean; // M3 — engine trails via sprite pool
     starfieldBright: boolean; // M3 — bright-tile layer via weydra tiling
+    planetsBaked: boolean; // M4 — baked planets via weydra sprite pool
   };
 
   language: 'pt' | 'en';
@@ -120,6 +121,7 @@ export const DEFAULTS: OrbitalConfig = {
     ships: false,
     shipTrails: false,
     starfieldBright: false,
+    planetsBaked: false,
   },
 
   language: 'pt',

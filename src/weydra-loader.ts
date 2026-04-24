@@ -24,7 +24,17 @@ export function getWeydraRenderer(): Renderer | null {
 function anyFlagEnabled(): boolean {
   try {
     const w = getConfig().weydra;
-    return !!(w && w.starfield);
+    if (!w) return false;
+    // Any subsystem flag should boot the renderer. Previously only
+    // `starfield` was checked here, so a player enabling `ships` or
+    // `planetsBaked` in isolation never saw the weydra canvas init.
+    return !!(
+      w.starfield
+      || w.ships
+      || w.shipTrails
+      || w.starfieldBright
+      || w.planetsBaked
+    );
   } catch {
     return false;
   }

@@ -7,6 +7,9 @@ import wgslSrc from '../shaders/planeta.wgsl?raw';
 import { TIPO_PLANETA } from './planeta';
 import { getConfig, onConfigChange } from '../core/config';
 import { getZoom } from '../core/player';
+import { getWeydraRenderer } from '../weydra-loader';
+import type { Sprite as WeydraSprite } from '@weydra/renderer';
+import { Z } from '../core/render-order';
 
 let _appRef: Application | null = null;
 
@@ -632,21 +635,28 @@ export async function precompilarBakesPlanetas(
 
   const AUTO_BAKE_PX = 40;
   const total = planetas.length;
+  const weydraBaked = getConfig().weydra.planetsBaked;
   for (let i = 0; i < planetas.length; i++) {
     const planeta = planetas[i];
-    if ((planeta as any)._bakedSprite) continue;
+    if ((planeta as any)._bakedSprite || (planeta as any)._weydraBakedSprite) continue;
     if ((planeta as any)._isCanvasPlanet) continue;
     const tamWorld = (planeta as any).scale?.x ?? 1;
     const tamPx = tamWorld * zoom;
     if (tamPx < AUTO_BAKE_PX) {
-      bakePlaneta(planeta);
-      // Mantém sprite posicionado antes do primeiro frame — senão
-      // aparece em (0,0) por um frame antes do gameplay rodar o loop
-      // que sincroniza posição.
-      const sprite = (planeta as any)._bakedSprite as Sprite | undefined;
-      if (sprite) {
-        sprite.x = planeta.x;
-        sprite.y = planeta.y;
+      if (weydraBaked) {
+        await bakePlanetaWeydra(planeta);
+        const s = (planeta as any)._weydraBakedSprite as WeydraSprite | undefined;
+        if (s) { s.x = planeta.x; s.y = planeta.y; }
+      } else {
+        bakePlaneta(planeta);
+        // Mantém sprite posicionado antes do primeiro frame — senão
+        // aparece em (0,0) por um frame antes do gameplay rodar o loop
+        // que sincroniza posição.
+        const sprite = (planeta as any)._bakedSprite as Sprite | undefined;
+        if (sprite) {
+          sprite.x = planeta.x;
+          sprite.y = planeta.y;
+        }
       }
     }
     if (onProgress && i % 4 === 0) onProgress(i + 1, total);
@@ -656,6 +666,138 @@ export async function precompilarBakesPlanetas(
     }
   }
   if (onProgress) onProgress(total, total);
+}
+
+// A baked planet's pixels are still produced by the Pixi shader (via
+// renderer.extract.canvas), but the resulting bitmap lives in the weydra
+// sprite pool. Full-weydra bake — rendering the shader directly into a
+// RenderTarget — waits for the shader to port over.
+//
+// Queue scheduler runs one bake per frame. Fire-and-forget bakes during
+// zoom-out would stack extract.canvas stalls (10-50ms each, synchronous)
+// into the same frame. With the queue, each frame absorbs at most one
+// readback.
+
+const _bakeQueue: any[] = [];
+// Strong-ref Set (not WeakSet): the entry must outlive the sync portion
+// of processBakeQueueWeydra and stay until bakePlanetaWeydra resolves, so
+// re-entry from atualizarTempoPlanetas during the async gap skips the
+// planet. resetBakeQueueWeydra clears both collections on world teardown.
+const _bakeSet = new Set<object>();
+
+export function enqueueBakeWeydra(planeta: any): void {
+  if (_bakeSet.has(planeta)) return;
+  _bakeSet.add(planeta);
+  _bakeQueue.push(planeta);
+}
+
+/** Drain one planet from the bake queue. Safe to call every frame even
+ *  when the queue is empty; cost is a single `shift()`. */
+export function processBakeQueueWeydra(): void {
+  const planeta = _bakeQueue.shift();
+  if (!planeta) return;
+  // Keep the planet in `_bakeSet` until bake finishes. Deleting here
+  // synchronously would let the next frame's atualizarTempoPlanetas re-enqueue
+  // the same planet (sprite isn't set yet) and stack a second in-flight bake,
+  // which would leak the first sprite+texture.
+  void bakePlanetaWeydra(planeta).finally(() => _bakeSet.delete(planeta));
+}
+
+/** Drop queue + in-flight guard. Called from destruirMundo so stale
+ *  references to destroyed meshes don't resurface on the next world. */
+export function resetBakeQueueWeydra(): void {
+  _bakeQueue.length = 0;
+  _bakeSet.clear();
+}
+
+/** Destroy any weydra baked sprite attached to planetas. Weydra sprites
+ *  live in the renderer's pool, outside the Pixi container tree, so
+ *  `container.destroy({ children: true })` alone would leak them across
+ *  world reloads. */
+export function destroyAllWeydraBakedSprites(planetas: any[]): void {
+  for (const p of planetas) {
+    if ((p as any)._weydraBakedSprite) unbakePlanetaWeydra(p);
+  }
+}
+
+async function bakePlanetaWeydra(planeta: any): Promise<void> {
+  const r = getWeydraRenderer();
+  if (!r || !_appRef) return;
+  if (isCanvas2dRenderer()) return;
+  if ((planeta as any)._weydraBakedSprite) return;
+  // Invisible planets (culled, post-destruirMundo, fog-hidden) don't need a
+  // bake. Firing extract.canvas on a destroyed mesh would throw; catching
+  // invisibility here also prevents stale positions on planets that cull
+  // mid-queue.
+  if (!(planeta as any).visible) return;
+  const mesh = planeta as Mesh;
+  const shader = (mesh as any)._planetShader as Shader | undefined;
+  if (!shader) return;
+
+  try {
+    const tamanho = mesh.scale.x;
+    const frameSize = Math.max(64, tamanho * 1.08);
+
+    const uniforms = (shader.resources as any).planetUniforms.uniforms;
+    const octavesOriginal = uniforms.uOctaves;
+    const isTerran = uniforms.uPlanetType === 0;
+    if (isTerran && octavesOriginal > 4) {
+      uniforms.uOctaves = 4;
+    }
+
+    const clone = new Mesh({ geometry: quadGeometry, shader, state: mesh.state });
+    clone.scale.set(tamanho);
+    clone.position.set(frameSize / 2, frameSize / 2);
+    const wrapper = new Container();
+    wrapper.addChild(clone);
+
+    const canvas = _appRef.renderer.extract.canvas({
+      target: wrapper,
+      frame: new Rectangle(0, 0, frameSize, frameSize),
+      resolution: 1,
+      antialias: false,
+    }) as HTMLCanvasElement;
+
+    if (isTerran && octavesOriginal > 4) {
+      uniforms.uOctaves = octavesOriginal;
+    }
+
+    clone.destroy();
+    wrapper.destroy();
+
+    const ctx2d = canvas.getContext('2d');
+    if (!ctx2d) return;
+    const imageData = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
+    // Uint8ClampedArray.buffer can carry a non-zero byteOffset when it
+    // aliases a larger underlying buffer. Passing `.buffer` alone would
+    // upload whatever happens to live before the image bytes.
+    const rgba = new Uint8Array(
+      imageData.data.buffer,
+      imageData.data.byteOffset,
+      imageData.data.byteLength,
+    );
+    const texHandle = r.uploadTexture(rgba, canvas.width, canvas.height);
+
+    const sprite = r.createSprite(texHandle, frameSize, frameSize);
+    sprite.x = planeta.x;
+    sprite.y = planeta.y;
+    sprite.zOrder = Z.PLANET_BAKED;
+    sprite.visible = true;
+    (planeta as any)._weydraBakedSprite = sprite;
+
+    mesh.visible = false;
+  } catch (err) {
+    console.warn('[planeta-procedural] weydra bake failed:', err);
+  }
+}
+
+function unbakePlanetaWeydra(planeta: any): void {
+  const r = getWeydraRenderer();
+  const sprite = (planeta as any)._weydraBakedSprite as WeydraSprite | undefined;
+  if (!sprite || !r) return;
+  r.destroySprite(sprite);
+  (planeta as any)._weydraBakedSprite = null;
+  (planeta as any).visible = true;
 }
 
 /** Swap back from baked sprite to live mesh. */
@@ -704,15 +846,21 @@ export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
   // we don't run generateTexture on non-existent Meshes.
   if (anyCanvas) return;
 
+  const weydraBaked = getConfig().weydra.planetsBaked;
+
   if (!_shaderLive) {
-    // Lazily bake visible planets on first frame after toggle
+    // Bulk-bake path (quality preset "minimo"): all planets render as
+    // static sprites. Weydra path enqueues; the scheduler drains one
+    // per frame so the first post-toggle frame doesn't stall.
     for (const planeta of planetas) {
-      if (!(planeta as any)._bakedSprite) bakePlaneta(planeta);
-      // Keep baked sprite position in sync (planet orbits move it)
-      const sprite = (planeta as any)._bakedSprite as Sprite | undefined;
-      if (sprite) {
-        sprite.x = planeta.x;
-        sprite.y = planeta.y;
+      if (weydraBaked) {
+        if (!(planeta as any)._weydraBakedSprite) enqueueBakeWeydra(planeta);
+        const s = (planeta as any)._weydraBakedSprite as WeydraSprite | undefined;
+        if (s) { s.x = planeta.x; s.y = planeta.y; }
+      } else {
+        if (!(planeta as any)._bakedSprite) bakePlaneta(planeta);
+        const sprite = (planeta as any)._bakedSprite as Sprite | undefined;
+        if (sprite) { sprite.x = planeta.x; sprite.y = planeta.y; }
       }
     }
     return;
@@ -729,6 +877,7 @@ export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
   for (const planeta of planetas) {
     if (!planeta.visible) {
       if ((planeta as any)._bakedSprite) unbakePlaneta(planeta);
+      if ((planeta as any)._weydraBakedSprite) unbakePlanetaWeydra(planeta);
       continue;
     }
     // Canvas planets already animated at the top of this function.
@@ -736,19 +885,33 @@ export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
 
     const tamWorld = (planeta as any).scale?.x ?? 1;
     const tamPx = tamWorld * zoom;
-    const alreadyBaked = !!(planeta as any)._bakedSprite;
 
-    if (alreadyBaked && tamPx > AUTO_UNBAKE_PX) {
-      unbakePlaneta(planeta);
-    } else if (!alreadyBaked && tamPx < AUTO_BAKE_PX) {
-      bakePlaneta(planeta);
-    }
-
-    if ((planeta as any)._bakedSprite) {
-      const sprite = (planeta as any)._bakedSprite as Sprite;
-      sprite.x = planeta.x;
-      sprite.y = planeta.y;
-      continue;
+    if (weydraBaked) {
+      const alreadyBaked = !!(planeta as any)._weydraBakedSprite;
+      if (alreadyBaked && tamPx > AUTO_UNBAKE_PX) {
+        unbakePlanetaWeydra(planeta);
+      } else if (!alreadyBaked && tamPx < AUTO_BAKE_PX) {
+        enqueueBakeWeydra(planeta);
+      }
+      if ((planeta as any)._weydraBakedSprite) {
+        const s = (planeta as any)._weydraBakedSprite as WeydraSprite;
+        s.x = planeta.x;
+        s.y = planeta.y;
+        continue;
+      }
+    } else {
+      const alreadyBaked = !!(planeta as any)._bakedSprite;
+      if (alreadyBaked && tamPx > AUTO_UNBAKE_PX) {
+        unbakePlaneta(planeta);
+      } else if (!alreadyBaked && tamPx < AUTO_BAKE_PX) {
+        bakePlaneta(planeta);
+      }
+      if ((planeta as any)._bakedSprite) {
+        const sprite = (planeta as any)._bakedSprite as Sprite;
+        sprite.x = planeta.x;
+        sprite.y = planeta.y;
+        continue;
+      }
     }
 
     const shader = (planeta as any)._planetShader as Shader | undefined;

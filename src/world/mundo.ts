@@ -3,7 +3,7 @@ import type { Application } from 'pixi.js';
 import type { Mundo, Planeta, Sol, Nave, Camera, TipoJogador } from '../types';
 import { criarFundo, atualizarFundo } from './fundo';
 import { TIPO_PLANETA } from './planeta';
-import { atualizarTempoPlanetas, atualizarLuzPlaneta, precompilarBakesPlanetas } from './planeta-procedural';
+import { atualizarTempoPlanetas, atualizarLuzPlaneta, precompilarBakesPlanetas, processBakeQueueWeydra, resetBakeQueueWeydra, destroyAllWeydraBakedSprites } from './planeta-procedural';
 import { criarCamadaMemoria, criarMemoriaVisualPlaneta, registrarMemoriaPlaneta, atualizarVisibilidadeMemoria, atualizarEscalaLabelMemoria, aplicarLimiteFantasmas, destruirFog } from './nevoa';
 import { criarSistemaSolar } from './sistema';
 import { calcularBoundsViewport, type ViewportBounds } from './viewport-bounds';
@@ -370,10 +370,20 @@ export async function criarMundo(
 }
 
 export function destruirMundo(mundo: Mundo, app: Application): void {
+  // Free weydra-baked sprites BEFORE destroying the Pixi container.
+  // Reading `planeta._weydraBakedSprite` after `container.destroy` is
+  // fine (the reference lives on the Planeta object, not in Pixi
+  // internals), but ordering it first keeps the teardown symmetric with
+  // the Pixi-bake cleanup inside destroy({ children: true }).
+  destroyAllWeydraBakedSprites([...mundo.planetas, ...mundo.sois]);
   app.stage.removeChild(mundo.container);
   mundo.container.destroy({ children: true });
   estadoJogo = 'jogando';
   resetDistanceMatrix();
+  // Pending bakes reference meshes we just destroyed. Dequeue them before
+  // the next world's atualizarMundo runs — otherwise processBakeQueueWeydra
+  // would fire extract.canvas on a freed Pixi object.
+  resetBakeQueueWeydra();
   // The fog-of-war layer keeps module-level singletons (sprite, texture,
   // image source, backing canvas) that outlive a world otherwise.
   destruirFog();
@@ -433,6 +443,9 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
   tSub = profileMark();
   atualizarTempoPlanetas(mundo.planetas, deltaMs);
   atualizarTempoPlanetas(mundo.sois, deltaMs);
+  // Drain one deferred weydra bake per frame. No-op when the queue is
+  // empty or when the flag is off (atualizarTempoPlanetas stops enqueueing).
+  processBakeQueueWeydra();
   profileAcumular('planetasLogic_tempo', tSub);
 
   tSub = profileMark();
@@ -501,6 +514,14 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
     if ((planeta as any)._bakedSprite) {
       planeta.visible = false;
       (planeta as any)._bakedSprite.visible = vis;
+    } else if ((planeta as any)._weydraBakedSprite) {
+      // Mesh stays hidden; weydra sprite tracks on-screen state directly.
+      // Without this branch the else clause below would re-show the mesh on
+      // top of the weydra sprite (double render) and leave the weydra sprite
+      // uncullled — producing continuous bake/unbake churn as the planet
+      // oscillates at the viewport edge.
+      planeta.visible = false;
+      (planeta as any)._weydraBakedSprite.visible = vis;
     } else {
       planeta.visible = vis;
     }
