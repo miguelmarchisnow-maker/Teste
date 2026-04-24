@@ -94,18 +94,24 @@ export async function startWeydra(): Promise<void> {
   _rafHandle = requestAnimationFrame(loop);
   (window as any).__weydraFrames = () => _frameCount;
 
-  // Diagnóstico: dump do stacking context após 2s. Mostra se Pixi canvas
-  // tá transparente e se weydra canvas tem tamanho > 0.
+  // Diagnóstico: dump do stacking context após 2s, inline como string.
   setTimeout(() => {
     const cvs = Array.from(document.querySelectorAll('canvas'));
-    console.info('[weydra diag] canvases:', cvs.map((c) => ({
-      id: c.id || '(pixi)',
-      width: c.width,
-      height: c.height,
-      zIndex: getComputedStyle(c).zIndex,
-      opacity: getComputedStyle(c).opacity,
-      visible: getComputedStyle(c).visibility,
-    })));
+    const info = cvs.map((c) => {
+      const ctx = c.getContext('webgl2') as WebGL2RenderingContext | null;
+      const attrs = ctx ? ctx.getContextAttributes() : null;
+      return {
+        id: c.id || '(pixi?)',
+        wh: `${c.width}×${c.height}`,
+        z: getComputedStyle(c).zIndex,
+        op: getComputedStyle(c).opacity,
+        bg: getComputedStyle(c).backgroundColor,
+        ctxAlpha: attrs?.alpha,
+        ctxPremult: attrs?.premultipliedAlpha,
+      };
+    });
+    console.info('[weydra diag] canvases:\n' + info.map(i => JSON.stringify(i)).join('\n'));
+    console.info('[weydra diag] body bg:', getComputedStyle(document.body).backgroundColor);
     console.info('[weydra diag] __weydraFrames():', _frameCount);
   }, 2000);
 }
