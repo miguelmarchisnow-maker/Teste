@@ -939,3 +939,86 @@ Starfield procedural rodando no weydra-renderer via custom shader, atrás do Pix
 
 ### Next
 M3 (sprite pool + ships) ou M4+ em paralelo conforme priorização.
+
+## M3 Status: Complete (2026-04-24)
+
+Ships, engine trails, e bright star TilingSprite migrados pro weydra-renderer. M3 é o milestone mais transformador do projeto — depois dele o sprite pool + shared memory + SlotMap estão "pra valer" e M4-M10 reusam essa infra. WebGL2 fallback entregue (mandatório pro merge) + scope extensions (B bright tile) e (d trails) absorvidas do user prompt.
+
+### Verificação automática
+- `cargo build --workspace` clean (core + 4 adapters + hello-clear)
+- `cargo test --workspace` — 11/11 tests pass (slotmap 4 + sprite 4 + camera 2 + device 1)
+- `./scripts/check-all-platforms.sh` → 4 pass / 4 skip / 0 fail (macOS/Android/iOS skip graceful por host Linux sem toolchain, M1.5 não regrediu)
+- `./scripts/check-platform-guards.sh` → 0 violations (core segue platform-agnostic; nenhum crate cruza fronteiras)
+- `npm run build:renderer` — wasm pkg produzido sem warnings
+- `npm run build` — dist/ produzido (~470ms, só warnings pre-existing de chunk size)
+- `tsc --noEmit` — clean
+
+### Novas primitivas do core (weydra-renderer)
+- `slotmap::{Handle, SlotMap<T>}` — generational indices, Handle packs `(slot, generation)` em u64 opaco pra transport TS. Overflow assert antes do cast u32. O(1) len via `slots.len() - free.len()`.
+- `texture::{Texture, TextureRegistry}` — `upload_rgba` (ClampToEdge) + `upload_rgba_tiled` (Repeat sampler pra UV wrap). `view_formats: &[Rgba8Unorm]` permite M5 bake ler linear.
+- `sprite::{SpritePool, SpriteTransform, SpriteUv, SpriteMeta, FLAG_VISIBLE}` — SoA fixed-capacity: transforms/uvs/colors/flags/z_order Vecs sized once em `with_capacity`, nunca realocam. Meta em SlotMap off-SoA (cold data). `insert` panica em overflow com mensagem sobre TS view invalidation.
+- `core/shaders/sprite_batch.wgsl` — storage buffer + `@builtin(instance_index)` (WebGPU/Vulkan/Metal/DX12).
+- `core/shaders/sprite_batch_instanced.wgsl` — per-instance vertex attributes (WebGL2 path). Offset annotations inline na VsIn struct para documentar Task 5 VertexBufferLayout.
+
+### Extensões do wasm adapter
+- `SpriteData` #[repr(C)] 48-byte packed (transform vec4 @0, uv_rect vec4 @16, color u32 @32, _pad0 @36, display vec2 @40) — layout compartilhado entre os dois shaders.
+- `SpritePath` enum com variants Storage (WebGPU path: storage buffer + bind group 1) e Instanced (WebGL2: instance vertex buffer, group 1 absent via `None` no pipeline_layout).
+- Backend detection no boot via `adapter.get_info().backend`: `Gl` → Instanced, todos outros → Storage.
+- `Renderer::{upload_texture, upload_texture_tiled, create_sprite, destroy_sprite, sprite_{transforms,uvs,colors,flags,z}_ptr, sprite_capacity, mem_version}` como API pública #[wasm_bindgen].
+- `build_sprite_runs`: single-pass snapshot + stable sort por (z_order, texture_key). 1 draw call por run de mesma textura dentro de uma camada Z.
+- Blend: `ALPHA_BLENDING` + `CullMode::None` (sprites flip via negative scale).
+- SPRITE_CAPACITY = 10_000 (spec linha 286).
+
+### Extensões do ts-bridge
+- `Renderer.uploadTexture` / `uploadTextureTiled` retornam `bigint` (Rust u64 direct via wasm-bindgen).
+- `Renderer.createSprite(texture, dw, dh): Sprite` + `destroySprite(s)`.
+- `Sprite` class com handle opaque bigint; setters x/y/scaleX/scaleY/tint/visible/zOrder + setUv escrevem direto em typed-array views.
+- `_rawViews` accessor interno (pacote-local via underscore) — Sprite setters skip revalidate pra honrar o contrato <50ns/setter.
+- Dual-check revalidate em setup ops + `render()` checkpoint (spec "memory.grow detacha buffer").
+
+### Extensões do jogo
+- `config.weydra.ships / shipTrails / starfieldBright` (flags independentes).
+- `src/core/render-order.ts` (prereq originalmente M9 Task 0) — Z constants canônicas: STARFIELD=0, STARFIELD_BRIGHT=1, SHIP_TRAILS=28, SHIPS=30, etc.
+- `src/world/spritesheets.ts`: `getSpritesheetBytes` (lazy getImageData uma vez por sessão) + `getSpritesheetWeydraTexture` / `setSpritesheetWeydraTexture` cache de handle bigint por sheet.
+- `src/world/naves.ts`: `criarWeydraShipSprite` encaixa cada Nave num weydra sprite (UV sub-frame + tint RGBA8 `(rgb << 8) | 0xff` + zOrder SHIPS). Retry via `onSpritesheetReady` pra race boot-tempo com liveness guard `mundo.naves.includes(nave)` contra zombie leak.
+- `src/world/mundo.ts` espelha decisão de viewport-cull (`nave.gfx.visible`) pro weydra sprite — off-screen/fog parity entre paths.
+- `src/world/engine-trails.ts`: pool pré-alocado de 24 weydra sprites por Nave; per-frame push de posição + tint (alpha no byte baixo = fade). Partícula é 16×16 soft radial blob (quadratic falloff). Todas as partículas de todas as naves batcham num único draw call porque compartilham textura.
+- `src/world/fundo.ts`: `garantirWeydraBrightSprite` upload uma vez dos bytes do canvas procedural bright tile via `uploadTextureTiled`. Fullscreen sprite com `setUv(offset, offset, tilesX, tilesY)` e Repeat sampler embrulha textura; mesma fórmula `(1 - parallax)` do TilingSprite Pixi.
+
+### Stress-test math
+300 ships × (1 ship sprite + 24 trail slots) + 1 bright tile = 7501 sprites. Capacity 10_000 → margem ~25%. Documentado pra escalar futuro.
+
+### Adaptações vs plano
+- **wgpu 29** (plan era 25): `TexelCopyTextureInfo`/`TexelCopyBufferLayout` substituem `ImageCopyTexture`/`ImageDataLayout`; `PipelineLayoutDescriptor.bind_group_layouts: &[Option<&BGL>]` aceita `None` gap sparse (issue #7985) — usado pelo path instanced pra pular group 1; `immediate_size: u32` em vez de `push_constant_ranges`; `multiview_mask` em vez de `multiview`.
+- **Alpha-via-color u32** (plan + spec §"Memory layout SoA" especificavam `Pool Alpha [N × 1 f32]` separado): plano M3 consolida alpha no byte baixo de `colors: Vec<u32>` e user prompt explicitamente aprovou essa forma pros trails ("per-particle alpha via write direto em colors SoA"). M3 implementado seguindo o plano; spec §"Memory layout" fica como referência histórica — alpha f32 dedicado pode voltar se algum subsystem futuro precisar de 8+ bits de precisão.
+- **texture_id em SpriteMeta** (spec §"Memory layout SoA" listava `Pool Texture [N × 1 u32]` separado): plano coloca `texture: Handle` em SpriteMeta off-SoA. Batching usa `meta.iter()` O(N) com O(1) por slot. Aceito como otimização neutra.
+- **Starfield bright flag independente** (`weydra.starfieldBright` separado de `weydra.starfield`): permite bisection de regressões por camada em playtesting.
+- **Vite plugin WGSL** permanece como M2 deixou — não há shader `.wgsl` novo no game (os 2 shaders M3 vivem em `core/shaders/` e são embed via `include_str!`).
+- **Native / Android / iOS adapters**: intocados. wgpu 29 API changes absorvidas no core + wasm adapter, cross-compile M1.5 continua verde.
+
+### Reviewer gate
+4 reviewers (spec/plan/quality/bugs) em paralelo por Task. Rounds até CLEAN na mesma rodada. Findings fixados durante execução:
+- Task 1: `insert` u32 overflow assert + `len()` O(1) + `with_capacity` pre-aloca free.
+- Task 2: `view_formats: &[Rgba8Unorm]` pra M5 forward-compat.
+- Task 4: anotações inline de VertexFormat + byte offset no instanced shader pra prevenir misalign no Task 5.
+- Task 5: sort primary por z (spec-compliant, não por texture); adapter-level overflow assert em `create_sprite`; comment instanced fix (None no pipeline_layout, não "dummy").
+- Task 6: `_rawViews` accessor sem revalidate (hot-path <50ns); `render()` agora chama revalidate (spec checkpoint).
+- Task 7: liveness guard `mundo.naves.includes(nave)` no onSpritesheetReady retry (zombie sprite leak); espelhar `gfx.visible` → `_weydraSprite.visible` em mundo.ts (fog/cull parity).
+
+### Deferido para milestones futuros
+- Alpha pool f32 dedicado — se algum caso futuro precisar de precisão maior que 1/255.
+- Texture pool slot ID Vec — só se batching virar gargalo provado (hoje é O(N) sobre meta, sub-ms pra 10k sprites).
+- Input handlers Pixi eventMode pra DOM (M7 escopo — ver audit).
+- Visual parity screenshot test automated (plan original tinha, deferido pra M7+ quando mais sistemas estiverem no weydra).
+
+### Verification pendente no usuário (browser)
+- Enable `config.weydra.starfield = true` (M2) — starfield continua funcionando, não regrediu.
+- Enable `config.weydra.ships = true` — naves renderizam via weydra, visual idêntico.
+- Enable `config.weydra.shipTrails = true` — trails com alpha fade por partícula em naves em movimento.
+- Enable `config.weydra.starfieldBright = true` — bright tile tile-wrapping via weydra, parallax 0.12 preservado.
+- Chrome (WebGPU) + Firefox (WebGL2 via fallback) — ambos renderizam; Firefox exercita o path instanced.
+- Stress test: spawn 300 naves via debug — frame time ≤ Pixi baseline (target).
+
+### Next
+M4 (planets baked mode) ou M5+ em paralelo conforme priorização.
+
