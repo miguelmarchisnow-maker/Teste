@@ -29,6 +29,12 @@ impl Default for CameraUniforms {
     }
 }
 
+impl CameraUniforms {
+    /// Size in bytes as `wgpu::BufferAddress` — for use in buffer descriptors
+    /// and bind group layout `min_binding_size`.
+    pub const BYTE_SIZE: wgpu::BufferAddress = std::mem::size_of::<Self>() as wgpu::BufferAddress;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

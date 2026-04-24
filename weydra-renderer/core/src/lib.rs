@@ -10,6 +10,7 @@
 //! Adapters (`adapters/wasm`, `adapters/native`, `adapters/android`, `adapters/ios`)
 //! handle all platform-specific glue. Core sees only wgpu handles.
 
+pub mod bind_groups;
 pub mod camera;
 pub mod device;
 pub mod error;
@@ -17,6 +18,7 @@ pub mod frame;
 pub mod shader;
 pub mod surface;
 
+pub use bind_groups::EngineBindings;
 pub use camera::CameraUniforms;
 pub use device::GpuContext;
 pub use error::{Result, WeydraError};
