@@ -402,7 +402,11 @@ import fogWgsl from './shaders/fog.wgsl';
 let _renderer: Renderer | null = null;
 let _lastT = performance.now();
 
-export async function startWeydra() {
+export async function startWeydra(
+  state: GameLoopState,
+  panState: PanState,
+  updateHud: () => void,
+) {
   const canvas = document.getElementById('weydra-canvas') as HTMLCanvasElement;
   const syncSize = () => {
     const dpr = window.devicePixelRatio || 1;
@@ -452,7 +456,13 @@ export async function startWeydra() {
 }
 ```
 
-(`state: GameLoopState` vem do `main.ts` e é passado via parâmetro de `startWeydra` ou variável módulo-level compartilhada. Mantém refs mutáveis visíveis em ambos lados.)
+`state`, `panState`, `updateHud` são criados em `main.ts` e passados via parâmetro — mantém refs mutáveis visíveis em ambos lados. Exemplo em main.ts:
+
+```typescript
+const _state: GameLoopState = { mundo: null, mundoMenu: null, gameStarted: false, cinematicTime: 0, fimTocado: false, hudAcumMs: 0, gameSpeed: 1 };
+const _panState: PanState = { left: false, right: false, up: false, down: false };
+void startWeydra(_state, _panState, updateHud);
+```
 
 - [ ] **Step 4: Commit**
 
