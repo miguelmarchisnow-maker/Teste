@@ -117,10 +117,15 @@ async function bootstrap(): Promise<void> {
   // only the backing-store resolution changes.
   const baselineDpr = window.devicePixelRatio || 1;
   const renderScale = gfx.renderScale ?? 1;
+  // Qualquer flag weydra ligado → Pixi canvas transparente pra deixar o
+  // weydra canvas (z-index 0, atrás) aparecer. Senão o background preto
+  // sólido do Pixi cobre tudo que o weydra desenha.
+  const anyWeydraOn = !!(getConfig().weydra && Object.values(getConfig().weydra).some(Boolean));
   const baseInit: any = {
     width: window.innerWidth,
     height: window.innerHeight,
     backgroundColor: 0x000000,
+    backgroundAlpha: anyWeydraOn ? 0 : 1,
     resolution: baselineDpr * renderScale,
     autoDensity: true,
     // MSAA desligado por default. O jogo é pixel-art com scaleMode
