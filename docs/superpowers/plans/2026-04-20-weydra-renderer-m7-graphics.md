@@ -403,7 +403,10 @@ export class Graphics {
  * Same pack order already used by sprite_batch.wgsl (M3) and text.wgsl (M8).
  */
 function packColor(rgb: number, a: number): number {
-  return ((rgb >> 16) & 0xff) << 24 | ((rgb >> 8) & 0xff) << 16 | (rgb & 0xff) << 8 | Math.floor(a * 255);
+  // `>>> 0` força unsigned: JS bitwise ops trabalham com int32 signed, então
+  // `(0xFF << 24)` vira `-16777216`. wasm-bindgen rejeita / corrompe no
+  // boundary JS→Rust u32. `x >>> 0` converte pra uint32 sem perda.
+  return (((rgb >> 16) & 0xff) << 24 | ((rgb >> 8) & 0xff) << 16 | (rgb & 0xff) << 8 | Math.floor(a * 255)) >>> 0;
 }
 ```
 

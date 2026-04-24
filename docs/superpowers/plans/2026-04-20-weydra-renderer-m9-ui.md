@@ -166,7 +166,9 @@ export function toCanvasXY(ev: PointerEvent, canvas: HTMLCanvasElement): [number
 
 export function rgbaWithAlpha(rgb: number, alpha01: number): number {
   const a = Math.max(0, Math.min(255, Math.round(alpha01 * 255)));
-  return ((rgb & 0xFFFFFF) << 8) | a;
+  // `>>> 0` força unsigned — `(0xFFFFFF << 8) | 0xFF` vira int32 negativo em
+  // JS e wasm-bindgen rejeita no boundary u32.
+  return (((rgb & 0xFFFFFF) << 8) | a) >>> 0;
 }
 ```
 
