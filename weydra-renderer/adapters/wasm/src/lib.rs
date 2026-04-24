@@ -28,8 +28,9 @@ pub struct Renderer {
 
 #[wasm_bindgen]
 impl Renderer {
-    #[wasm_bindgen(constructor)]
-    pub async fn new(canvas: HtmlCanvasElement) -> Result<Renderer, JsValue> {
+    /// Create a new Renderer bound to the given canvas.
+    /// Static async factory (wasm-bindgen does not support async constructors).
+    pub async fn create(canvas: HtmlCanvasElement) -> Result<Renderer, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
 

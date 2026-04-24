@@ -7,16 +7,18 @@
 
 import init, { Renderer as WasmRenderer } from 'weydra-renderer-wasm';
 
-let _initialized = false;
+let _initPromise: Promise<void> | null = null;
 
 /**
  * Load the WASM module. Must be awaited before creating any Renderer.
- * Safe to call multiple times — subsequent calls are no-ops.
+ * Safe to call multiple times — concurrent calls share the same in-flight
+ * promise, so the module is only initialized once.
  */
-export async function initWeydra(): Promise<void> {
-  if (_initialized) return;
-  await init();
-  _initialized = true;
+export function initWeydra(): Promise<void> {
+  if (_initPromise) return _initPromise;
+  const p = init().then(() => {});
+  _initPromise = p;
+  return p;
 }
 
 /**
@@ -34,19 +36,31 @@ export class Renderer {
    * Must call `initWeydra()` first.
    */
   static async create(canvas: HTMLCanvasElement): Promise<Renderer> {
-    if (!_initialized) {
+    if (!_initPromise) {
       throw new Error('initWeydra() must be called before Renderer.create()');
     }
-    const inner = await new WasmRenderer(canvas);
+    await _initPromise;
+    const inner = await WasmRenderer.create(canvas);
     return new Renderer(inner);
   }
 
   resize(width: number, height: number): void {
-    this.inner.resize(width, height);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) {
+      throw new Error(`weydra resize: invalid dimensions ${width}x${height}`);
+    }
+    try {
+      this.inner.resize(width, height);
+    } catch (e) {
+      throw new Error(`weydra resize failed: ${String(e)}`);
+    }
   }
 
   render(): void {
-    this.inner.render();
+    try {
+      this.inner.render();
+    } catch (e) {
+      throw new Error(`weydra render failed: ${String(e)}`);
+    }
   }
 }
 
