@@ -18,9 +18,10 @@ struct CameraUniforms {
 @group(0) @binding(0) var<uniform> engine_camera: CameraUniforms;
 @group(2) @binding(0) var tex: texture_2d<f32>;
 @group(2) @binding(1) var samp: sampler;
-// NOTE: bind group 1 slot unused in this path — storage buffer slot is a
-// no-op binding here. The wasm adapter still creates a dummy layout so
-// pipeline_layouts match across paths (simpler than branching bind groups).
+// NOTE: bind group 1 is absent in this path — the wasm adapter's
+// pipeline_layout passes `None` at index 1. Group 2 is still texture/sampler
+// so the binding convention matches the storage path at the consumer level.
+// Never call set_bind_group(1, ...) against this pipeline — wgpu validates.
 
 struct VsIn {
     @builtin(vertex_index) vid: u32,
