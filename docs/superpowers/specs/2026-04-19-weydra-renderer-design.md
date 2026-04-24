@@ -629,7 +629,7 @@ Ordem rígida bottom-up pra respeitar z-order durante coexistência Pixi+weydra.
 - `Text` primitive no core: recebe string + position + size + color, look up glyphs no atlas, emite vertex buffer com quads
 - WASM exports: `create_text`, `set_text_content`, `set_text_position`
 - TS `Text` class
-- Migração das 3 instâncias `Pixi.Text`: fog memory labels (dinâmico: nome/owner/build count), tutorial (estático), qualquer outro uso
+- Migração dos ~30 usos de `Pixi.Text` distribuídos em `src/ui/painel.ts` (~24), `src/ui/selecao.ts`, `src/ui/tutorial.ts`, `src/world/nevoa.ts`. Helper `criarText` em `src/ui/_text-helper.ts` escolhe weydra vs Pixi path pelo flag
 - Conteúdo dinâmico funciona — cada update vira lookup no atlas + vertex buffer rebuild
 - Flag `weydra.text`
 
@@ -644,10 +644,10 @@ Ordem rígida bottom-up pra respeitar z-order durante coexistência Pixi+weydra.
 **Escopo:** Últimos overlays Pixi migram. Basicamente é reusar M7 + M8 pra recriar os elementos que sobraram em Pixi.
 
 **Entregáveis:**
-- `src/ui/minimapa.ts` inteiro via weydra: background Graphics + dots Graphics + viewport rect Graphics + título Text
-- `src/ui/tutorial.ts`: frame Graphics + Text + close button (graphics + DOM event já feito em M7)
-- `src/ui/painel.ts`: backgrounds Graphics + botões (graphics + text + event)
-- `src/ui/selecao.ts`: selection cards (backgrounds + text + hover state)
+- `src/ui/minimapa.ts` inteiro via weydra: background Graphics + dots Graphics + viewport rect Graphics + título Text (DOM event click-to-navigate já migrado em M7)
+- `src/ui/tutorial.ts`: frame Graphics + Text + close button (graphics + DOM event já migrado em M7)
+- `src/ui/painel.ts`: backgrounds Graphics + botões (graphics + text; DOM events de action buttons já migrados em M7)
+- `src/ui/selecao.ts`: selection cards (backgrounds + text + hover state; DOM events já migrados em M7)
 - Qualquer Pixi.Container/Sprite/Graphics remanescente em `src/ui/` erradicado
 - Flag `weydra.ui`
 
@@ -724,7 +724,7 @@ Ciclo <30s entre edit e validação visual.
 - **Shader determinism:** planeta usa PCG hash bit-exact. wgpu traduz WGSL pros backends, pode haver 1-bit drift entre MSL/HLSL/GLSL. Plano: teste de hash do framebuffer em cena de referência.
 - **Tessellation lyon:** pode gerar polygon count diferente do Pixi. Plano: teste de parity pixel-a-pixel em cena com só Graphics.
 - **WebGL2 feature coverage:** wgpu não suporta tudo WGSL em WebGL2. Validar cedo — M2 já exerce shader complexo.
-- **Input no canvas inferior:** durante migração, se algum sistema precisar de hit-test no weydra canvas, precisamos de `pointer-events: auto` condicional. Plano: postergar pro M9 onde UI migra.
+- **Input no canvas inferior:** durante migração, se algum sistema precisar de hit-test no weydra canvas, precisamos de `pointer-events: auto` condicional. Plano: re-wire de **todos** os pointer events Pixi pra DOM acontece em M7 (antes do M9 migrar o visual das UIs).
 
 ## Riscos gerais e mitigações
 
@@ -738,17 +738,19 @@ Ciclo <30s entre edit e validação visual.
 | Bundle WASM muito pesado | Baixa | Baixo | Usuário explicitou que não importa; wasm-opt -O4 no release |
 | Safari iOS diferente de Safari desktop | Média | Médio | Teste manual iOS por milestone |
 
-## Open questions (pra resolver antes de começar M1)
+## Decisões resolvidas (histórico)
 
-- [ ] `wasm-pack` ou `wasm-bindgen-cli` + `cargo build` manual? Ambos funcionam, wasm-pack é mais opinativo
-- [ ] Integração Vite: `vite-plugin-wasm` + `vite-plugin-top-level-await` ou wasm-pack target=web com import direto?
-- [ ] Como expor o pointer `*const T` via wasm-bindgen? Precisa feature específica ou workaround com `*const f32 as usize`
-- [ ] Gerenciamento de texturas: atlas único gigante, ou atlas por tipo (ships, UI, backgrounds)?
-- [ ] Formato dos sprites no spritesheet: manter PNGs atuais (ships.png) ou re-packer num atlas weydra-específico?
+Todas as open questions iniciais foram resolvidas durante escrita dos plans M1-M10:
 
-## Próximos passos
+- **Build:** `wasm-pack build --target web` — padrão usado em M1 Task 7 + script `npm run build:renderer`
+- **Vite integration:** `vite-plugin-wasm` + `vite-plugin-top-level-await` + `@weydra/vite-plugin-wgsl` custom — M1 Task 10
+- **Pointer export:** `*const T as u32` via wasm-bindgen + reconstrução no TS via `new Float32Array(memory.buffer, ptr, len)` — documentado em "Estratégia de binding"
+- **Textura management:** atlas por tipo (ships.png, font atlases per-size, bake de planeta individual por textura) — M3/M8
+- **Spritesheet:** mantém PNGs atuais; game-side converte pra RGBA bytes via OffscreenCanvas.getImageData antes do upload — M3 Task 7
 
-Com esse spec aprovado, próxima etapa é invocar `writing-plans` skill pra detalhar o plano de implementação de **M1 (Foundation)** — arquivos exatos, dependências, ordem de escrita, critérios de done. Implementação começa depois do plano validado.
+## Status dos plans
+
+Todos os plans M1-M10 escritos e revisados (10 rodadas de code review, ~80 bugs técnicos corrigidos + 6 decisões conceituais aplicadas). Última revisão declarou "ALL CLEAN — shippable". Implementação começa por **M1 Foundation**.
 
 ## Referências
 
