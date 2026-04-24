@@ -852,3 +852,69 @@ Scaffolding multi-plataforma pronto. `cargo check` passa em: linux-host, web, na
 
 ### Next
 M2 (starfield port) segue em paralelo. M11 (full native adapter) e M12 (full mobile adapters) ficam sob demanda.
+
+## M2 Status: Complete (2026-04-24)
+
+Starfield procedural rodando no weydra-renderer via custom shader, atrás do Pixi canvas. First custom shader + uniform pool + bind group 0/1 convention em produção. Bright star layer (TilingSprite) fica em Pixi até M3 migrar o sprite pool — cobre visual parity combinada.
+
+### Verificação automática
+- `cargo build --workspace` clean (core + 4 adapters + hello-clear)
+- `cargo test -p weydra-renderer --lib` — 3/3 tests passam (device headless + 2 camera)
+- `npm run build:renderer` — wasm pkg produzido sem warnings (0 compile warnings em wasm-pack)
+- `npm run build` — dist/ produzido (~6.5s, só warnings pre-existing de chunk size)
+- `./scripts/check-all-platforms.sh` → 4 pass / 4 skip / 0 fail (M1.5 não regrediu)
+- `./scripts/check-platform-guards.sh` → 0 violations (core segue platform-agnostic)
+- `tsc --noEmit` — clean
+
+### Novas primitivas do core
+- `ShaderRegistry` — compila WGSL modules com cache por source hash (DefaultHasher determinístico)
+- `EngineBindings` — bind group 0 = `CameraUniforms` buffer + layout + bind group, `update()` escreve via `queue.write_buffer` por frame
+- `UniformPool<T: Pod + Zeroable>` — homogeneous Vec<T> mirror GPU buffer, ptr exposto para shared-memory writes
+- `Mesh` — pipeline + draw full-screen quad via `@builtin(vertex_index)`, bind groups 0 engine + 1 custom
+- `CameraUniforms::new(camera, viewport, time)` helper + `BYTE_SIZE: wgpu::BufferAddress` const restaurados
+
+### Extensões do wasm adapter
+- `StarfieldUniforms` #[repr(C)] Pod struct (16 bytes = density + pad)
+- `Renderer::set_camera(x,y,vw,vh,time)` — world units
+- `Renderer::create_starfield(wgsl_source)` — compile + uniform pool + mesh
+- `Renderer::starfield_uniforms_ptr() -> u32` — shared memory access via `*const T as u32`
+- `Renderer::mem_version() -> u32` — monotonic counter pra TS revalidation
+- `Renderer::render()` rewrite — full pass: camera update → pool upload → acquire → render pass → bind group 0 + mesh.draw → submit → present
+
+### Extensões do ts-bridge
+- `initWeydra()` agora retorna `Promise<InitOutput>` (armazena `_wasm` para shared-memory access)
+- `Renderer.setCamera(x,y,vw,vh,time)` — world units
+- `Renderer.createStarfield(wgslSource)` — registra shader + pool
+- `Renderer.setStarfieldDensity(v)` — escreve direto em `_wasm.memory.buffer` via typed view reconstruída a cada call (convenção M2: nunca cachear buffer entre calls)
+
+### Extensões do Vite plugin
+- `wgsl_reflect@^1.2.3` dep
+- `reflect.ts` — parser defensivo, extrai uniforms bind group >= 1 (skip group 0 engine)
+- `codegen.ts` — emite JS puro (não TS — Vite não transpila virtual `.wgsl`): `Object.freeze` layouts + JS class com Float32/Int32/Uint32 views + setter por campo (f32/i32/u32/vec2/3/4) com guard de 4-byte alignment
+- `index.ts` — migrou de `transform` → `load` hook (Rollup default JS parser interceptava raw WGSL antes); `enforce: 'pre'`
+- `tsconfig.json` plugin-local com `allowImportingTsExtensions: true` + root tsconfig também
+
+### Game integration
+- `config.weydra.starfield: boolean` (default false) em OrbitalConfig + DEFAULTS
+- `src/shaders/starfield-weydra.wgsl` novo — convenção weydra (bind group 0 engine + 1 custom), 2 layers procedurais preservadas do Pixi original. Pixi's `starfield.wgsl` original intocado (ainda usado pelo WebGPU Pixi path quando flag off)
+- `src/world/fundo.ts` branch: quando `config.weydra.starfield === true`, `_mesh.visible = false` + drive weydra via setCamera/setStarfieldDensity; bright TilingSprite segue em Pixi em AMBOS paths
+- `src/weydra-loader.ts` renomeado `startWeydra` (alias startWeydraM1 mantido), lê config flag, chama createStarfield no boot
+
+### Adaptações vs plano
+- Task 7 (TilingSprite bright layer) PULADA conforme spec "M2 scope cobre apenas procedural" — migra pro M3 junto com sprite pool
+- wgpu 29 API em todo o core (plan era 25): `PipelineLayoutDescriptor.bind_group_layouts: &[Option<&BGL>]`, `immediate_size: u32` em vez de `push_constant_ranges`, `multiview_mask` em vez de `multiview`
+- `wgpu = { version = "29", default-features = false, features = [...] }` em native/android adapters (Cargo limitation: workspace bare version proíbe default-features override)
+- Vite plugin `load` hook em vez de `transform` (Rollup pré-fix interceptava)
+- codegen emite JS (não TS) porque Vite não transpila virtual `.wgsl`
+- `starfield-weydra.wgsl` arquivo separado (não rewrite do original) — Pixi WebGPU path ainda depende do shader original com GlobalUniforms/LocalUniforms
+
+### Deferido para M3
+- Bright star layer TilingSprite (precisa texture bind group 2 + sprite pool)
+- Shared memory revalidation pattern completa (ptr + mem_version dual-check) — M3 quando texture uploads existirem
+- Visual parity + perf screenshot comparison — feito manualmente pelo usuário no browser (plan Task 11 Steps 1-4 ficam como verificação do usuário; CI automated pass já cobre build correctness)
+
+### Reviewer gate
+4 reviewers (spec/plan/quality/bugs) dispatched após cada Task. Todos CLEAN na Task 10 final. Findings fixados durante execução: Task 1 DefaultHasher determinismo, Task 6 codegen 4-byte alignment guard, Task 10 Vite plugin transform→load + JS codegen rewrite.
+
+### Next
+M3 (sprite pool + ships) ou M4+ em paralelo conforme priorização.
