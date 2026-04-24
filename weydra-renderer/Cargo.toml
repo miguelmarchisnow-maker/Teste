@@ -4,6 +4,7 @@ members = [
     "core",
     "adapters/wasm",
     "adapters/native",
+    "adapters/android",
     "examples/hello-clear",
 ]
 
