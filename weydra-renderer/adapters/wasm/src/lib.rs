@@ -13,6 +13,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 use weydra_renderer::{
     CameraUniforms, EngineBindings, GpuContext, Mesh, RenderSurface, ShaderRegistry, UniformPool,
@@ -52,17 +53,54 @@ impl Renderer {
     pub async fn create(canvas: HtmlCanvasElement) -> Result<Renderer, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
+        let canvas_id = canvas.id();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        // Helper: (re)build surface from a DOM canvas lookup by id. Needed
+        // because SurfaceTarget::Canvas consumes the element, so we can't
+        // reuse it across a fallback attempt.
+        async fn try_init(
+            canvas_id: &str,
+            backends: wgpu::Backends,
+        ) -> Result<(GpuContext, wgpu::Surface<'static>), JsValue> {
+            let doc = web_sys::window()
+                .and_then(|w| w.document())
+                .ok_or_else(|| JsValue::from_str("no document"))?;
+            let el = doc
+                .get_element_by_id(canvas_id)
+                .ok_or_else(|| JsValue::from_str("canvas id missing in DOM"))?;
+            let canvas: HtmlCanvasElement = el
+                .dyn_into()
+                .map_err(|_| JsValue::from_str("element is not a canvas"))?;
+            let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+            desc.backends = backends;
+            let instance = wgpu::Instance::new(desc);
+            let surface = instance
+                .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+                .map_err(|e| JsValue::from_str(&format!("surface: {e}")))?;
+            let ctx = GpuContext::new_with_surface(instance, &surface)
+                .await
+                .map_err(|e| JsValue::from_str(&format!("gpu init: {e}")))?;
+            Ok((ctx, surface))
+        }
 
-        let surface_target = wgpu::SurfaceTarget::Canvas(canvas);
-        let surface = instance
-            .create_surface(surface_target)
-            .map_err(|e| JsValue::from_str(&format!("surface: {e}")))?;
-
-        let ctx = GpuContext::new_with_surface(instance, &surface)
-            .await
-            .map_err(|e| JsValue::from_str(&format!("gpu init: {e}")))?;
+        // Order: WebGPU (Chrome/Edge/Safari 17+) first, then WebGL2 fallback
+        // (Firefox/Safari iOS/mobile low-end / Chrome sem WebGPU disponível).
+        // Drop the initial canvas early so re-fetch by id works on retry.
+        drop(canvas);
+        let (ctx, surface) = match try_init(&canvas_id, wgpu::Backends::BROWSER_WEBGPU).await {
+            Ok(pair) => pair,
+            Err(e_webgpu) => match try_init(&canvas_id, wgpu::Backends::GL).await {
+                Ok(pair) => {
+                    log::warn!("weydra: WebGPU adapter indisponível ({e_webgpu:?}), usando WebGL2");
+                    pair
+                }
+                Err(e_gl) => {
+                    return Err(JsValue::from_str(&format!(
+                        "no GPU backend: webgpu={e_webgpu:?}, gl={e_gl:?}"
+                    )));
+                }
+            },
+        };
 
         let render_surface = RenderSurface::configure(&ctx, surface, width, height)
             .map_err(|e| JsValue::from_str(&format!("config: {e}")))?;
