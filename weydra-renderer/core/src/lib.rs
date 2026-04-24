@@ -17,6 +17,7 @@ pub mod error;
 pub mod frame;
 pub mod shader;
 pub mod surface;
+pub mod uniform_pool;
 
 pub use bind_groups::EngineBindings;
 pub use camera::CameraUniforms;
@@ -25,3 +26,4 @@ pub use error::{Result, WeydraError};
 pub use frame::render_clear;
 pub use shader::{ShaderHandle, ShaderRegistry};
 pub use surface::RenderSurface;
+pub use uniform_pool::UniformPool;
