@@ -1002,8 +1002,48 @@ function renderGraphicsTab(body: HTMLDivElement): void {
 
   // Motor section (Task 26)
   renderGraphicsTabMotor(body);
+  // Weydra experimental renderer toggles
+  renderGraphicsTabWeydra(body);
   // Avan\u00E7ado section (Task 27)
   renderGraphicsTabAvancado(body);
+}
+
+// ─── Graphics tab: Weydra experimental section ───────────────────────
+//
+// Each subsystem toggles independently so players can opt into pieces
+// that are visually identical and ship-ready, while leaving the rest
+// in Pixi.
+
+type WeydraKey = 'starfield' | 'ships' | 'shipTrails' | 'starfieldBright' | 'planetsBaked';
+const WEYDRA_FLAGS: Array<{ key: WeydraKey; label: string; tooltip: string }> = [
+  { key: 'starfield', label: 'Starfield', tooltip: 'Starfield procedural via weydra (M2). Substitui o shader Pixi.' },
+  { key: 'starfieldBright', label: 'Bright tiles', tooltip: 'Camada brilhante de estrelas tile-wrapped via weydra (M3).' },
+  { key: 'ships', label: 'Naves', tooltip: 'Sprite pool weydra pra todas as naves (M3). Visual identico ao Pixi.' },
+  { key: 'shipTrails', label: 'Trails', tooltip: 'Rastros dos motores via sprite pool weydra (M3). Fade por particula.' },
+  { key: 'planetsBaked', label: 'Planetas (baked)', tooltip: 'Planetas pequenos via sprite weydra (M4). Pixi ainda gera a textura.' },
+];
+
+function renderGraphicsTabWeydra(body: HTMLDivElement): void {
+  const sec = document.createElement('div');
+  sec.className = 'settings-section';
+  sec.textContent = 'Weydra (experimental)';
+  body.appendChild(sec);
+
+  for (const flag of WEYDRA_FLAGS) {
+    const [row, label] = rowWithLabel(flag.label, 'qualidade');
+    label.title = flag.tooltip;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!(getConfig().weydra as any)[flag.key];
+    cb.addEventListener('change', () => {
+      setConfig({
+        weydra: { ...getConfig().weydra, [flag.key]: cb.checked } as any,
+      });
+      showReloadBanner(row);
+    });
+    row.appendChild(cb);
+    body.appendChild(row);
+  }
 }
 
 // ─── Graphics tab: Motor section (Task 26) ───────────────────────────
