@@ -64,6 +64,7 @@ import { t } from './core/i18n/t';
 import { somVitoria, somDerrota } from './audio/som';
 import { iniciarMusicaAmbiente, pararMusicaAmbiente } from './audio/musica-ambiente';
 import { setAppReferenceForBake, precompilarShadersPlaneta } from './world/planeta-procedural';
+import { startWeydraM1 } from './weydra-loader';
 // Top-level state shared across bootstrap, iniciarJogoNovo, and carregarMundo.
 let _app: Application | null = null;
 let _mundo: Mundo | null = null;
@@ -576,6 +577,14 @@ async function bootstrap(): Promise<void> {
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
   document.body.appendChild(app.canvas);
+  // Ensure Pixi canvas stacks above the weydra-renderer canvas (z-index: 0
+  // in index.html). Pixi's default `z-index: auto` already paints above in
+  // DOM-order terms, but being explicit avoids any surprises when the weydra
+  // loader is enabled via localStorage.weydra_m1.
+  app.canvas.style.position = 'fixed';
+  app.canvas.style.top = '0';
+  app.canvas.style.left = '0';
+  app.canvas.style.zIndex = '1';
 
   window.addEventListener('resize', () => {
     app.renderer.resize(window.innerWidth, window.innerHeight);
@@ -749,6 +758,10 @@ async function bootstrap(): Promise<void> {
       });
     }
   } catch { /* SSR / restricted env */ }
+
+  // M1 validation: optionally start weydra-renderer clearing to black.
+  // Enable via: localStorage.setItem('weydra_m1', '1'); location.reload()
+  void startWeydraM1();
 }
 
 function startTicker(): void {
