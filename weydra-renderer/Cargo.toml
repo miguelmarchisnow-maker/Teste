@@ -30,5 +30,10 @@ env_logger = "0.11"
 
 [profile.release]
 opt-level = 3
-lto = "thin"
-codegen-units = 1
+# lto=thin + codegen-units=1 was the slowest possible combo (2-3× compile
+# time). For wasm, `wasm-opt -Oz` (run by wasm-pack in release mode)
+# recovers nearly all the size lto/1-unit would save, so we trade a ~3-8%
+# size bump for a much faster cargo build.
+lto = false
+codegen-units = 16
+strip = "debuginfo"

@@ -24,26 +24,31 @@ jobs:
 
       # Cascading cache strategy — fastest path first.
       #
-      # 1. `dist/` cache keyed on every input that can affect the built
-      #    bundle. A hit means "identical inputs to a previous successful
-      #    run" — we skip toolchain install, npm ci, wasm-pack, tsc, and
-      #    vite build, and jump straight to upload + deploy.
-      # 2. On miss, `wasm-pack` output (`pkg/`) and the vite-plugin-wgsl
-      #    `dist/` are each cached independently so partial changes
-      #    (e.g. TS-only PR) don't re-trigger the ~3-5 min cargo build.
+      # Level 1 — final `dist/` keyed on every input that feeds the bundle.
+      # A hit means "identical inputs to a previous green run": skip toolchain
+      # install, bun install, wasm-pack, tsc, and vite build, and jump
+      # straight to upload + deploy.
+      #
+      # Level 2 — wasm-pack output (`pkg/`) keyed on Rust sources only.
+      # Skips cargo+wasm-bindgen on TS-only commits.
+      #
+      # Level 3 — vite-plugin-wgsl tsc output keyed on plugin sources.
+      #
+      # Level 4 — `node_modules` keyed on `bun.lock`. Skips `bun install`
+      # entirely when deps haven't moved.
+      #
+      # Level 5 — `node_modules/.vite` (esbuild prebundle of Pixi etc).
       - uses: actions/cache@v4
         id: cache-dist
         with:
           path: dist
-          key: dist-${{ runner.os }}-${{ hashFiles('src/**', 'public/**', 'index.html', 'vite.config.ts', 'tsconfig.json', 'package-lock.json', 'package.json', 'weydra-renderer/Cargo.lock', 'weydra-renderer/**/Cargo.toml', 'weydra-renderer/core/src/**/*.rs', 'weydra-renderer/core/shaders/**', 'weydra-renderer/adapters/wasm/src/**/*.rs', 'weydra-renderer/rust-toolchain.toml', 'weydra-renderer/vite-plugin-wgsl/*.ts', 'weydra-renderer/vite-plugin-wgsl/tsconfig*.json', 'weydra-renderer/vite-plugin-wgsl/package.json', 'weydra-renderer/ts-bridge/**/*.ts', 'weydra-renderer/ts-bridge/package.json') }}
+          key: dist-${{ runner.os }}-${{ hashFiles('src/**', 'public/**', 'index.html', 'vite.config.ts', 'tsconfig.json', 'bun.lock', 'package.json', 'weydra-renderer/Cargo.lock', 'weydra-renderer/**/Cargo.toml', 'weydra-renderer/core/src/**/*.rs', 'weydra-renderer/core/shaders/**', 'weydra-renderer/adapters/wasm/src/**/*.rs', 'weydra-renderer/rust-toolchain.toml', 'weydra-renderer/vite-plugin-wgsl/*.ts', 'weydra-renderer/vite-plugin-wgsl/tsconfig*.json', 'weydra-renderer/vite-plugin-wgsl/package.json', 'weydra-renderer/ts-bridge/**/*.ts', 'weydra-renderer/ts-bridge/package.json') }}
 
-      # Rust toolchain for the weydra-renderer wasm crate. rust-toolchain.toml
-      # inside weydra-renderer/ pins channel=nightly; install the same channel
-      # here plus the wasm32 target so wasm-pack can cross-compile.
+      # ── Rust toolchain (skipped on full dist hit) ─────────────────────
       - if: steps.cache-dist.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-04-23
           targets: wasm32-unknown-unknown
       - if: steps.cache-dist.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
@@ -52,17 +57,33 @@ jobs:
       - if: steps.cache-dist.outputs.cache-hit != 'true'
         uses: jetli/wasm-pack-action@v0.4.0
 
+      # ── JS toolchain (Bun replaces npm) ───────────────────────────────
       - if: steps.cache-dist.outputs.cache-hit != 'true'
-        uses: actions/setup-node@v4
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 20
-          cache: npm
-      - if: steps.cache-dist.outputs.cache-hit != 'true'
-        run: npm ci
+          bun-version: latest
 
-      # Cache the wasm-pack output. Keyed on the Rust sources that actually
-      # affect the produced pkg/ — a docs-only commit gets a full hit and
-      # skips the cargo build + wasm-bindgen pass.
+      # node_modules cache — skips `bun install` entirely on an unchanged
+      # lockfile. Hoisted linker keeps npm-style layout so Vite resolves
+      # nested packages (e.g. tinyglobby/dist/) correctly.
+      - if: steps.cache-dist.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        id: cache-node-modules
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', 'weydra-renderer/ts-bridge/package.json', 'weydra-renderer/vite-plugin-wgsl/package.json') }}
+      - if: steps.cache-dist.outputs.cache-hit != 'true' && steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile --linker=hoisted
+
+      # Vite optimizeDeps prebundle (esbuild-processed Pixi etc).
+      - if: steps.cache-dist.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.vite
+          key: vite-deps-${{ runner.os }}-${{ hashFiles('bun.lock', 'vite.config.ts') }}
+
+      # wasm-pack output cache — keyed on Rust sources that actually
+      # affect the produced pkg/.
       - if: steps.cache-dist.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         id: cache-wasm-pkg
@@ -70,9 +91,9 @@ jobs:
           path: weydra-renderer/adapters/wasm/pkg
           key: wasm-pkg-${{ runner.os }}-${{ hashFiles('weydra-renderer/Cargo.lock', 'weydra-renderer/**/Cargo.toml', 'weydra-renderer/core/src/**/*.rs', 'weydra-renderer/core/shaders/**', 'weydra-renderer/adapters/wasm/src/**/*.rs', 'weydra-renderer/rust-toolchain.toml') }}
       - if: steps.cache-dist.outputs.cache-hit != 'true' && steps.cache-wasm-pkg.outputs.cache-hit != 'true'
-        run: npm run build:renderer:release
+        run: bun run build:renderer:release
 
-      # Cache the vite-plugin-wgsl tsc output.
+      # vite-plugin-wgsl tsc output cache.
       - if: steps.cache-dist.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         id: cache-plugin-dist
@@ -80,13 +101,13 @@ jobs:
           path: weydra-renderer/vite-plugin-wgsl/dist
           key: plugin-dist-${{ runner.os }}-${{ hashFiles('weydra-renderer/vite-plugin-wgsl/*.ts', 'weydra-renderer/vite-plugin-wgsl/tsconfig*.json', 'weydra-renderer/vite-plugin-wgsl/package.json') }}
       - if: steps.cache-dist.outputs.cache-hit != 'true' && steps.cache-plugin-dist.outputs.cache-hit != 'true'
-        run: npm run build:plugin
+        run: bun run build:plugin
 
-      # `npx vite build` bypasses npm's `prebuild` lifecycle hook — the two
-      # cached/rebuilt outputs above already satisfy the workspace file:
+      # `bunx vite build` bypasses the `prebuild` npm lifecycle hook — the
+      # two cached/rebuilt outputs above already satisfy the workspace
       # deps, so rerunning the hook would only double the work.
       - if: steps.cache-dist.outputs.cache-hit != 'true'
-        run: npx vite build
+        run: bunx vite build
 
       - uses: actions/upload-pages-artifact@v3
         with:

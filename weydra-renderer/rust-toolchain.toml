@@ -1,5 +1,8 @@
 [toolchain]
-channel = "nightly"
+# Pinned to a specific nightly so CI's rust-cache stays warm. Without a
+# pin, every day's new nightly invalidates every cargo artifact and CI
+# goes back to cold-build (~3-5 min). Bump manually every 2-4 weeks.
+channel = "nightly-2026-04-23"
 targets = [
     "wasm32-unknown-unknown",
     "x86_64-unknown-linux-gnu",

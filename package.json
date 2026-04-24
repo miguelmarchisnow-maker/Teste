@@ -20,8 +20,8 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@weydra/renderer": "file:weydra-renderer/ts-bridge",
-    "@weydra/vite-plugin-wgsl": "file:weydra-renderer/vite-plugin-wgsl",
+    "@weydra/renderer": "workspace:*",
+    "@weydra/vite-plugin-wgsl": "workspace:*",
     "pixi.js": "^8.18.1-dev.8f42bb7"
   },
   "devDependencies": {
@@ -40,5 +40,9 @@
   "overrides": {
     "esbuild": "^0.25.0",
     "uuid": "^14.0.0"
-  }
+  },
+  "workspaces": [
+    "weydra-renderer/ts-bridge",
+    "weydra-renderer/vite-plugin-wgsl"
+  ]
 }
