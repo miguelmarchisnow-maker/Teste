@@ -75,7 +75,6 @@ targets = [
     "wasm32-unknown-unknown",
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-gnu",
-    "x86_64-pc-windows-msvc",
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
     "aarch64-linux-android",
@@ -83,6 +82,8 @@ targets = [
 ]
 components = ["rustfmt", "clippy"]
 ```
+
+Nota: `x86_64-pc-windows-msvc` **não** está na lista — requer MSVC linker + Windows SDK, só compila com host Windows. Pra developers Windows, `rustup target add x86_64-pc-windows-msvc` local, não enforçado no workspace.
 
 - [ ] **Step 2: Verificar instalação dos targets**
 
@@ -181,7 +182,9 @@ crate-type = ["lib"]
 
 [dependencies]
 weydra-renderer = { path = "../../core" }
-wgpu = { workspace = true, features = ["vulkan", "metal", "dx12"] }
+# default-features = false evita arrastar backends que não usamos (ex: gles).
+# Features enumeradas explicitamente — wgpu 25.x habilita todas por default.
+wgpu = { workspace = true, default-features = false, features = ["vulkan", "metal", "dx12"] }
 winit = { workspace = true }
 pollster = { workspace = true }
 log = { workspace = true }
@@ -310,7 +313,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 weydra-renderer = { path = "../../core" }
-wgpu = { workspace = true, features = ["vulkan", "gles"] }
+# default-features = false: Android só precisa Vulkan + GLES, não Metal/DX12.
+wgpu = { workspace = true, default-features = false, features = ["vulkan", "gles"] }
 winit = { workspace = true, features = ["android-native-activity"] }
 log = { workspace = true }
 android_logger = "0.13"
@@ -430,7 +434,9 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 weydra-renderer = { path = "../../core" }
-wgpu = { workspace = true, features = ["metal"] }
+# default-features = false: sem isso, `cargo check` em host Linux tenta
+# compilar o Metal HAL e falha procurando -framework Metal/QuartzCore.
+wgpu = { workspace = true, default-features = false, features = ["metal"] }
 log = { workspace = true }
 ```
 
@@ -448,7 +454,7 @@ Criar `weydra-renderer/adapters/ios/src/lib.rs`:
 //! O M1.5 apenas garante que o workspace suporta iOS como target sem
 //! que outras crates precisem mudar.
 
-pub fn iso_placeholder() -> &'static str {
+pub fn ios_placeholder() -> &'static str {
     "weydra-renderer-ios placeholder — full adapter in M12"
 }
 ```
@@ -610,12 +616,15 @@ Criar `scripts/check-all-platforms.sh`:
 ```bash
 #!/usr/bin/env bash
 # check-all-platforms.sh — roda `cargo check` pra cada target weydra-renderer
-# suporta. Falha parcial é aceitável (marca como skip), falha total trava.
+# suporta. Skip apenas quando o target não está instalado no rustup;
+# qualquer outro erro (incluindo linker) é FAIL real.
 # Uso: ./scripts/check-all-platforms.sh
 
 set -u
 
 cd "$(dirname "$0")/../weydra-renderer" || exit 1
+
+INSTALLED_TARGETS=$(rustup target list --installed)
 
 FAIL=0
 PASS=0
@@ -625,19 +634,21 @@ check() {
     local pkg="$1"
     local target="$2"
     local label="$3"
-    printf "[%s] %s ... " "$label" "$pkg"
-    if cargo check --package "$pkg" --target "$target" --quiet 2>/dev/null; then
+    printf "[%s] %s (%s) ... " "$label" "$pkg" "$target"
+
+    # Skip só se o target não está instalado — qualquer outro erro é falha real.
+    if ! echo "$INSTALLED_TARGETS" | grep -q "^$target\$"; then
+        echo "skip (target não instalado; rustup target add $target pra habilitar)"
+        SKIP=$((SKIP + 1))
+        return
+    fi
+
+    if cargo check --package "$pkg" --target "$target" --quiet; then
         echo "ok"
         PASS=$((PASS + 1))
     else
-        # rerun verbose pra stderr mostrar o motivo
-        if cargo check --package "$pkg" --target "$target" 2>&1 | tail -5 | grep -q "error\[E0463\]\|linker"; then
-            echo "skip (toolchain não disponível no host)"
-            SKIP=$((SKIP + 1))
-        else
-            echo "FAIL"
-            FAIL=$((FAIL + 1))
-        fi
+        echo "FAIL"
+        FAIL=$((FAIL + 1))
     fi
 }
 
@@ -668,33 +679,57 @@ Adicionar ao mesmo script ou um companion `scripts/check-platform-guards.sh`:
 
 ```bash
 #!/usr/bin/env bash
-# Verifica invariantes de dependência por crate (ver platform-guards.md)
+# Verifica invariantes de dependência por crate (ver platform-guards.md).
+# Grep detecta `use`, `extern crate`, `pub use` e macro imports da crate.
+# Também checa o Cargo.toml pra catch deps declaradas mas ainda não usadas.
 set -u
 cd "$(dirname "$0")/../weydra-renderer" || exit 1
 
 FAIL=0
 
-forbid_in() {
-    local crate="$1"
+# forbid_crate <src_dir> <cargo_toml> <crate_name>...
+forbid_crate() {
+    local src="$1/src"
+    local cargo="$1/Cargo.toml"
     shift
-    for pat in "$@"; do
-        if grep -rn "$pat" "$crate/src" 2>/dev/null; then
-            echo "VIOLAÇÃO: '$pat' em $crate/"
+    for forbidden in "$@"; do
+        # Patterns em código Rust — uso via use/extern crate/pub use.
+        # Regex word-boundary (-w) evita false positives (ex: web_sys_foo).
+        if grep -rnE -w "$forbidden" "$src" 2>/dev/null | grep -E "use|extern crate" >/dev/null; then
+            echo "VIOLAÇÃO: '$forbidden' usado em $src"
+            grep -rnE -w "$forbidden" "$src" | grep -E "use|extern crate"
+            FAIL=$((FAIL + 1))
+        fi
+        # Pattern no Cargo.toml — dep declarada.
+        if [ -f "$cargo" ] && grep -q "^${forbidden//_/-} *=\|^${forbidden} *=" "$cargo"; then
+            echo "VIOLAÇÃO: '$forbidden' declarado como dep em $cargo"
             FAIL=$((FAIL + 1))
         fi
     done
 }
 
 echo "=== platform-guards check ==="
-forbid_in "core"             "use web_sys" "use js_sys" "use wasm_bindgen" "use winit"
-forbid_in "adapters/native"  "use wasm_bindgen" "use web_sys" "use js_sys"
-forbid_in "adapters/android" "use wasm_bindgen" "use web_sys" "use js_sys"
-forbid_in "adapters/ios"     "use wasm_bindgen" "use web_sys" "use js_sys" "use winit"
-forbid_in "adapters/wasm"    "use winit"
+
+# core não pode ter NADA platform-specific
+forbid_crate "core"             web_sys js_sys wasm_bindgen wasm_bindgen_futures winit
+
+# native: sem deps browser
+forbid_crate "adapters/native"  wasm_bindgen web_sys js_sys
+
+# android: sem deps browser + winit com feature android-native-activity validada
+forbid_crate "adapters/android" wasm_bindgen web_sys js_sys
+
+# ios: sem browser nem winit (UIKit direto)
+forbid_crate "adapters/ios"     wasm_bindgen web_sys js_sys winit
+
+# wasm: sem winit
+forbid_crate "adapters/wasm"    winit
 
 echo "=== $FAIL violations ==="
 exit $FAIL
 ```
+
+Nota sobre blind spots: grep cobre `use`, `extern crate`, `pub use`. Não cobre dinâmica (macro magic, type-erased imports). Pra M1.5 o código é fresco e direto — heurística é suficiente. Se M11/M12 introduzirem metaprogramação ou re-exports complexos, evoluir pra `cargo tree` + parse estruturado.
 
 ---
 
