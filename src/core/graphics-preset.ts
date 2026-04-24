@@ -1,5 +1,6 @@
 import type { OrbitalConfig } from './config';
 import { getConfig, setConfig } from './config';
+import { logarEvento } from '../world/profiling-logger';
 
 type Nivel = OrbitalConfig['graphics']['qualidadeEfeitos'];
 
@@ -79,11 +80,7 @@ export function aplicarPreset(nivel: Nivel): void {
   });
   // Log the preset transition so profiling traces can explain a sudden
   // shift in render cost (e.g. user flipped to minimo mid-session).
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { logarEvento } = require('../world/profiling-logger') as typeof import('../world/profiling-logger');
-    logarEvento('preset_changed', { from: previo, to: nivel, ...preset });
-  } catch { /* optional */ }
+  logarEvento('preset_changed', { from: previo, to: nivel, ...preset });
 }
 
 export function presetBateComFlagsDerivadas(cfg: OrbitalConfig): boolean {

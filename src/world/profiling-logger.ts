@@ -10,6 +10,8 @@ import {
   type NavTiming, type ResourceAgg, type GameplayCounters,
   type SlowFrameContext, type DomSnapshot,
 } from '../core/profiling-instr';
+import { detectarRendererSoftware } from '../core/benchmark';
+import { getPersonalidades } from './ia-decisao';
 
 /**
  * Rolling profiling capture — starts appending one sample per frame
@@ -405,16 +407,11 @@ function montarSessao(
   } catch { /* best-effort */ }
 
   // ── Software detection (uses same probe as boot-time auto-preset) ──
-  try {
-    // Dynamic import to dodge circular reference in build graph.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const det = require('../core/benchmark') as typeof import('../core/benchmark');
-    if (app && (app as any).renderer) {
-      const sw = det.detectarRendererSoftware(app as any);
-      softwareDetected = sw.isSoftware;
-      softwareDetectionKind = sw.kind || '';
-    }
-  } catch { /* optional */ }
+  if (app && (app as any).renderer) {
+    const sw = detectarRendererSoftware(app as any);
+    softwareDetected = sw.isSoftware;
+    softwareDetectionKind = sw.kind || '';
+  }
 
   // ── Memory snapshot (Chrome only exposes performance.memory) ──
   let memory: LogSession['memory'] = null;
@@ -431,13 +428,7 @@ function montarSessao(
   let world: LogSession['world'] = null;
   if (mundo) {
     const navesEmCombate = mundo.naves.filter((n) => (n as any)._ultimoTiroMs !== undefined).length;
-    const ias = (() => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const ia = require('./ia-decisao') as typeof import('./ia-decisao');
-        return ia.getPersonalidades().length;
-      } catch { return 0; }
-    })();
+    const ias = getPersonalidades().length;
     world = {
       sistemas: mundo.sistemas.length,
       planetas: mundo.planetas.length,
