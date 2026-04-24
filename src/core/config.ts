@@ -60,7 +60,10 @@ export interface OrbitalConfig {
    * após visual parity verificada.
    */
   weydra: {
-    starfield: boolean; // M2 — procedural fullscreen shader via weydra
+    starfield: boolean;  // M2 — procedural fullscreen shader via weydra
+    ships: boolean;      // M3 — sprite pool for all ships
+    shipTrails: boolean; // M3 — engine trails via sprite pool
+    starfieldBright: boolean; // M3 — bright-tile layer via weydra tiling
   };
 
   language: 'pt' | 'en';
@@ -114,6 +117,9 @@ export const DEFAULTS: OrbitalConfig = {
 
   weydra: {
     starfield: false,
+    ships: false,
+    shipTrails: false,
+    starfieldBright: false,
   },
 
   language: 'pt',

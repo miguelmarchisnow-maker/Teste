@@ -8,6 +8,8 @@ import fragmentSrc from '../shaders/starfield.frag?raw';
 import wgslSrc from '../shaders/starfield.wgsl?raw';
 import { getConfig } from '../core/config';
 import { getWeydraRenderer } from '../weydra-loader';
+import { Z } from '../core/render-order';
+import type { Sprite as WeydraSprite } from '@weydra/renderer';
 import {
   criarFundoCanvas, atualizarFundoCanvas, getStarfieldCanvasMemoryBytes,
 } from './fundo-canvas';
@@ -95,6 +97,12 @@ const sharedQuadGeometry = criarUnitQuadGeometry();
 // (cellSize 200, density 0.30, size 2px).
 const BRIGHT_TILE_SIZE = 1024;
 let _sharedBrightTile: Texture | null = null;
+/** Cached RGBA8 bytes of the generated bright tile — extracted from the
+ *  same canvas that feeds the Pixi Texture. Lets the weydra path upload
+ *  the tile without re-rasterising. Populated inside `gerarBrightTile`. */
+let _sharedBrightBytes: Uint8Array | null = null;
+let _weydraBrightTexture: bigint | null = null;
+let _weydraBrightSprite: WeydraSprite | null = null;
 
 function gerarBrightTile(): Texture {
   if (_sharedBrightTile) return _sharedBrightTile;
@@ -142,10 +150,46 @@ function gerarBrightTile(): Texture {
     }
   }
 
+  // Stash RGBA8 bytes before handing the canvas to Pixi — getImageData
+  // is cheap now (canvas still hot) and avoids redecoding the PNG path
+  // later on the weydra side.
+  try {
+    const data = ctx.getImageData(0, 0, BRIGHT_TILE_SIZE, BRIGHT_TILE_SIZE).data;
+    _sharedBrightBytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  } catch { /* tainted canvas — unlikely with local generation, but safe */ }
+
   const tex = Texture.from(canvas);
   tex.source.scaleMode = 'nearest';
   _sharedBrightTile = tex;
   return tex;
+}
+
+/**
+ * Lazily upload the bright-tile bytes to weydra and allocate one sprite
+ * configured as a tiling fullscreen quad. `uploadTextureTiled` gets us
+ * Repeat sampling so uv_rect.zw > 1 wraps the texture across the viewport.
+ * Position + UV offset are set per-frame in atualizarFundo.
+ */
+function garantirWeydraBrightSprite(): WeydraSprite | null {
+  if (_weydraBrightSprite) return _weydraBrightSprite;
+  const r = getWeydraRenderer();
+  if (!r) return null;
+  if (!_sharedBrightBytes) {
+    // Canvas hasn't been generated yet (criarFundo order) — caller retries.
+    gerarBrightTile();
+    if (!_sharedBrightBytes) return null;
+  }
+  if (_weydraBrightTexture == null) {
+    _weydraBrightTexture = r.uploadTextureTiled(
+      _sharedBrightBytes, BRIGHT_TILE_SIZE, BRIGHT_TILE_SIZE,
+    );
+  }
+  // display = (1, 1); the per-frame scale does the viewport sizing. That
+  // way the sprite tracks viewport resizes without reallocation.
+  const sp = r.createSprite(_weydraBrightTexture, 1, 1);
+  sp.zOrder = Z.STARFIELD_BRIGHT;
+  _weydraBrightSprite = sp;
+  return sp;
 }
 
 const sharedGlProgram = GlProgram.from({
@@ -319,11 +363,35 @@ export function atualizarFundo(
   // corresponde a um offset `-camera * (1-0.12)` aplicado ao tile —
   // em TilingSprite basta setar tilePosition = -camera * (1-parallax).
   const brightTiles = fundo._brightTiles;
-  brightTiles.x = mesh.x;
-  brightTiles.y = mesh.y;
-  brightTiles.width = telaW;
-  brightTiles.height = telaH;
   const parallax = 0.12;
-  brightTiles.tilePosition.x = -jogadorX * (1 - parallax);
-  brightTiles.tilePosition.y = -jogadorY * (1 - parallax);
+  const weydraBrightOn = !!getConfig().weydra?.starfieldBright;
+  if (weydraBrightOn) {
+    brightTiles.visible = false;
+    const sp = garantirWeydraBrightSprite();
+    if (sp) {
+      // Sprite is created with display = (1, 1); scaling to (telaW, telaH)
+      // grows the quad to cover the viewport. Center at camera so the quad
+      // always sits in front of the player regardless of world pan.
+      sp.x = jogadorX;
+      sp.y = jogadorY;
+      sp.scaleX = telaW;
+      sp.scaleY = telaH;
+      // Tiling UVs: zw = how many tile repeats the quad spans, xy = offset
+      // into the tile, both normalised to tile size. The Repeat sampler
+      // wraps UVs past 1 so the texture tiles seamlessly.
+      const tilesX = telaW / BRIGHT_TILE_SIZE;
+      const tilesY = telaH / BRIGHT_TILE_SIZE;
+      const offsetX = -jogadorX * (1 - parallax) / BRIGHT_TILE_SIZE;
+      const offsetY = -jogadorY * (1 - parallax) / BRIGHT_TILE_SIZE;
+      sp.setUv(offsetX, offsetY, tilesX, tilesY);
+    }
+  } else {
+    brightTiles.visible = true;
+    brightTiles.x = mesh.x;
+    brightTiles.y = mesh.y;
+    brightTiles.width = telaW;
+    brightTiles.height = telaH;
+    brightTiles.tilePosition.x = -jogadorX * (1 - parallax);
+    brightTiles.tilePosition.y = -jogadorY * (1 - parallax);
+  }
 }

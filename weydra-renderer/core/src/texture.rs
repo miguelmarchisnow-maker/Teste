@@ -25,18 +25,41 @@ impl TextureRegistry {
         }
     }
 
-    /// Upload RGBA8 bytes as a new texture. `bytes` must be exactly
-    /// `width * height * 4` long.
+    /// Upload RGBA8 bytes as a new texture with ClampToEdge sampling.
     ///
-    /// Uses `Rgba8UnormSrgb` + Nearest sampling to preserve the game's
-    /// pixel-art look. Sprites colored by tint in the shader still get sRGB
-    /// correctness on the texel sample.
+    /// Uses `Rgba8UnormSrgb` + Nearest mag/min filter to preserve the game's
+    /// pixel-art look. For tiled backgrounds that need UV wrap across tile
+    /// boundaries, call `upload_rgba_tiled` instead.
     pub fn upload_rgba(
         &mut self,
         ctx: &GpuContext,
         bytes: &[u8],
         width: u32,
         height: u32,
+    ) -> Handle {
+        self.upload_with_address_mode(ctx, bytes, width, height, wgpu::AddressMode::ClampToEdge)
+    }
+
+    /// Upload RGBA8 bytes with Repeat sampling on U and V. Used by
+    /// full-screen tiling sprites (bright star layer, any future parallax
+    /// backdrop) that sample UV > 1 to tile the texture.
+    pub fn upload_rgba_tiled(
+        &mut self,
+        ctx: &GpuContext,
+        bytes: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Handle {
+        self.upload_with_address_mode(ctx, bytes, width, height, wgpu::AddressMode::Repeat)
+    }
+
+    fn upload_with_address_mode(
+        &mut self,
+        ctx: &GpuContext,
+        bytes: &[u8],
+        width: u32,
+        height: u32,
+        address_mode: wgpu::AddressMode,
     ) -> Handle {
         assert_eq!(
             bytes.len(),
@@ -92,6 +115,9 @@ impl TextureRegistry {
             label: Some("weydra sampler"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
+            address_mode_u: address_mode,
+            address_mode_v: address_mode,
+            address_mode_w: address_mode,
             ..Default::default()
         });
 

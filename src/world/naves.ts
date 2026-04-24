@@ -6,10 +6,17 @@ import { notifColonizacao, mostrarNotificacao } from '../ui/notificacao';
 import { somConquista } from '../audio/som';
 import { revelarSistemaCompleto } from './visao';
 import { confirmarAcao } from '../ui/confirmar-acao';
-import { carregarSpritesheet, getSpritesheetTexture, onSpritesheetReady } from './spritesheets';
+import {
+  carregarSpritesheet, getSpritesheetTexture, onSpritesheetReady,
+  getSpritesheetBytes, getSpritesheetWeydraTexture, setSpritesheetWeydraTexture,
+} from './spritesheets';
 import { t } from '../core/i18n/t';
 import { instalarTrail, atualizarTrail, destruirTrail } from './engine-trails';
 import { esquecerLastSeen } from './last-seen';
+import { getConfig } from '../core/config';
+import { getWeydraRenderer } from '../weydra-loader';
+import { Z } from '../core/render-order';
+import type { Sprite as WeydraSprite } from '@weydra/renderer';
 
 // ─── Spritesheet loading ────────────────────────────────────────────────────
 
@@ -416,6 +423,51 @@ export function limparPendingSprite(sprite: Sprite | undefined): void {
   if (idx >= 0) _pendingSprites.splice(idx, 1);
 }
 
+/**
+ * Create the weydra sprite for a ship if the flag is on and the sheet's
+ * bytes are already decoded. Returns the sprite or null (caller keeps the
+ * Pixi sprite visible and may retry later — happens during boot before
+ * ships.png finishes decoding). Hides the Pixi sprite when the weydra one
+ * is live so both paths don't double-draw.
+ */
+function criarWeydraShipSprite(nave: Nave, tipo: string, tier: number): WeydraSprite | null {
+  const r = getWeydraRenderer();
+  if (!r) return null;
+  const meta = getSpritesheetBytes('ships');
+  if (!meta) return null;
+
+  let tex = getSpritesheetWeydraTexture('ships') as bigint | undefined | null;
+  if (tex == null) {
+    tex = r.uploadTexture(meta.bytes, meta.width, meta.height);
+    setSpritesheetWeydraTexture('ships', tex);
+  }
+
+  const displaySize = SHIP_DISPLAY_SIZE[tipo] ?? 32;
+  const sprite = r.createSprite(tex as bigint, displaySize, displaySize);
+
+  const row = SHIP_SHEET_ROW[tipo] ?? 0;
+  const col = tipo === 'colonizadora' ? 0 : Math.max(0, Math.min(4, tier - 1));
+  const CELL_PX = 96;
+  const uW = CELL_PX / meta.width;
+  const vH = CELL_PX / meta.height;
+  sprite.setUv(col * uW, row * vH, uW, vH);
+
+  // SHIP_TINT is in 0xRRGGBB form; weydra expects 0xRRGGBBAA packed.
+  // Pixi's `sprite.tint` applies as multiplicative RGB on white texels —
+  // weydra shader does `texel * color`, same semantics for alpha=0xFF.
+  const tintRgb = SHIP_TINT[tipo];
+  sprite.tint = tintRgb !== undefined
+    ? ((tintRgb << 8) | 0xff) >>> 0
+    : 0xffffffff;
+
+  sprite.zOrder = Z.SHIPS;
+
+  // Pixi sprite keeps its tree place for the selection ring/overlays but
+  // is hidden so it doesn't double-draw.
+  if (nave._sprite) nave._sprite.visible = false;
+  return sprite;
+}
+
 export function criarNave(mundo: Mundo, planetaOrigem: Planeta, tipo: string, tier: number = 1): Nave {
   const { gfx: gfxContainer, sprite, ring } = criarVisualNave(tipo, tier);
 
@@ -446,6 +498,32 @@ export function criarNave(mundo: Mundo, planetaOrigem: Planeta, tipo: string, ti
   mundo.naves.push(nave);
   entrarEmOrbita(nave, planetaOrigem);
   instalarTrail(nave);
+
+  if (getConfig().weydra.ships) {
+    const wsprite = criarWeydraShipSprite(nave, tipo, tier);
+    if (wsprite) {
+      nave._weydraSprite = wsprite;
+      wsprite.x = nave.x;
+      wsprite.y = nave.y;
+    } else {
+      // Retry once the sheet finishes decoding.
+      onSpritesheetReady('ships', () => {
+        if (!getConfig().weydra.ships) return;
+        if (nave._weydraSprite) return; // already created via another path
+        // Liveness guard: ship may have been destroyed (scrap-on-arrival,
+        // combat) before the sheet finished. Without this check, a late
+        // callback would allocate a sprite that removerNave already ran
+        // past, leaking it forever.
+        if (!mundo.naves.includes(nave)) return;
+        const late = criarWeydraShipSprite(nave, tipo, tier);
+        if (late) {
+          nave._weydraSprite = late;
+          late.x = nave.x;
+          late.y = nave.y;
+        }
+      });
+    }
+  }
   return nave;
 }
 
@@ -472,6 +550,11 @@ export function removerNave(mundo: Mundo, nave: Nave): void {
     // (including the trail Graphics). The Sprite's texture is a sub-frame
     // backed by the shared sheet — we do NOT want to destroy the texture source.
     nave.gfx.destroy({ children: true });
+  }
+  if (nave._weydraSprite) {
+    const r = getWeydraRenderer();
+    if (r) r.destroySprite(nave._weydraSprite as WeydraSprite);
+    nave._weydraSprite = undefined;
   }
   destruirTrail(nave);
 }
@@ -592,6 +675,17 @@ export function atualizarNaves(mundo: Mundo, deltaMs: number): void {
     }
     nave.gfx.x = nave.x;
     nave.gfx.y = nave.y;
+    // Mirror world position + scale to the weydra sprite when the flag is
+    // on. _sprite.scale.x carries the facing flip (set in the movement
+    // branches above); we copy its sign so weydra renders flipped correctly.
+    if (nave._weydraSprite) {
+      const ws = nave._weydraSprite as WeydraSprite;
+      ws.x = nave.x;
+      ws.y = nave.y;
+      if (nave._sprite) {
+        ws.scaleX = nave._sprite.scale.x >= 0 ? 1 : -1;
+      }
+    }
     atualizarTrail(nave, deltaMs);
   }
 }

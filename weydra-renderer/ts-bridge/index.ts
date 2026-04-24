@@ -126,11 +126,23 @@ export class Renderer {
   // ─── Sprite batcher (M3) ─────────────────────────────────────────────
 
   /**
-   * Upload RGBA8 pixel bytes as a GPU texture. Returns an opaque handle
-   * suitable for `createSprite`. Length must be `width * height * 4`.
+   * Upload RGBA8 pixel bytes as a GPU texture with ClampToEdge sampling.
+   * Returns an opaque handle suitable for `createSprite`. Length must be
+   * `width * height * 4`.
    */
   uploadTexture(bytes: Uint8Array, width: number, height: number): bigint {
     const handle = this.inner.upload_texture(bytes, width, height);
+    this.revalidate();
+    return handle;
+  }
+
+  /**
+   * Like `uploadTexture` but with Repeat sampling on U/V. Use for tiling
+   * sprites (bright star layer, parallax backdrops) where the sprite sets
+   * `uv_rect.w/h` > 1 so the texture repeats across the quad.
+   */
+  uploadTextureTiled(bytes: Uint8Array, width: number, height: number): bigint {
+    const handle = this.inner.upload_texture_tiled(bytes, width, height);
     this.revalidate();
     return handle;
   }

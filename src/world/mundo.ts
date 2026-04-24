@@ -588,6 +588,12 @@ export function atualizarMundo(mundo: Mundo, app: Application, camera: Camera): 
       && nave.y > cima - SHIP_CULL_PAD
       && nave.y < baixo + SHIP_CULL_PAD;
     nave.gfx.visible = visNaTela;
+    // Mirror the viewport-cull decision onto the weydra sprite so off-screen
+    // ships aren't uselessly batched — and so fog/culling visibility works
+    // identically across both render paths.
+    if (nave._weydraSprite) {
+      (nave._weydraSprite as { visible: boolean }).visible = visNaTela;
+    }
     if (nave._selecaoAnterior !== nave.selecionado) {
       nave._selecaoAnterior = nave.selecionado;
       atualizarSelecaoNave(nave);

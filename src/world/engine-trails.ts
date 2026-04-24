@@ -1,15 +1,31 @@
 import { Graphics } from 'pixi.js';
 import type { Nave } from '../types';
+import { getConfig } from '../core/config';
+import { getWeydraRenderer } from '../weydra-loader';
+import { Z } from '../core/render-order';
+import type { Sprite as WeydraSprite } from '@weydra/renderer';
 
 /**
  * Engine trail particles for moving ships.
  *
  * Each ship in 'viajando' or 'pilotando' state spawns a particle at its
  * current position every ~30ms. Particles fade out over LIFETIME_MS.
- * The trail is rendered relative to the ship's gfx container, so we
- * store positions in WORLD coordinates and convert to local on draw.
  *
- * Color is per-ship-type so the player can identify ships at a glance.
+ * Two rendering paths:
+ *
+ * - **Pixi (default):** the trail is a `Graphics` child of the ship's gfx
+ *   container. Positions are stored in WORLD coords and converted to local
+ *   when drawing. Each frame re-clears and re-draws circles.
+ *
+ * - **weydra (`config.weydra.shipTrails`):** each ship owns a pool of
+ *   pre-allocated weydra sprites, one per `MAX_PARTICLES` slot. Per-frame
+ *   we push position + RGBA8 tint (alpha carries the fade) into shared
+ *   memory; the render loop batches all trail particles across all ships
+ *   into one draw call because they share the trail texture.
+ *
+ * The particle texture is a soft radial blob rasterised once at first use
+ * (16×16 white with a quadratic alpha falloff) — matches the old Pixi
+ * Graphics circle look closely enough to pass visual parity.
  */
 
 const LIFETIME_MS = 600;
@@ -18,11 +34,11 @@ const MAX_PARTICLES = 24;
 const MIN_DIST_PER_SPAWN = 4; // world units — don't spawn if ship hasn't moved
 
 const TRAIL_COLOR: Record<string, number> = {
-  colonizadora: 0x9be7ff, // soft cyan
-  cargueira:    0xffd97a, // amber
-  batedora:     0xb8ffaa, // pale green
-  torreta:      0xff8a8a, // soft red (defensive)
-  fragata:      0xff6b6b, // hot red (combat)
+  colonizadora: 0x9be7ff,
+  cargueira:    0xffd97a,
+  batedora:     0xb8ffaa,
+  torreta:      0xff8a8a,
+  fragata:      0xff6b6b,
 };
 
 const TRAIL_WIDTH: Record<string, number> = {
@@ -52,6 +68,64 @@ function getOrInitState(nave: Nave): TrailState {
     _state.set(nave, s);
   }
   return s;
+}
+
+// ─── Weydra particle texture (16×16 soft circle, RGBA8) ─────────────────
+
+const TRAIL_TEX_SIZE = 16;
+let _weydraTrailTex: bigint | null = null;
+
+function makeTrailTexBytes(): Uint8Array {
+  const n = TRAIL_TEX_SIZE;
+  const bytes = new Uint8Array(n * n * 4);
+  const cx = (n - 1) / 2;
+  const cy = (n - 1) / 2;
+  const maxDist = cx;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.hypot(dx, dy);
+      // Quadratic falloff — matches the old Pixi per-particle
+      // `alpha = t*t*0.8` look with radial shape instead of flat circle.
+      const t = Math.max(0, 1 - dist / maxDist);
+      const a = Math.floor(t * t * 255);
+      const i = (y * n + x) * 4;
+      bytes[i] = 255;
+      bytes[i + 1] = 255;
+      bytes[i + 2] = 255;
+      bytes[i + 3] = a;
+    }
+  }
+  return bytes;
+}
+
+function getWeydraTrailTexture(): bigint | null {
+  if (_weydraTrailTex != null) return _weydraTrailTex;
+  const r = getWeydraRenderer();
+  if (!r) return null;
+  _weydraTrailTex = r.uploadTexture(makeTrailTexBytes(), TRAIL_TEX_SIZE, TRAIL_TEX_SIZE);
+  return _weydraTrailTex;
+}
+
+function ensureWeydraSpritePool(nave: Nave): WeydraSprite[] | null {
+  const r = getWeydraRenderer();
+  if (!r) return null;
+  if (nave._weydraTrailSprites && nave._weydraTrailSprites.length === MAX_PARTICLES) {
+    return nave._weydraTrailSprites as WeydraSprite[];
+  }
+  const tex = getWeydraTrailTexture();
+  if (tex == null) return null;
+
+  const pool: WeydraSprite[] = [];
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const s = r.createSprite(tex, 1, 1); // size set per frame from TRAIL_WIDTH
+    s.visible = false;
+    s.zOrder = Z.SHIP_TRAILS;
+    pool.push(s);
+  }
+  nave._weydraTrailSprites = pool;
+  return pool;
 }
 
 /**
@@ -106,10 +180,46 @@ export function atualizarTrail(nave: Nave, deltaMs: number): void {
     }
   }
 
-  // Redraw — but skip the clear() entirely when the trail was already
-  // empty last frame and still is. Graphics.clear() triggers a
-  // batch-buffer rebuild on Pixi's side; doing it for ~300 idle ships
-  // every frame is where most of the long-idle FPS budget disappeared.
+  const useWeydra = getConfig().weydra.shipTrails;
+  const colorRgb = TRAIL_COLOR[nave.tipo] ?? 0xcccccc;
+  const baseWidth = TRAIL_WIDTH[nave.tipo] ?? 4;
+
+  if (useWeydra) {
+    // Weydra path: push per-particle state into shared memory. Hide any
+    // remaining Pixi Graphics (flag can flip mid-session). Graphics.clear
+    // once if we were previously drawing with it.
+    if (!state.wasEmptyLastFrame) {
+      trail.clear();
+      state.wasEmptyLastFrame = true;
+    }
+    const pool = ensureWeydraSpritePool(nave);
+    if (!pool) return;
+    // Active particles fill pool[0..n-1]; remaining slots hidden.
+    const n = state.particles.length;
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      const s = pool[i];
+      if (i >= n) {
+        s.visible = false;
+        continue;
+      }
+      const p = state.particles[i];
+      const t = 1 - p.age / LIFETIME_MS;
+      const radius = baseWidth * t;
+      const alpha = Math.max(0, Math.min(255, Math.floor(t * t * 0.8 * 255)));
+      s.visible = true;
+      s.x = p.x;
+      s.y = p.y;
+      // Texture is 16x16; display size is 2*radius so the sprite covers
+      // the same pixel footprint as the old Pixi circle with radius r.
+      s.scaleX = 2 * radius / TRAIL_TEX_SIZE;
+      s.scaleY = 2 * radius / TRAIL_TEX_SIZE;
+      // 0xRRGGBB shifted left 8, alpha byte ORed in (plan §"cor packed").
+      s.tint = ((colorRgb << 8) | alpha) >>> 0;
+    }
+    return;
+  }
+
+  // Pixi path — untouched from pre-M3 behaviour.
   if (state.particles.length === 0) {
     if (state.wasEmptyLastFrame) return;
     trail.clear();
@@ -119,18 +229,15 @@ export function atualizarTrail(nave: Nave, deltaMs: number): void {
   state.wasEmptyLastFrame = false;
   trail.clear();
 
-  const color = TRAIL_COLOR[nave.tipo] ?? 0xcccccc;
-  const baseWidth = TRAIL_WIDTH[nave.tipo] ?? 4;
-
   // gfx container is positioned at nave.x/y, so local coords = world - nave pos
   // Draw oldest → newest as a chain of fading circles for a soft glow trail.
   for (const p of state.particles) {
-    const t = 1 - p.age / LIFETIME_MS; // 1 = fresh, 0 = dead
+    const t = 1 - p.age / LIFETIME_MS;
     const localX = p.x - nave.x;
     const localY = p.y - nave.y;
     const radius = baseWidth * t;
-    const alpha = t * t * 0.8; // quadratic falloff for softer fade
-    trail.circle(localX, localY, radius).fill({ color, alpha });
+    const alpha = t * t * 0.8;
+    trail.circle(localX, localY, radius).fill({ color: colorRgb, alpha });
   }
 }
 
@@ -141,4 +248,14 @@ export function destruirTrail(nave: Nave): void {
   _state.delete(nave);
   // The Graphics itself is destroyed by gfx.destroy({children:true}) in removerNave.
   nave._trail = undefined;
+
+  if (nave._weydraTrailSprites) {
+    const r = getWeydraRenderer();
+    if (r) {
+      for (const s of nave._weydraTrailSprites) {
+        r.destroySprite(s as WeydraSprite);
+      }
+    }
+    nave._weydraTrailSprites = undefined;
+  }
 }

@@ -183,10 +183,23 @@ impl Renderer {
 
     // ─── Sprite batcher (M3) ─────────────────────────────────────────────
 
-    /// Upload RGBA8 bytes as a new texture and return an opaque handle.
-    /// Bytes length must equal `width * height * 4`.
+    /// Upload RGBA8 bytes as a new texture (ClampToEdge sampling).
+    /// `bytes` length must equal `width * height * 4`.
     pub fn upload_texture(&mut self, bytes: &[u8], width: u32, height: u32) -> u64 {
         let handle = self.textures.upload_rgba(&self.ctx, bytes, width, height);
+        self.ensure_sprite_pipeline();
+        self.build_texture_bind_group(handle);
+        self.mem_version = self.mem_version.wrapping_add(1);
+        handle.to_u64()
+    }
+
+    /// Upload RGBA8 bytes with Repeat sampling — used by fullscreen tiling
+    /// sprites (bright star layer, parallax backdrops) that set uv_rect
+    /// wider than 1.0 to wrap the texture across the quad.
+    pub fn upload_texture_tiled(&mut self, bytes: &[u8], width: u32, height: u32) -> u64 {
+        let handle = self
+            .textures
+            .upload_rgba_tiled(&self.ctx, bytes, width, height);
         self.ensure_sprite_pipeline();
         self.build_texture_bind_group(handle);
         self.mem_version = self.mem_version.wrapping_add(1);

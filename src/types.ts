@@ -141,6 +141,14 @@ export interface Nave {
   _ring?: Graphics;
   _trail?: Graphics;
   _trailParticles?: Array<{ x: number; y: number; age: number }>;
+  /** Weydra sprite handle when `config.weydra.ships` is on. `_sprite` stays
+   *  present for the selection ring / animated overlays via its Container
+   *  slot but is hidden (visible=false) so Pixi doesn't double-draw. */
+  _weydraSprite?: unknown;
+  /** Pool of pre-allocated trail-particle weydra sprites. One per
+   *  MAX_PARTICLES slot; each frame the active ones have tint alpha set
+   *  and position updated, the rest stay flagged invisible. */
+  _weydraTrailSprites?: unknown[];
   _lastX?: number;
   _lastY?: number;
   /** Combat HP. Undefined → use STATS_COMBATE max for type. */

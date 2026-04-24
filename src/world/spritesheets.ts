@@ -17,11 +17,27 @@ interface Sheet {
   texture: Texture | null;
   image: HTMLImageElement | null;
   promise: Promise<void> | null;
+  /** RGBA8 pixel bytes of the sheet, populated lazily on the first
+   *  `getSpritesheetBytes` call so Pixi-only sessions never pay the
+   *  getImageData cost. Cached once per session. */
+  bytes: Uint8Array | null;
+  width: number;
+  height: number;
+  /** Weydra texture handle (bigint) once the bytes have been uploaded.
+   *  Stored as `unknown` so this file doesn't depend on @weydra/renderer
+   *  types — callers cast when they receive it. */
+  weydraTexture: unknown;
 }
 
 const _sheets: Record<'ships' | 'buildings', Sheet> = {
-  ships: { path: 'assets/ships.png', texture: null, image: null, promise: null },
-  buildings: { path: 'assets/buildings.png', texture: null, image: null, promise: null },
+  ships: {
+    path: 'assets/ships.png', texture: null, image: null, promise: null,
+    bytes: null, width: 0, height: 0, weydraTexture: null,
+  },
+  buildings: {
+    path: 'assets/buildings.png', texture: null, image: null, promise: null,
+    bytes: null, width: 0, height: 0, weydraTexture: null,
+  },
 };
 
 export async function carregarSpritesheet(name: 'ships' | 'buildings'): Promise<void> {
@@ -65,6 +81,48 @@ export function getSpritesheetTexture(name: 'ships' | 'buildings'): Texture | nu
 
 export function getSpritesheetImage(name: 'ships' | 'buildings'): HTMLImageElement | null {
   return _sheets[name].image;
+}
+
+/**
+ * RGBA8 bytes + dimensions of the loaded spritesheet image, rasterized via
+ * OffscreenCanvas.getImageData on first access. Returns `null` if the sheet
+ * isn't loaded yet (caller should await `onSpritesheetReady` first).
+ *
+ * Used by the weydra-renderer upload path — weydra needs raw pixel bytes,
+ * not a Pixi Texture. Cached per session; call is ~10-50 ms on first hit
+ * (sheet decode + bitmap paint), free afterwards.
+ */
+export function getSpritesheetBytes(
+  name: 'ships' | 'buildings',
+): { bytes: Uint8Array; width: number; height: number } | null {
+  const sheet = _sheets[name];
+  if (sheet.bytes) {
+    return { bytes: sheet.bytes, width: sheet.width, height: sheet.height };
+  }
+  const img = sheet.image;
+  if (!img) return null;
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  sheet.bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  sheet.width = w;
+  sheet.height = h;
+  return { bytes: sheet.bytes, width: w, height: h };
+}
+
+/** Cached weydra texture handle (bigint). Set by whoever uploads first. */
+export function getSpritesheetWeydraTexture(name: 'ships' | 'buildings'): unknown {
+  return _sheets[name].weydraTexture;
+}
+
+export function setSpritesheetWeydraTexture(name: 'ships' | 'buildings', h: unknown): void {
+  _sheets[name].weydraTexture = h;
 }
 
 export function onSpritesheetReady(name: 'ships' | 'buildings', cb: () => void): void {
