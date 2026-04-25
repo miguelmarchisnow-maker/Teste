@@ -230,6 +230,9 @@ impl Renderer {
             shader,
             self.surface.format,
             &self.engine.layout,
+            // Starfield is opaque (full-screen procedural background) —
+            // REPLACE matches the pre-Task-2 behavior bit-for-bit.
+            wgpu::BlendState::REPLACE,
             Some(&pool.bind_group_layout),
             "starfield",
         );

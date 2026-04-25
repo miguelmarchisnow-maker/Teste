@@ -20,6 +20,7 @@ impl Mesh {
         shader: ShaderHandle,
         surface_format: wgpu::TextureFormat,
         engine_bind_group_layout: &wgpu::BindGroupLayout,
+        blend: wgpu::BlendState,
         custom_uniform_layout: Option<&wgpu::BindGroupLayout>,
         label: &str,
     ) -> Self {
@@ -55,7 +56,12 @@ impl Mesh {
                     entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: surface_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
+                        // Caller picks REPLACE for opaque fullscreen quads
+                        // (starfield) or PREMULTIPLIED_ALPHA_BLENDING for
+                        // shaders whose fragments emit a transparent disc
+                        // edge (planet) — REPLACE there would erase the
+                        // background in the planet's bounding box.
+                        blend: Some(blend),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                     compilation_options: Default::default(),
