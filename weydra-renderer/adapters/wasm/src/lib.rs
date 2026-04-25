@@ -17,8 +17,8 @@ use bytemuck::{Pod, Zeroable};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use weydra_renderer::{
-    CameraUniforms, EngineBindings, GpuContext, Handle, Mesh, RenderSurface, ShaderRegistry,
-    SpritePool, TextureRegistry, UniformPool, FLAG_VISIBLE,
+    CameraUniforms, EngineBindings, GpuContext, Handle, Mesh, PlanetPool, RenderSurface,
+    ShaderRegistry, SpritePool, TextureRegistry, UniformPool, FLAG_VISIBLE,
 };
 
 /// Max sprites across all textures. Backing SoA Vecs are sized once at boot
@@ -87,6 +87,10 @@ pub struct Renderer {
     // M2 starfield
     starfield_pool: Option<UniformPool<StarfieldUniforms>>,
     starfield_mesh: Option<Mesh>,
+
+    // M5 planets (live shader)
+    planet_pool: Option<PlanetPool>,
+    planet_mesh: Option<Mesh>,
 
     // M3 sprite batcher
     textures: TextureRegistry,
@@ -199,6 +203,8 @@ impl Renderer {
             camera_uniforms: CameraUniforms::default(),
             starfield_pool: None,
             starfield_mesh: None,
+            planet_pool: None,
+            planet_mesh: None,
             textures: TextureRegistry::new(),
             sprites: SpritePool::with_capacity(SPRITE_CAPACITY),
             sprite_path: None,
@@ -245,6 +251,77 @@ impl Renderer {
         self.starfield_pool
             .as_ref()
             .map(|p| p.instances_ptr() as u32)
+            .unwrap_or(0)
+    }
+
+    // ─── Planets (M5) ────────────────────────────────────────────────────
+
+    pub fn create_planet_shader(&mut self, wgsl_source: &str) {
+        let shader = self
+            .shader_registry
+            .compile(&self.ctx, wgsl_source, "planet");
+        let pool = PlanetPool::new(&self.ctx, "planet pool", 256);
+        let mesh = Mesh::new(
+            &self.ctx,
+            &self.shader_registry,
+            shader,
+            self.surface.format,
+            &self.engine.layout,
+            // Planet shader emits premultiplied-alpha output; the disc-edge
+            // pixels with alpha < 1 must blend over whatever's behind (the
+            // starfield), not REPLACE it.
+            wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+            Some(&pool.bind_group_layout),
+            "planet",
+        );
+        self.planet_pool = Some(pool);
+        self.planet_mesh = Some(mesh);
+        self.mem_version = self.mem_version.wrapping_add(1);
+    }
+
+    pub fn create_planet_instance(&mut self) -> u64 {
+        let pool = self
+            .planet_pool
+            .as_mut()
+            .expect("create_planet_shader must be called before create_planet_instance");
+        // Mirrors the SpritePool overflow guard: if the SlotMap insert ever
+        // returns a slot beyond the pre-allocated `instances` Vec, a TS-side
+        // typed-array view would be writing past the buffer. Fail loudly
+        // rather than silently corrupt.
+        assert!(
+            pool.slotmap.len() < pool.capacity(),
+            "PlanetPool overflow (cap={}). Raise PlanetPool capacity or destroy unused planets.",
+            pool.capacity(),
+        );
+        pool.slotmap.insert(()).to_u64()
+    }
+
+    pub fn destroy_planet_instance(&mut self, handle: u64) {
+        if let Some(pool) = self.planet_pool.as_mut() {
+            pool.slotmap.remove(Handle::from_u64(handle));
+        }
+    }
+
+    pub fn planet_uniforms_ptr(&self) -> u32 {
+        self.planet_pool
+            .as_ref()
+            .map(|p| p.instances_ptr() as u32)
+            .unwrap_or(0)
+    }
+
+    pub fn planet_uniforms_stride(&self) -> u32 {
+        // Returns the ALIGNED stride (NOT size_of::<PlanetUniforms>()), so
+        // TS can index into typed-array views matching the GPU layout.
+        self.planet_pool
+            .as_ref()
+            .map(|p| p.stride() as u32)
+            .unwrap_or(0)
+    }
+
+    pub fn planet_uniforms_capacity(&self) -> u32 {
+        self.planet_pool
+            .as_ref()
+            .map(|p| p.capacity() as u32)
             .unwrap_or(0)
     }
 
@@ -386,6 +463,20 @@ impl Renderer {
 
             if let (Some(mesh), Some(pool)) = (&self.starfield_mesh, &self.starfield_pool) {
                 mesh.draw(&mut pass, Some(&pool.bind_group));
+            }
+
+            // Planets (M5): one draw call per live instance, dynamic offset
+            // selects the slot in the shared uniform buffer. Drawn after
+            // starfield + bright tile, before sprites — matches z-layer order
+            // in src/core/render-order.ts (PLANET_LIVE = 11).
+            if let (Some(pool), Some(mesh)) = (&self.planet_pool, &self.planet_mesh) {
+                pool.upload(&self.ctx);
+                pass.set_pipeline(&mesh.pipeline);
+                pass.set_bind_group(0, &self.engine.bind_group, &[]);
+                for (h, _) in pool.slotmap.iter() {
+                    pass.set_bind_group(1, &pool.bind_group, &[pool.offset_for(h.slot)]);
+                    pass.draw(0..6, 0..1);
+                }
             }
 
             // Sprite batcher — one draw call per texture run.
