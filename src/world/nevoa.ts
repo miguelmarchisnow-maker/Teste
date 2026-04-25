@@ -440,15 +440,32 @@ let _fogProfFrames: number = 0;
 export function desenharNeblinaVisao(mundo: Mundo, fontesVisao: FonteVisao[], camera: Camera, screenW: number, screenH: number, zoom: number): void {
   _fogFrame++;
 
-  // weydra path: shader-based fog. Skip the canvas draw + GPU upload
-  // entirely and push vision sources directly into the FogPool. The
-  // weydra render loop draws a fullscreen quad that smooth-clears the
-  // fog inside each vision radius. Camera uniforms are pushed by
-  // fundo.ts (independent of the starfield flag since M6) so the
-  // shader's world-coord recompose is already correct here.
-  if (getConfig().weydra.fog) {
+  // weydra path: shader-based fog. Only viable when EVERY game-world
+  // layer the fog is supposed to cover is also on the weydra canvas.
+  //
+  // The weydra canvas sits at z-index 0 (behind Pixi at z-index 1). Pixi
+  // is transparent when any weydra flag is on (`backgroundAlpha: 0` in
+  // main.ts), so weydra pixels show through where Pixi has nothing —
+  // but anything still rendered on Pixi (planets, ships, orbits, routes)
+  // paints OVER weydra's fog. A weydra-only fog ends up hazing empty
+  // space while leaving the actual game objects untouched: the inverse
+  // of what fog-of-war is supposed to do, which is what reads as
+  // "fog all weird and planets white on top".
+  //
+  // Fix: gate the weydra fog branch on the prerequisite layers being
+  // migrated. When they're not (or the renderer isn't up), fall through
+  // to the Pixi canvas-2D path so the fog sprite lands at the correct
+  // z-order inside Pixi's scene graph, covering the Pixi-drawn planets
+  // and ships the way it always did. Once a player turns on the rest of
+  // the weydra flags, the branch lights up and skips the canvas path.
+  const cfg = getConfig();
+  if (cfg.weydra.fog) {
     const r = getWeydraRenderer();
-    if (r && r.fog) {
+    const prerequisitesOn =
+      cfg.weydra.starfield &&
+      (cfg.weydra.planetsLive || cfg.weydra.planetsBaked) &&
+      cfg.weydra.ships;
+    if (r && r.fog && prerequisitesOn) {
       // Hide the Pixi sprite if it was previously laid down (flag toggled
       // mid-session). Don't destroy the singletons — toggling back to
       // Pixi would have to re-create them otherwise, costing a canvas
@@ -465,8 +482,14 @@ export function desenharNeblinaVisao(mundo: Mundo, fontesVisao: FonteVisao[], ca
       r.fog.setActiveCount(count);
       return;
     }
-    // Renderer not up yet (boot race) — fall through to the Pixi path
-    // so the player isn't staring at unfogged space until weydra inits.
+    // Either prerequisites are off OR the renderer isn't up. The Pixi
+    // canvas-2D path below still paints fog at the correct z-order over
+    // the Pixi layers, so the player never sees "fog hazing space while
+    // planets stay unfogged" until their config catches up. If a
+    // FogLayer was active in a prior frame, zero its source count so
+    // the weydra render loop doesn't keep clearing vision around stale
+    // positions on top of (now redundant) Pixi fog.
+    if (r?.fog) r.fog.setActiveCount(0);
   }
 
   // margemMin=0 (sem piso constante), margemMultiplier=1500 (replica
