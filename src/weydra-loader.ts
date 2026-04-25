@@ -12,6 +12,7 @@
 
 import { initWeydra, Renderer } from '@weydra/renderer';
 import starfieldWgsl from './shaders/starfield-weydra.wgsl';
+import planetWgsl from './shaders/planeta-weydra.wgsl';
 import { getConfig, isAnyWeydraSubsystemOn } from './core/config';
 
 let _renderer: Renderer | null = null;
@@ -60,6 +61,9 @@ export async function startWeydra(): Promise<void> {
     _renderer = await Renderer.create(canvas, backend);
     if (getConfig().weydra.starfield) {
       _renderer.createStarfield(starfieldWgsl);
+    }
+    if (getConfig().weydra.planetsLive) {
+      _renderer.createPlanetShader(planetWgsl);
     }
     console.info('[weydra] renderer initialized; flags:', getConfig().weydra);
     // Expose for live console debugging — typing __weydraRenderer in

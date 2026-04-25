@@ -8,7 +8,7 @@ import { TIPO_PLANETA } from './planeta';
 import { getConfig, onConfigChange } from '../core/config';
 import { getZoom } from '../core/player';
 import { getWeydraRenderer } from '../weydra-loader';
-import type { Sprite as WeydraSprite } from '@weydra/renderer';
+import type { Sprite as WeydraSprite, PlanetInstance } from '@weydra/renderer';
 import { Z } from '../core/render-order';
 
 let _appRef: Application | null = null;
@@ -396,6 +396,78 @@ export function criarPlanetaProceduralSprite(
   if (isCanvas2dRenderer()) {
     const paleta = gerarPaletaAleatoria(tipoPlaneta, rng);
     return criarPlanetaCanvasSprite(x, y, tamanho, paleta, planetSeed, 64, rng) as unknown as Mesh<Geometry, Shader>;
+  }
+
+  // M5 — weydra live shader path. When planetsLive is on AND the
+  // renderer is up, allocate a PlanetInstance from the shared pool and
+  // stash it on a tiny Pixi Container so the rest of the game graph
+  // (parents, addChild for ring overlays, hit-testing, save/load) keeps
+  // working unchanged. The Container itself draws nothing — the weydra
+  // renderer paints the planet pixels into its own canvas behind Pixi.
+  {
+    const r = getWeydraRenderer();
+    if (getConfig().weydra.planetsLive && r) {
+      const paleta = gerarPaletaAleatoria(tipoPlaneta, rng);
+      const initialRotation = rng() * 6.28;
+      const rotSpeed = (0.02 + rng() * 0.06) * (rng() > 0.5 ? 1 : -1);
+      const instance = r.createPlanetInstance();
+      instance.uSeed = planetSeed;
+      instance.uPlanetType = paleta.planetType;
+      instance.uOctaves = paleta.octaves;
+      instance.uPixels = 64;
+      instance.uTime = 0;
+      instance.uRotation = initialRotation;
+      instance.uTimeSpeed = paleta.timeSpeed;
+      instance.uDitherSize = paleta.ditherSize;
+      instance.uLightBorder1 = paleta.lightBorder1;
+      instance.uLightBorder2 = paleta.lightBorder2;
+      instance.uSize = paleta.size;
+      instance.uRiverCutoff = paleta.riverCutoff;
+      instance.uLandCutoff = paleta.landCutoff;
+      instance.uCloudCover = paleta.cloudCover;
+      instance.uStretch = paleta.stretch;
+      instance.uCloudCurve = paleta.cloudCurve;
+      instance.uTiles = paleta.tiles;
+      instance.uCloudAlpha = paleta.cloudAlpha;
+      // Default light origin matches criarUniformsPlaneta (0.39, 0.39).
+      instance.setLightOrigin(0.39, 0.39);
+      instance.setWorldPos(x, y);
+      instance.setWorldSize(tamanho, tamanho);
+      for (let i = 0; i < 6; i++) {
+        const c = paleta.colors[i];
+        instance.setColor(i, c[0], c[1], c[2], c[3]);
+      }
+      const stub = new Container() as unknown as Mesh<Geometry, Shader>;
+      stub.x = x;
+      stub.y = y;
+      // Match Mesh scale semantics so any caller that reads
+      // (planeta as any).scale.x to compute world size still gets
+      // tamanho. Container.scale is a Pixi ObservablePoint, not a
+      // plain object — set via .set() to keep the observer happy.
+      (stub as unknown as Container).scale.set(tamanho);
+      (stub as any)._weydraPlanet = instance;
+      (stub as any)._rotSpeed = rotSpeed;
+      (stub as any)._uTime = 0;
+      (stub as any)._uRotation = initialRotation;
+      (stub as any)._planetaTipo = tipoPlaneta;
+      (stub as any)._planetSeed = planetSeed;
+      (stub as any)._planetPaleta = paleta;
+      // Hook destroy so freeing the planet returns its slot to the pool.
+      const origDestroy = (stub as unknown as Container).destroy.bind(stub);
+      (stub as unknown as Container).destroy = ((opts?: any) => {
+        try {
+          const inst = (stub as any)._weydraPlanet as PlanetInstance | null;
+          if (inst) {
+            r.destroyPlanetInstance(inst);
+            (stub as any)._weydraPlanet = null;
+          }
+        } catch (err) {
+          console.warn('[planeta-procedural] weydra planet destroy failed:', err);
+        }
+        return origDestroy(opts);
+      }) as Container['destroy'];
+      return stub;
+    }
   }
 
   const shader = criarShaderPlaneta(tipoPlaneta, planetSeed, rng);
@@ -853,6 +925,22 @@ export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
     // static sprites. Weydra path enqueues; the scheduler drains one
     // per frame so the first post-toggle frame doesn't stall.
     for (const planeta of planetas) {
+      // Weydra-live planet: shader IS the live render path; the
+      // "minimo" preset's bulk-bake doesn't apply (we'd need a
+      // bake-from-PlanetInstance pipeline for that, deferred to M7).
+      // Keep animating uniforms so it doesn't freeze visually.
+      if ((planeta as any)._weydraPlanet) {
+        const u = (planeta as any)._weydraPlanet as PlanetInstance;
+        const rotSpeedW = (planeta as any)._rotSpeed ?? 0;
+        const newTime = ((planeta as any)._uTime ?? 0) + deltaSec;
+        const newRot = ((planeta as any)._uRotation ?? 0) + rotSpeedW * deltaSec;
+        u.uTime = newTime;
+        u.uRotation = newRot;
+        (planeta as any)._uTime = newTime;
+        (planeta as any)._uRotation = newRot;
+        u.setWorldPos(planeta.x, planeta.y);
+        continue;
+      }
       if (weydraBaked) {
         if (!(planeta as any)._weydraBakedSprite) enqueueBakeWeydra(planeta);
         const s = (planeta as any)._weydraBakedSprite as WeydraSprite | undefined;
@@ -882,6 +970,24 @@ export function atualizarTempoPlanetas(planetas: any[], deltaMs: number): void {
     }
     // Canvas planets already animated at the top of this function.
     if ((planeta as any)._isCanvasPlanet) continue;
+
+    // Weydra-live planet: skip the Pixi-side auto-bake / shader-update
+    // path entirely. PlanetInstance uniforms drive the weydra render;
+    // bake/unbake is decided independently via planetsBaked (M4) and
+    // never touches a _weydraPlanet stub (it has no _planetShader so
+    // bakePlaneta would early-return anyway).
+    if ((planeta as any)._weydraPlanet) {
+      const u = (planeta as any)._weydraPlanet as PlanetInstance;
+      const rotSpeedW = (planeta as any)._rotSpeed ?? 0;
+      const newTime = ((planeta as any)._uTime ?? 0) + deltaSec;
+      const newRot = ((planeta as any)._uRotation ?? 0) + rotSpeedW * deltaSec;
+      u.uTime = newTime;
+      u.uRotation = newRot;
+      (planeta as any)._uTime = newTime;
+      (planeta as any)._uRotation = newRot;
+      u.setWorldPos(planeta.x, planeta.y);
+      continue;
+    }
 
     const tamWorld = (planeta as any).scale?.x ?? 1;
     const tamPx = tamWorld * zoom;
@@ -1002,7 +1108,9 @@ export function criarEstrelaProcedural(
 }
 
 export function atualizarLuzPlaneta(planeta: any, solX: number, solY: number): void {
-  // Same direction math for both paths — sun → UV position on the disc.
+  // Same direction math for ALL paths — sun → UV position on the disc.
+  // Bit-exact across Canvas2D, Pixi shader, and weydra live shader so
+  // visual parity holds when toggling the planetsLive flag.
   const dx = solX - planeta.x;
   const dy = solY - planeta.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1014,6 +1122,12 @@ export function atualizarLuzPlaneta(planeta: any, solX: number, solY: number): v
     if (!cs) return;
     cs.state.uLightOriginX = lx;
     cs.state.uLightOriginY = ly;
+    return;
+  }
+
+  if ((planeta as any)._weydraPlanet) {
+    const u = (planeta as any)._weydraPlanet as PlanetInstance;
+    u.setLightOrigin(lx, ly);
     return;
   }
 

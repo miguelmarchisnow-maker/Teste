@@ -65,6 +65,7 @@ export interface OrbitalConfig {
     shipTrails: boolean; // M3 — engine trails via sprite pool
     starfieldBright: boolean; // M3 — bright-tile layer via weydra tiling
     planetsBaked: boolean; // M4 — baked planets via weydra sprite pool
+    planetsLive: boolean;  // M5 — procedural planets via weydra live shader
     /** Backend selection inside the weydra renderer. */
     backend: 'auto' | 'webgpu' | 'webgl2';
   };
@@ -127,6 +128,7 @@ export const DEFAULTS: OrbitalConfig = {
     shipTrails: false,
     starfieldBright: false,
     planetsBaked: false,
+    planetsLive: false,
     backend: 'auto',
   },
 
