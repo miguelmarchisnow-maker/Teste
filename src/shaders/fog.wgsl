@@ -100,5 +100,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // round-trip: 0.008→2, 0.02→5, 0.0627→16. Plain 0.06 would land on
     // 15 (15.3 rounds to 15) and shift the blue channel one LSB darker
     // than Pixi.
-    return vec4<f32>(0.008, 0.02, 0.0627, alpha);
+    //
+    // Pre-decode the navy with pow 2.2 to cancel the swap chain's
+    // automatic linear→sRGB encode (same reason as the planet shader's
+    // matching block). Without this the fog renders bright cyan-blue
+    // instead of the dark navy the canvas-2D path produces.
+    let navy_linear = pow(vec3<f32>(0.008, 0.02, 0.0627), vec3<f32>(2.2));
+    return vec4<f32>(navy_linear, alpha);
 }

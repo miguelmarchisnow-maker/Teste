@@ -370,6 +370,20 @@ fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
         col = starPlanet(uvPix, uv);
     }
 
-    // Premultiplied alpha
-    return vec4<f32>(col.rgb * col.a, col.a);
+    // The wgpu swap chain on the web is sRGB-formatted (Bgra8UnormSrgb).
+    // Hardware applies a linear→sRGB encode on store. The Pixi reference
+    // writes its planet colors to a non-sRGB WebGL framebuffer where no
+    // such encode happens, so the artist-authored palettes (e.g. the
+    // `[0.39, 0.67, 0.25]` Earth land tuple) display as the saturated
+    // values they were eyed in. Without compensation the same shader
+    // output here lands one gamma curve brighter — pale washed-out
+    // planets exactly matching the report.
+    //
+    // Pre-decode (pow 2.2) so the hardware's encode round-trips back
+    // to the artist-intended bytes: pow(pow(col, 2.2), 1/2.2) = col.
+    // Premultiply happens AFTER the linearization so the alpha-edge
+    // pixels keep their gradient in linear space rather than sRGB,
+    // which is the technically-correct blending domain anyway.
+    let linear_rgb = pow(col.rgb, vec3<f32>(2.2));
+    return vec4<f32>(linear_rgb * col.a, col.a);
 }
