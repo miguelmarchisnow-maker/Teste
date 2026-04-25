@@ -1295,4 +1295,23 @@ async function voltarAoMenu(): Promise<void> {
   setTimeout(() => curtain.remove(), 420);
 }
 
-void bootstrap();
+// Determinism harness short-circuit. When the URL contains
+// `?weydra_determinism_test=1`, skip the full game bootstrap and render
+// a single fixed-seed planet for the headless runner to screenshot.
+// Strictly additive: any other URL path falls through to bootstrap().
+async function maybeBootDeterminism(): Promise<boolean> {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('weydra_determinism_test') !== '1') return false;
+  } catch {
+    return false;
+  }
+  const mod = await import('./world/determinism-scene');
+  await mod.rodarCenaDeterminismo();
+  return true;
+}
+
+void (async () => {
+  if (await maybeBootDeterminism()) return;
+  await bootstrap();
+})();
