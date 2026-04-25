@@ -328,7 +328,12 @@ export function atualizarFundo(
   mesh.scale.set(telaW, telaH);
 
   fundo._tempoAcumMs += 16.67;
-  const weydraOn = !!getConfig().weydra?.starfield;
+  const r = getWeydraRenderer();
+  // Hide the Pixi starfield mesh ONLY when weydra is actually rendering.
+  // If the player flipped `weydra.starfield` on but the renderer failed
+  // to init (no WebGPU adapter, browser unsupported, etc.), keep the
+  // Pixi path so the fallback isn't a black screen.
+  const weydraOn = !!getConfig().weydra?.starfield && r !== null;
 
   if (weydraOn) {
     // weydra assumiu só a camada procedural (2 layers, mesmo algoritmo).
@@ -336,11 +341,8 @@ export function atualizarFundo(
     // + blend 'normal', então compõe corretamente com weydra atrás (não
     // bloqueia alpha). Visual idêntico ao Pixi puro.
     mesh.visible = false;
-    const r = getWeydraRenderer();
-    if (r) {
-      r.setCamera(jogadorX, jogadorY, telaW, telaH, fundo._tempoAcumMs / 1000);
-      r.setStarfieldDensity(getConfig().graphics.densidadeStarfield);
-    }
+    r!.setCamera(jogadorX, jogadorY, telaW, telaH, fundo._tempoAcumMs / 1000);
+    r!.setStarfieldDensity(getConfig().graphics.densidadeStarfield);
   } else {
     mesh.visible = true;
     const uniforms = fundo._uniforms.uniforms as {
@@ -364,7 +366,9 @@ export function atualizarFundo(
   // em TilingSprite basta setar tilePosition = -camera * (1-parallax).
   const brightTiles = fundo._brightTiles;
   const parallax = 0.12;
-  const weydraBrightOn = !!getConfig().weydra?.starfieldBright;
+  // Same fallback logic as above: skip the weydra path when the renderer
+  // didn't actually come up.
+  const weydraBrightOn = !!getConfig().weydra?.starfieldBright && r !== null;
   if (weydraBrightOn) {
     brightTiles.visible = false;
     const sp = garantirWeydraBrightSprite();

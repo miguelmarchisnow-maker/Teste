@@ -99,9 +99,12 @@ export const DEFAULTS: OrbitalConfig = {
     webglVersion: 'auto',
     gpuPreference: 'auto',
     mostrarOrbitas: true,
-    fogThrottle: 3,
+    // fogThrottle / densidadeStarfield must match PRESETS.alto so the
+    // settings panel shows "Alto" instead of "Personalizado" out of the
+    // box. Any drift here breaks presetBateComFlagsDerivadas.
+    fogThrottle: 1,
     maxFantasmas: -1,
-    densidadeStarfield: 1.0,
+    densidadeStarfield: 0.30,
     shaderLive: true,
   },
 
